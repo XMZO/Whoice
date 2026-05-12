@@ -120,6 +120,8 @@ const samples = [
 
 const fixtureSamples = await apiSamplesFromParserFixtures();
 samples.push(...fixtureSamples);
+const runtimeSamples = await apiSamplesFromRuntimeFixtures();
+samples.push(...runtimeSamples);
 
 for (const sample of samples) {
   if (!validateAPIResponse(sample)) {
@@ -127,7 +129,7 @@ for (const sample of samples) {
   }
 }
 
-console.log(`Validated ${files.length} schema files, ${fixtureSamples.length} parser fixture API samples, and ${samples.length} total API response samples.`);
+console.log(`Validated ${files.length} schema files, ${fixtureSamples.length} parser fixture API samples, ${runtimeSamples.length} runtime API samples, and ${samples.length} total API response samples.`);
 
 async function apiSamplesFromParserFixtures() {
   const fixturesRoot = "packages/fixtures";
@@ -201,6 +203,16 @@ async function apiSamplesFromParserFixtures() {
   return samples;
 }
 
+async function apiSamplesFromRuntimeFixtures() {
+  const fixturesRoot = "packages/fixtures/api-runtime";
+  const files = await responseFixtureFiles(fixturesRoot);
+  const samples = [];
+  for (const file of files) {
+    samples.push(JSON.parse(await readFile(file, "utf8")));
+  }
+  return samples;
+}
+
 async function expectedFixtureFiles(root) {
   const out = [];
   async function walk(dir) {
@@ -210,6 +222,23 @@ async function expectedFixtureFiles(root) {
       if (entry.isDirectory()) {
         await walk(item);
       } else if (entry.isFile() && entry.name.endsWith(".expected.json")) {
+        out.push(item);
+      }
+    }
+  }
+  await walk(root);
+  return out.sort();
+}
+
+async function responseFixtureFiles(root) {
+  const out = [];
+  async function walk(dir) {
+    const entries = await readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const item = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(item);
+      } else if (entry.isFile() && entry.name.endsWith(".response.json")) {
         out.push(item);
       }
     }

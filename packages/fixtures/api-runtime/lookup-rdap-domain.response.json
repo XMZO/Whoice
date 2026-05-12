@@ -1,0 +1,88 @@
+{
+  "meta": {
+    "elapsedMs": 0,
+    "providers": [
+      {
+        "bytes": 357,
+        "contentType": "application/rdap+json",
+        "elapsedMs": 7,
+        "query": "example.com",
+        "server": "https://rdap.example.test/domain/",
+        "source": "rdap",
+        "status": "ok",
+        "statusCode": 200
+      }
+    ],
+    "traceId": "runtime-schema-smoke"
+  },
+  "ok": true,
+  "result": {
+    "dates": {},
+    "dnssec": {
+      "signed": false,
+      "text": "unsigned"
+    },
+    "domain": {
+      "name": "example.com",
+      "punycodeName": "example.com",
+      "registered": true,
+      "registeredDomain": "example.com",
+      "reserved": false,
+      "suffix": "com",
+      "unicodeName": "example.com"
+    },
+    "enrichment": {},
+    "meta": {
+      "elapsedMs": 0,
+      "providers": [
+        {
+          "bytes": 357,
+          "contentType": "application/rdap+json",
+          "elapsedMs": 7,
+          "query": "example.com",
+          "server": "https://rdap.example.test/domain/",
+          "source": "rdap",
+          "status": "ok",
+          "statusCode": 200
+        }
+      ],
+      "traceId": "runtime-schema-smoke"
+    },
+    "nameservers": [
+      {
+        "host": "a.iana-servers.net"
+      }
+    ],
+    "network": {},
+    "normalizedQuery": "example.com",
+    "query": "example.com",
+    "raw": {
+      "rdap": "{\"objectClassName\":\"domain\",\"ldhName\":\"EXAMPLE.COM\",\"status\":[\"active\"],\"port43\":\"whois.example.test\",\"nameservers\":[{\"ldhName\":\"A.IANA-SERVERS.NET\"}],\"secureDNS\":{\"delegationSigned\":false},\"entities\":[{\"roles\":[\"registrar\"],\"publicIds\":[{\"type\":\"IANA Registrar ID\",\"identifier\":\"376\"}],\"vcardArray\":[\"vcard\",[[\"fn\",{},\"text\",\"Example Registrar, Inc.\"]]]}]}"
+    },
+    "registrant": {},
+    "registrar": {
+      "ianaId": "376",
+      "name": "Example Registrar, Inc."
+    },
+    "registry": {
+      "rdapServer": "https://rdap.example.test/domain/",
+      "whoisServer": "whois.example.test"
+    },
+    "source": {
+      "primary": "rdap",
+      "used": [
+        "rdap"
+      ]
+    },
+    "status": "registered",
+    "statuses": [
+      {
+        "code": "active",
+        "label": "active",
+        "source": "rdap",
+        "url": "https://icann.org/epp"
+      }
+    ],
+    "type": "domain"
+  }
+}

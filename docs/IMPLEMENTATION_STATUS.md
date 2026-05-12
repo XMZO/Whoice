@@ -42,13 +42,13 @@ This audit compares the current repository with `PLAN.md`. The goal is not to so
 - Next.js UI has search, result page, source mode switcher, local history, docs stub, and raw evidence panels.
 - Compose defaults to prebuilt GHCR images and can be downloaded as a single `docker-compose.yml`; it mounts same-folder `./data`, uses an explicit bridge network, and includes service healthchecks.
 - GitHub Actions workflow exists for `linux/amd64` and `linux/arm64` image publishing.
-- OpenAPI and JSON Schema contract files exist; CI validates syntax, validates curated and parser-fixture API response samples, regenerates TypeScript schema types, checks Web type compatibility, and checks Go model JSON fields against schema definitions.
+- OpenAPI and JSON Schema contract files exist; CI validates syntax, validates curated, parser-fixture, and runtime API response samples, regenerates TypeScript schema types, checks Web type compatibility, and checks Go model JSON fields against schema definitions.
 - Plugin registry scaffold exists and `/api/version` reports plugin descriptors.
 - Playwright smoke tests cover hydration, runtime status visibility, result-page in-place lookup, source switching, theme/language controls, null-array response tolerance, and DNSViz panel rendering.
 
 ## Must Close Before Calling It Plan-Complete
 
-- Expand schema runtime validation from parser fixtures to live API smoke fixtures.
+- Expand schema runtime validation from parser fixtures to broader live/API smoke fixtures beyond the initial deterministic runtime response.
 - Expand embedded RDAP bootstrap snapshot coverage and keep it refreshed through release automation.
 - Continue validating WHOIS server snapshots against live lookup smoke cases and expand server-specific query templates.
 - Continue migrating high-value TLD parsers from `unofficial/whois-domain-lookup` with fixtures for each one.

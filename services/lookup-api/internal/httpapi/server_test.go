@@ -1,17 +1,22 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/xmzo/whoice/services/lookup-api/internal/config"
 	"github.com/xmzo/whoice/services/lookup-api/internal/lookup"
+	"github.com/xmzo/whoice/services/lookup-api/internal/model"
 	"github.com/xmzo/whoice/services/lookup-api/internal/observability"
 	"github.com/xmzo/whoice/services/lookup-api/internal/parsers"
+	"github.com/xmzo/whoice/services/lookup-api/internal/providers"
 )
 
 func TestOptionsFromRequestPreservesExplicitZeroWhoisFollow(t *testing.T) {
@@ -145,5 +150,89 @@ func TestOptionsFromRequestNormalizesServerSeparators(t *testing.T) {
 	if opts.RDAPServer != "https://rdap.example.com" || opts.WHOISServer != "whois.example.com" {
 		body, _ := json.Marshal(opts)
 		t.Fatalf("server options were not normalized: %s", body)
+	}
+}
+
+func TestRuntimeLookupResponseMatchesSchemaFixture(t *testing.T) {
+	rdapBody := `{"objectClassName":"domain","ldhName":"EXAMPLE.COM","status":["active"],"port43":"whois.example.test","nameservers":[{"ldhName":"A.IANA-SERVERS.NET"}],"secureDNS":{"delegationSigned":false},"entities":[{"roles":["registrar"],"publicIds":[{"type":"IANA Registrar ID","identifier":"376"}],"vcardArray":["vcard",[["fn",{},"text","Example Registrar, Inc."]]]}]}`
+	cfg := config.Config{
+		RDAPEnabled:     true,
+		WHOISEnabled:    false,
+		EnrichEPP:       false,
+		EnrichRegistrar: false,
+		EnrichDNS:       false,
+		EnrichDNSViz:    false,
+		EnrichBrands:    false,
+		MetricsEnabled:  true,
+	}
+	service := lookup.NewService(cfg, []providers.Provider{runtimeFixtureProvider{body: rdapBody}}, parsers.NewRegistry(parsers.RDAPParser{}))
+	server := New(cfg, service, nil, observability.NewStats())
+	request := httptest.NewRequest(http.MethodGet, "/api/lookup?query=example.com&rdap=true&whois=false", nil)
+	request.Header.Set("X-Request-ID", "runtime-schema-smoke")
+	response := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(response, request.WithContext(context.Background()))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status: got %d want 200, body=%s", response.Code, response.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	normalizeRuntimeFixturePayload(payload)
+	got, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = append(got, '\n')
+
+	path := filepath.Join("..", "..", "..", "..", "packages", "fixtures", "api-runtime", "lookup-rdap-domain.response.json")
+	if os.Getenv("WHOICE_UPDATE_RUNTIME_FIXTURES") == "1" {
+		if err := os.WriteFile(path, got, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("runtime API fixture drifted; run with WHOICE_UPDATE_RUNTIME_FIXTURES=1 after reviewing the response\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+}
+
+type runtimeFixtureProvider struct {
+	body string
+}
+
+func (p runtimeFixtureProvider) Name() model.SourceName {
+	return model.SourceRDAP
+}
+
+func (p runtimeFixtureProvider) Supports(q model.NormalizedQuery) bool {
+	return q.Type == model.QueryDomain
+}
+
+func (p runtimeFixtureProvider) Lookup(_ context.Context, q model.NormalizedQuery, _ model.LookupOptions) (*model.RawResponse, error) {
+	return &model.RawResponse{
+		Source:      model.SourceRDAP,
+		Server:      "https://rdap.example.test/domain/",
+		Query:       q.Query,
+		Body:        p.body,
+		ContentType: "application/rdap+json",
+		StatusCode:  http.StatusOK,
+		ElapsedMs:   7,
+	}, nil
+}
+
+func normalizeRuntimeFixturePayload(payload map[string]any) {
+	if meta, ok := payload["meta"].(map[string]any); ok {
+		meta["elapsedMs"] = 0
+	}
+	if result, ok := payload["result"].(map[string]any); ok {
+		if meta, ok := result["meta"].(map[string]any); ok {
+			meta["elapsedMs"] = 0
+		}
 	}
 }

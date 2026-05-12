@@ -31,6 +31,8 @@ pnpm test:e2e --project=chromium  # Playwright smoke tests
 pnpm build                        # Production web build
 ```
 
+`test:schema` validates curated samples, parser fixtures, and deterministic runtime API fixtures. When a reviewed API response shape intentionally changes, regenerate the runtime fixture with `WHOICE_UPDATE_RUNTIME_FIXTURES=1 go test ./services/lookup-api/internal/httpapi -run TestRuntimeLookupResponseMatchesSchemaFixture`.
+
 ## Docker
 
 Use the published linux multi-arch images on a Debian VPS by downloading the compose file directly:
