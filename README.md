@@ -45,7 +45,7 @@ docker compose up -d
 
 `docker-compose.yml` is designed to work as a single downloaded file. Runtime data lives in the same folder under `./data`, mounted into the API container as `/data`. By default Docker exposes the Web UI on `0.0.0.0:18081` and the direct API on `0.0.0.0:18080`; override them with `WHOICE_WEB_BIND` and `WHOICE_API_BIND` when needed. The Web container listens on `8081` internally, and the API container listens on `8080` internally.
 
-The compose file defaults to `WHOICE_IMAGE_TAG=0.01alpha`. Set another release tag only when you intentionally upgrade or roll back.
+The compose file defaults to `latest`, so you do not need to set `WHOICE_IMAGE_TAG`. Set `WHOICE_IMAGE_TAG=0.01alpha` only when you want to pin or roll back to that exact release.
 If the GHCR packages are private, run `docker login ghcr.io` on the VPS first.
 
 For local image development:
@@ -97,7 +97,7 @@ pnpm update:psl
 
 ## Release Images
 
-Pushing a version tag builds and publishes `linux/amd64` and `linux/arm64` images to GHCR:
+Pushing a version tag builds and publishes `linux/amd64` and `linux/arm64` images to GHCR. The workflow uses native GitHub-hosted runners for both architectures and then publishes a multi-arch manifest; it does not use QEMU emulation.
 
 ```sh
 git add .

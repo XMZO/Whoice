@@ -2042,8 +2042,8 @@ docker compose
 默认 `deploy/compose/docker-compose.yml` 不做本地 build，而是拉取预构建镜像：
 
 ```txt
-ghcr.io/xmzo/whoice-web:${WHOICE_IMAGE_TAG:-0.01alpha}
-ghcr.io/xmzo/whoice-lookup-api:${WHOICE_IMAGE_TAG:-0.01alpha}
+ghcr.io/xmzo/whoice-web:${WHOICE_IMAGE_TAG:-latest}
+ghcr.io/xmzo/whoice-lookup-api:${WHOICE_IMAGE_TAG:-latest}
 platforms: linux/amd64, linux/arm64
 ```
 
@@ -2071,8 +2071,9 @@ docker compose -f deploy/compose/docker-compose.yml up -d
 - `linux/amd64`：普通 x86_64 Debian VPS。
 - `linux/arm64`：ARM Debian VPS、Ampere、Oracle ARM、树莓派类环境。
 - `whoice-web` 和 `whoice-lookup-api` 同版本发布。
-- alpha 发布保留原始标签，例如 `0.01alpha`，方便 compose 用 `WHOICE_IMAGE_TAG=0.01alpha` 精确锁定。
+- alpha 发布保留原始标签，例如 `0.01alpha`，并同时更新 `latest`，所以单文件 compose 默认不用填写 `WHOICE_IMAGE_TAG`。
 - 稳定 semver 发布保留 `v0.1.0`，并额外生成 `0.1.0`、`0.1`、`latest`。
+- 镜像构建使用原生 runner：amd64 用 `ubuntu-latest`，arm64 用 `ubuntu-24.04-arm`，最后合并 multi-arch manifest；不使用 QEMU 模拟构建。
 
 ### 必要性
 

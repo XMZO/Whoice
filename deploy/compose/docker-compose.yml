@@ -4,7 +4,7 @@ services:
   # Lookup API: live WHOIS/RDAP lookup, auth, enrichment.
   # 查询 API：负责实时 WHOIS/RDAP 查询、鉴权和增强模块。
   lookup-api:
-    image: ${WHOICE_IMAGE_REGISTRY:-ghcr.io/xmzo}/whoice-lookup-api:${WHOICE_IMAGE_TAG:-0.01alpha}
+    image: ${WHOICE_IMAGE_REGISTRY:-ghcr.io/xmzo}/whoice-lookup-api:${WHOICE_IMAGE_TAG:-latest}
     pull_policy: always
     environment:
       WHOICE_API_ADDR: ":8080"
@@ -54,7 +54,7 @@ services:
   # Web UI: Next.js frontend, talks to lookup-api inside the compose network.
   # Web 界面：Next.js 前端，通过 compose 内网访问 lookup-api。
   web:
-    image: ${WHOICE_IMAGE_REGISTRY:-ghcr.io/xmzo}/whoice-web:${WHOICE_IMAGE_TAG:-0.01alpha}
+    image: ${WHOICE_IMAGE_REGISTRY:-ghcr.io/xmzo}/whoice-web:${WHOICE_IMAGE_TAG:-latest}
     pull_policy: always
     environment:
       WHOICE_WEB_API_BASE: "http://lookup-api:8080"
