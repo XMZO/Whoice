@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "domains": {
+    "example.com": {
+      "domainAuthority": 93,
+      "pageAuthority": 83,
+      "spamScore": 1,
+      "source": "example-fixture"
+    }
+  }
+}

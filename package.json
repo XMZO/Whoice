@@ -1,0 +1,27 @@
+{
+  "name": "whoice",
+  "private": true,
+  "version": "0.0.1-alpha",
+  "scripts": {
+    "dev:api": "go run ./services/lookup-api/cmd/whoice-api",
+    "dev:web": "pnpm --dir apps/web dev",
+    "build:web": "pnpm --dir apps/web build",
+    "generate:schema-types": "json2ts -i packages/schema/json/api-response.schema.json -o packages/schema/generated/api-response.d.ts --style.singleQuote --unreachableDefinitions",
+    "test:api": "go test ./services/lookup-api/...",
+    "test:web": "pnpm --dir apps/web typecheck",
+    "test:e2e": "playwright test",
+    "test:schema": "node scripts/validate-schema.mjs && pnpm generate:schema-types && tsc -p packages/schema/tsconfig.json --noEmit",
+    "update:psl": "sh scripts/update-data/update-public-suffix.sh",
+    "build": "pnpm build:web",
+    "test": "pnpm test:api && pnpm test:web && pnpm test:schema"
+  },
+  "packageManager": "pnpm@10.30.3",
+  "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "json-schema-to-typescript": "^15.0.4",
+    "typescript": "^5.9.3",
+    "yaml": "^2.8.4"
+  }
+}

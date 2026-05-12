@@ -1,0 +1,80 @@
+# Whoice single-file deployment.
+# Whoice 单文件部署：把本文件下载到 VPS，并在同级保留 ./data 目录。
+services:
+  # Lookup API: live WHOIS/RDAP lookup, auth, enrichment.
+  # 查询 API：负责实时 WHOIS/RDAP 查询、鉴权和增强模块。
+  lookup-api:
+    image: ${WHOICE_IMAGE_REGISTRY:-ghcr.io/xmzo}/whoice-lookup-api:${WHOICE_IMAGE_TAG:-0.01alpha}
+    pull_policy: always
+    environment:
+      WHOICE_API_ADDR: ":8080"
+      WHOICE_DATA_DIR: "/data"
+      WHOICE_AUTH_MODE: "${WHOICE_AUTH_MODE:-none}"
+      WHOICE_TRUST_PROXY: "true"
+      WHOICE_METRICS_ENABLED: "${WHOICE_METRICS_ENABLED:-true}"
+      # Optional startup PSL refresh into ./data; default keeps startup offline-safe.
+      # 可选：启动时刷新 PSL 到 ./data；默认关闭，避免启动依赖外网。
+      WHOICE_PSL_AUTO_UPDATE: "${WHOICE_PSL_AUTO_UPDATE:-false}"
+      WHOICE_PSL_URL: "${WHOICE_PSL_URL:-https://publicsuffix.org/list/public_suffix_list.dat}"
+      WHOICE_PSL_UPDATE_TIMEOUT: "${WHOICE_PSL_UPDATE_TIMEOUT:-5s}"
+      WHOICE_RATE_LIMIT_ENABLED: "${WHOICE_RATE_LIMIT_ENABLED:-false}"
+      WHOICE_RATE_LIMIT_ANON: "${WHOICE_RATE_LIMIT_ANON:-60/min}"
+      WHOICE_RDAP_ENABLED: "true"
+      WHOICE_WHOIS_ENABLED: "true"
+      WHOICE_WHOIS_WEB_ENABLED: "${WHOICE_WHOIS_WEB_ENABLED:-false}"
+      WHOICE_WHOIS_FOLLOW_LIMIT: "${WHOICE_WHOIS_FOLLOW_LIMIT:-1}"
+      WHOICE_ALLOW_CUSTOM_SERVERS: "${WHOICE_ALLOW_CUSTOM_SERVERS:-false}"
+      WHOICE_ALLOW_PRIVATE_SERVERS: "${WHOICE_ALLOW_PRIVATE_SERVERS:-false}"
+      WHOICE_ENRICH_EPP: "${WHOICE_ENRICH_EPP:-true}"
+      WHOICE_ENRICH_BRANDS: "${WHOICE_ENRICH_BRANDS:-false}"
+      WHOICE_ENRICH_REGISTRAR: "${WHOICE_ENRICH_REGISTRAR:-true}"
+      WHOICE_ENRICH_DNS: "${WHOICE_ENRICH_DNS:-true}"
+      WHOICE_DNS_TIMEOUT: "${WHOICE_DNS_TIMEOUT:-3s}"
+      WHOICE_ENRICH_DNSVIZ: "${WHOICE_ENRICH_DNSVIZ:-true}"
+      WHOICE_ENRICH_PRICING: "${WHOICE_ENRICH_PRICING:-false}"
+      WHOICE_ENRICH_MOZ: "${WHOICE_ENRICH_MOZ:-false}"
+    ports:
+      - "${WHOICE_API_BIND:-0.0.0.0:18080}:8080"
+    # Runtime data lives beside this compose file: ./data -> /data.
+    # Put rdap-bootstrap/, registrars/, brands/, enrichment/, whois-servers/, public-suffix/ here to override snapshots.
+    # 运行时数据目录与本 yml 同级：./data -> /data。
+    # 可在此放 rdap-bootstrap/、registrars/、brands/、enrichment/、whois-servers/、public-suffix/ 覆盖内置快照。
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD", "/app/whoice-api", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - whoice
+    restart: unless-stopped
+
+  # Web UI: Next.js frontend, talks to lookup-api inside the compose network.
+  # Web 界面：Next.js 前端，通过 compose 内网访问 lookup-api。
+  web:
+    image: ${WHOICE_IMAGE_REGISTRY:-ghcr.io/xmzo}/whoice-web:${WHOICE_IMAGE_TAG:-0.01alpha}
+    pull_policy: always
+    environment:
+      WHOICE_WEB_API_BASE: "http://lookup-api:8080"
+    ports:
+      - "${WHOICE_WEB_BIND:-0.0.0.0:18081}:8081"
+    depends_on:
+      lookup-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8081/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - whoice
+    restart: unless-stopped
+
+# Internal bridge network for API/Web.
+# API/Web 使用的内部桥接网络。
+networks:
+  whoice:
+    name: ${WHOICE_NETWORK_NAME:-whoice}

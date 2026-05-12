@@ -1,0 +1,631 @@
+openapi: 3.1.0
+info:
+  title: Whoice API
+  version: 0.1.0-alpha
+  description: Modular WHOIS and RDAP lookup API.
+servers:
+  - url: http://localhost:8080
+paths:
+  /api/health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: Service health
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, version, time]
+                properties:
+                  ok:
+                    type: boolean
+                  version:
+                    type: string
+                  time:
+                    type: string
+                    format: date-time
+  /api/version:
+    get:
+      summary: Version, capabilities, and plugin descriptors
+      responses:
+        "200":
+          description: Version payload
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [version, data, capabilities, plugins]
+                properties:
+                  version:
+                    type: string
+                  data:
+                    type: object
+                    additionalProperties:
+                      type: string
+                  capabilities:
+                    $ref: "#/components/schemas/Capabilities"
+                  plugins:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PluginInfo"
+  /api/capabilities:
+    get:
+      summary: Runtime capability flags
+      responses:
+        "200":
+          description: Capability response
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/APIResponse"
+                  - type: object
+                    properties:
+                      capabilities:
+                        $ref: "#/components/schemas/Capabilities"
+  /api/metrics:
+    get:
+      summary: Prometheus-style runtime metrics
+      responses:
+        "200":
+          description: Text metrics payload
+          content:
+            text/plain:
+              schema:
+                type: string
+        "404":
+          description: Metrics are disabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIResponse"
+  /api/admin/status:
+    get:
+      summary: Runtime status and counters
+      responses:
+        "200":
+          description: Admin status
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, version, capabilities, plugins, stats]
+                properties:
+                  ok:
+                    type: boolean
+                  version:
+                    type: string
+                  capabilities:
+                    $ref: "#/components/schemas/Capabilities"
+                  plugins:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PluginInfo"
+                  stats:
+                    $ref: "#/components/schemas/AdminStats"
+        "401":
+          description: Authentication required when auth is enabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIResponse"
+  /api/lookup:
+    get:
+      summary: Lookup a domain, URL, IP, ASN, or CIDR
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 512
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: rdap
+          in: query
+          required: false
+          schema:
+            type: boolean
+        - name: whois
+          in: query
+          required: false
+          schema:
+            type: boolean
+        - name: rdap_server
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: whois_server
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: whois_follow
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 5
+      responses:
+        "200":
+          description: Lookup succeeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIResponse"
+        "400":
+          description: Invalid or missing query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIResponse"
+        "403":
+          description: Option blocked by policy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIResponse"
+        "429":
+          description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIResponse"
+        "502":
+          description: Upstream lookup failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIResponse"
+components:
+  schemas:
+    APIResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+        result:
+          $ref: "#/components/schemas/LookupResult"
+        error:
+          $ref: "#/components/schemas/APIError"
+        capabilities:
+          $ref: "#/components/schemas/Capabilities"
+        meta:
+          $ref: "#/components/schemas/ResultMeta"
+    APIError:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: array
+          items:
+            type: string
+    LookupResult:
+      type: object
+      required:
+        - query
+        - normalizedQuery
+        - type
+        - status
+        - source
+        - domain
+        - registry
+        - registrar
+        - dates
+        - statuses
+        - nameservers
+        - dnssec
+        - registrant
+        - network
+        - enrichment
+        - raw
+        - meta
+      properties:
+        query:
+          type: string
+        normalizedQuery:
+          type: string
+        type:
+          $ref: "#/components/schemas/QueryType"
+        status:
+          $ref: "#/components/schemas/ResultStatus"
+        source:
+          $ref: "#/components/schemas/SourceInfo"
+        domain:
+          $ref: "#/components/schemas/DomainInfo"
+        registry:
+          $ref: "#/components/schemas/RegistryInfo"
+        registrar:
+          $ref: "#/components/schemas/RegistrarInfo"
+        dates:
+          $ref: "#/components/schemas/DateInfo"
+        statuses:
+          type: array
+          items:
+            $ref: "#/components/schemas/DomainStatus"
+        nameservers:
+          type: array
+          items:
+            $ref: "#/components/schemas/Nameserver"
+        dnssec:
+          $ref: "#/components/schemas/DNSSECInfo"
+        registrant:
+          $ref: "#/components/schemas/RegistrantInfo"
+        network:
+          $ref: "#/components/schemas/NetworkInfo"
+        enrichment:
+          $ref: "#/components/schemas/EnrichmentInfo"
+        raw:
+          $ref: "#/components/schemas/RawData"
+        meta:
+          $ref: "#/components/schemas/ResultMeta"
+    QueryType:
+      type: string
+      enum: [domain, ipv4, ipv6, asn, cidr, url, unknown]
+    ResultStatus:
+      type: string
+      enum: [registered, unregistered, reserved, unknown, error]
+    SourceName:
+      type: string
+      enum: [rdap, whois, whoisWeb]
+    SourceInfo:
+      type: object
+      required: [used]
+      properties:
+        primary:
+          $ref: "#/components/schemas/SourceName"
+        used:
+          type: array
+          items:
+            $ref: "#/components/schemas/SourceName"
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/SourceError"
+    SourceError:
+      type: object
+      required: [source, error]
+      properties:
+        source:
+          $ref: "#/components/schemas/SourceName"
+        server:
+          type: string
+        error:
+          type: string
+    DomainInfo:
+      type: object
+      required: [reserved, registered]
+      properties:
+        name:
+          type: string
+        unicodeName:
+          type: string
+        punycodeName:
+          type: string
+        suffix:
+          type: string
+        registeredDomain:
+          type: string
+        reserved:
+          type: boolean
+        registered:
+          type: boolean
+    RegistryInfo:
+      type: object
+      properties:
+        name:
+          type: string
+        website:
+          type: string
+        whoisServer:
+          type: string
+        rdapServer:
+          type: string
+    RegistrarInfo:
+      type: object
+      properties:
+        name:
+          type: string
+        url:
+          type: string
+        ianaId:
+          type: string
+        country:
+          type: string
+        whoisServer:
+          type: string
+        rdapServer:
+          type: string
+        brand:
+          $ref: "#/components/schemas/Brand"
+    Brand:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+    DateInfo:
+      type: object
+      properties:
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+        expiresAt:
+          type: string
+        availableAt:
+          type: string
+        ageDays:
+          type: integer
+        remainingDays:
+          type: integer
+    DomainStatus:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+        label:
+          type: string
+        category:
+          type: string
+        description:
+          type: string
+        url:
+          type: string
+        source:
+          type: string
+    Nameserver:
+      type: object
+      required: [host]
+      properties:
+        host:
+          type: string
+        brand:
+          $ref: "#/components/schemas/Brand"
+    DNSSECInfo:
+      type: object
+      properties:
+        signed:
+          type: boolean
+        text:
+          type: string
+    RegistrantInfo:
+      type: object
+      properties:
+        organization:
+          type: string
+        country:
+          type: string
+        province:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+    NetworkInfo:
+      type: object
+      properties:
+        cidr:
+          type: string
+        range:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+        originAS:
+          type: string
+        country:
+          type: string
+    EnrichmentInfo:
+      type: object
+      properties:
+        dns:
+          $ref: "#/components/schemas/DNSInfo"
+        dnsviz:
+          $ref: "#/components/schemas/DNSVizInfo"
+        pricing:
+          $ref: "#/components/schemas/PricingInfo"
+        moz:
+          $ref: "#/components/schemas/MozInfo"
+    DNSVizInfo:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          format: uri
+    PricingInfo:
+      type: object
+      properties:
+        register:
+          type: number
+        renew:
+          type: number
+        transfer:
+          type: number
+        currency:
+          type: string
+        provider:
+          type: string
+        source:
+          type: string
+        updatedAt:
+          type: string
+    MozInfo:
+      type: object
+      properties:
+        domainAuthority:
+          type: integer
+        pageAuthority:
+          type: integer
+        spamScore:
+          type: integer
+        source:
+          type: string
+        updatedAt:
+          type: string
+    DNSInfo:
+      type: object
+      properties:
+        a:
+          type: array
+          items:
+            $ref: "#/components/schemas/DNSAddress"
+        aaaa:
+          type: array
+          items:
+            $ref: "#/components/schemas/DNSAddress"
+        cname:
+          type: string
+        mx:
+          type: array
+          items:
+            $ref: "#/components/schemas/DNSMX"
+        ns:
+          type: array
+          items:
+            type: string
+        elapsedMs:
+          type: integer
+    DNSAddress:
+      type: object
+      required: [ip, version]
+      properties:
+        ip:
+          type: string
+        version:
+          type: string
+          enum: [ipv4, ipv6]
+        reverse:
+          type: string
+    DNSMX:
+      type: object
+      required: [host, pref]
+      properties:
+        host:
+          type: string
+        pref:
+          type: integer
+    RawData:
+      type: object
+      properties:
+        whois:
+          type: string
+        whoisWeb:
+          type: string
+        rdap:
+          type: string
+    ResultMeta:
+      type: object
+      required: [elapsedMs]
+      properties:
+        elapsedMs:
+          type: integer
+        warnings:
+          type: array
+          items:
+            type: string
+        traceId:
+          type: string
+        providers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProviderTrace"
+    ProviderTrace:
+      type: object
+      required: [source, status, elapsedMs]
+      properties:
+        source:
+          $ref: "#/components/schemas/SourceName"
+        status:
+          type: string
+          enum: [ok, error]
+        server:
+          type: string
+        query:
+          type: string
+        statusCode:
+          type: integer
+        contentType:
+          type: string
+        bytes:
+          type: integer
+        elapsedMs:
+          type: integer
+        error:
+          type: string
+    Capabilities:
+      type: object
+      required: [rdap, whois, whoisWeb, customServers, auth, rateLimit, enrichment]
+      properties:
+        rdap:
+          type: boolean
+        whois:
+          type: boolean
+        whoisWeb:
+          type: boolean
+        customServers:
+          type: boolean
+        auth:
+          type: string
+        rateLimit:
+          type: boolean
+        enrichment:
+          type: object
+          additionalProperties:
+            type: boolean
+    PluginInfo:
+      type: object
+      required: [kind, name, version, enabled]
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        version:
+          type: string
+        enabled:
+          type: boolean
+    AdminStats:
+      type: object
+      required: [startedAt, uptimeSec, lookups]
+      properties:
+        startedAt:
+          type: string
+          format: date-time
+        uptimeSec:
+          type: integer
+        lookups:
+          type: object
+          required: [total, succeeded, failed, lastElapsedMs]
+          properties:
+            total:
+              type: integer
+            succeeded:
+              type: integer
+            failed:
+              type: integer
+            lastElapsedMs:
+              type: integer

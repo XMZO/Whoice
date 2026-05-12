@@ -1,0 +1,359 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://whoice.example/schema/api-response.schema.json",
+  "title": "Whoice APIResponse",
+  "type": "object",
+  "required": ["ok"],
+  "properties": {
+    "ok": { "type": "boolean" },
+    "result": { "$ref": "#/$defs/LookupResult" },
+    "error": { "$ref": "#/$defs/APIError" },
+    "capabilities": { "$ref": "#/$defs/Capabilities" },
+    "meta": { "$ref": "#/$defs/ResultMeta" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "APIError": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "type": "string" },
+        "message": { "type": "string" },
+        "details": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "LookupResult": {
+      "type": "object",
+      "required": [
+        "query",
+        "normalizedQuery",
+        "type",
+        "status",
+        "source",
+        "domain",
+        "registry",
+        "registrar",
+        "dates",
+        "statuses",
+        "nameservers",
+        "dnssec",
+        "registrant",
+        "network",
+        "enrichment",
+        "raw",
+        "meta"
+      ],
+      "properties": {
+        "query": { "type": "string" },
+        "normalizedQuery": { "type": "string" },
+        "type": { "enum": ["domain", "ipv4", "ipv6", "asn", "cidr", "url", "unknown"] },
+        "status": { "enum": ["registered", "unregistered", "reserved", "unknown", "error"] },
+        "source": { "$ref": "#/$defs/SourceInfo" },
+        "domain": { "$ref": "#/$defs/DomainInfo" },
+        "registry": { "$ref": "#/$defs/RegistryInfo" },
+        "registrar": { "$ref": "#/$defs/RegistrarInfo" },
+        "dates": { "$ref": "#/$defs/DateInfo" },
+        "statuses": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/DomainStatus" }
+        },
+        "nameservers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Nameserver" }
+        },
+        "dnssec": { "$ref": "#/$defs/DNSSECInfo" },
+        "registrant": { "$ref": "#/$defs/RegistrantInfo" },
+        "network": { "$ref": "#/$defs/NetworkInfo" },
+        "enrichment": {
+          "type": "object",
+          "properties": {
+            "dns": { "$ref": "#/$defs/DNSInfo" },
+            "dnsviz": { "$ref": "#/$defs/DNSVizInfo" },
+            "pricing": { "$ref": "#/$defs/PricingInfo" },
+            "moz": { "$ref": "#/$defs/MozInfo" }
+          },
+          "additionalProperties": true
+        },
+        "raw": { "$ref": "#/$defs/RawData" },
+        "meta": { "$ref": "#/$defs/ResultMeta" }
+      },
+      "additionalProperties": false
+    },
+    "SourceInfo": {
+      "type": "object",
+      "required": ["used"],
+      "properties": {
+        "primary": { "enum": ["rdap", "whois", "whoisWeb"] },
+        "used": {
+          "type": "array",
+          "items": { "enum": ["rdap", "whois", "whoisWeb"] }
+        },
+        "errors": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/SourceError" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "SourceError": {
+      "type": "object",
+      "required": ["source", "error"],
+      "properties": {
+        "source": { "enum": ["rdap", "whois", "whoisWeb"] },
+        "server": { "type": "string" },
+        "error": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "DomainInfo": {
+      "type": "object",
+      "required": ["reserved", "registered"],
+      "properties": {
+        "name": { "type": "string" },
+        "unicodeName": { "type": "string" },
+        "punycodeName": { "type": "string" },
+        "suffix": { "type": "string" },
+        "registeredDomain": { "type": "string" },
+        "reserved": { "type": "boolean" },
+        "registered": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "RegistryInfo": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "website": { "type": "string" },
+        "whoisServer": { "type": "string" },
+        "rdapServer": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "DateInfo": {
+      "type": "object",
+      "properties": {
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "expiresAt": { "type": "string" },
+        "availableAt": { "type": "string" },
+        "ageDays": { "type": "integer" },
+        "remainingDays": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+    "RegistrarInfo": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "url": { "type": "string" },
+        "ianaId": { "type": "string" },
+        "country": { "type": "string" },
+        "whoisServer": { "type": "string" },
+        "rdapServer": { "type": "string" },
+        "brand": { "$ref": "#/$defs/Brand" }
+      },
+      "additionalProperties": false
+    },
+    "DomainStatus": {
+      "type": "object",
+      "required": ["code"],
+      "properties": {
+        "code": { "type": "string" },
+        "label": { "type": "string" },
+        "category": { "type": "string" },
+        "description": { "type": "string" },
+        "url": { "type": "string" },
+        "source": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "Nameserver": {
+      "type": "object",
+      "required": ["host"],
+      "properties": {
+        "host": { "type": "string" },
+        "brand": { "$ref": "#/$defs/Brand" }
+      },
+      "additionalProperties": false
+    },
+    "Brand": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string" },
+        "slug": { "type": "string" },
+        "color": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "DNSSECInfo": {
+      "type": "object",
+      "properties": {
+        "signed": { "type": "boolean" },
+        "text": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "RegistrantInfo": {
+      "type": "object",
+      "properties": {
+        "organization": { "type": "string" },
+        "country": { "type": "string" },
+        "province": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "NetworkInfo": {
+      "type": "object",
+      "properties": {
+        "cidr": { "type": "string" },
+        "range": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "originAS": { "type": "string" },
+        "country": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "ResultMeta": {
+      "type": "object",
+      "required": ["elapsedMs"],
+      "properties": {
+        "elapsedMs": { "type": "integer" },
+        "warnings": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "traceId": { "type": "string" },
+        "providers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ProviderTrace" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "ProviderTrace": {
+      "type": "object",
+      "required": ["source", "status", "elapsedMs"],
+      "properties": {
+        "source": { "enum": ["rdap", "whois", "whoisWeb"] },
+        "status": { "enum": ["ok", "error"] },
+        "server": { "type": "string" },
+        "query": { "type": "string" },
+        "statusCode": { "type": "integer" },
+        "contentType": { "type": "string" },
+        "bytes": { "type": "integer" },
+        "elapsedMs": { "type": "integer" },
+        "error": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "Capabilities": {
+      "type": "object",
+      "required": ["rdap", "whois", "whoisWeb", "customServers", "auth", "rateLimit", "enrichment"],
+      "properties": {
+        "rdap": { "type": "boolean" },
+        "whois": { "type": "boolean" },
+        "whoisWeb": { "type": "boolean" },
+        "customServers": { "type": "boolean" },
+        "auth": { "type": "string" },
+        "rateLimit": { "type": "boolean" },
+        "enrichment": {
+          "type": "object",
+          "additionalProperties": { "type": "boolean" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "DNSInfo": {
+      "type": "object",
+      "properties": {
+        "a": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/DNSAddress" }
+        },
+        "aaaa": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/DNSAddress" }
+        },
+        "cname": { "type": "string" },
+        "mx": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/DNSMX" }
+        },
+        "ns": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "elapsedMs": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+    "DNSVizInfo": {
+      "type": "object",
+      "required": ["url"],
+      "properties": {
+        "url": { "type": "string", "format": "uri" }
+      },
+      "additionalProperties": false
+    },
+    "PricingInfo": {
+      "type": "object",
+      "properties": {
+        "register": { "type": "number" },
+        "renew": { "type": "number" },
+        "transfer": { "type": "number" },
+        "currency": { "type": "string" },
+        "provider": { "type": "string" },
+        "source": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "MozInfo": {
+      "type": "object",
+      "properties": {
+        "domainAuthority": { "type": "integer" },
+        "pageAuthority": { "type": "integer" },
+        "spamScore": { "type": "integer" },
+        "source": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "DNSAddress": {
+      "type": "object",
+      "required": ["ip", "version"],
+      "properties": {
+        "ip": { "type": "string" },
+        "version": { "enum": ["ipv4", "ipv6"] },
+        "reverse": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "RawData": {
+      "type": "object",
+      "properties": {
+        "whois": { "type": "string" },
+        "rdap": { "type": "string" },
+        "whoisWeb": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "DNSMX": {
+      "type": "object",
+      "required": ["host", "pref"],
+      "properties": {
+        "host": { "type": "string" },
+        "pref": { "type": "integer" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

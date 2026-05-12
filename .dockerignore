@@ -1,0 +1,12 @@
+.git/
+node_modules/
+apps/web/.next/
+apps/web/node_modules/
+services/lookup-api/bin/
+unofficial/
+packages/data/rdap-bootstrap/.tmp/
+*.log
+*.tmp
+*.tsbuildinfo
+playwright-report/
+test-results/

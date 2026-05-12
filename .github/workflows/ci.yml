@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  api:
+    name: Go API
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: services/lookup-api/go.mod
+          cache-dependency-path: services/lookup-api/go.sum
+
+      - name: Test
+        run: go test ./...
+        working-directory: services/lookup-api
+
+  web:
+    name: Web
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm --dir apps/web typecheck
+
+      - name: Schema check
+        run: pnpm test:schema
+
+      - name: Verify brand map snapshot sync
+        run: sh scripts/update-data/sync-brand-map.sh && git diff --exit-code -- services/lookup-api/internal/data/brandmap/snapshots/brand-map.json
+
+      - name: Verify WHOIS server snapshot sync
+        run: sh scripts/update-data/sync-whois-servers.sh && git diff --exit-code -- services/lookup-api/internal/data/whoisservers/snapshots/iana.json services/lookup-api/internal/data/whoisservers/snapshots/extra.json
+
+      - name: Verify enrichment snapshot sync
+        run: sh scripts/update-data/sync-enrichment.sh && git diff --exit-code -- services/lookup-api/internal/data/enrichment/snapshots
+
+      - name: Verify PSL snapshot sync
+        run: sh scripts/update-data/sync-public-suffix.sh && git diff --exit-code -- services/lookup-api/internal/data/publicsuffixes/snapshots
+
+      - name: Build
+        run: pnpm --dir apps/web build
+
+  e2e:
+    name: Playwright smoke
+    runs-on: ubuntu-latest
+    needs:
+      - api
+      - web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: services/lookup-api/go.mod
+          cache-dependency-path: services/lookup-api/go.sum
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run smoke tests
+        run: pnpm test:e2e --project=chromium
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore

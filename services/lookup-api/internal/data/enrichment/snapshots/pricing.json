@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "currency": "USD",
+  "source": "local-snapshot",
+  "tlds": {
+    "com": {
+      "register": 10.99,
+      "renew": 12.99,
+      "transfer": 9.99,
+      "currency": "USD",
+      "provider": "example-baseline"
+    },
+    "net": {
+      "register": 12.99,
+      "renew": 14.99,
+      "transfer": 11.99,
+      "currency": "USD",
+      "provider": "example-baseline"
+    },
+    "org": {
+      "register": 9.99,
+      "renew": 13.99,
+      "transfer": 10.99,
+      "currency": "USD",
+      "provider": "example-baseline"
+    }
+  }
+}

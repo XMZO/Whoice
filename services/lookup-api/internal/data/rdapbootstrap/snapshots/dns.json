@@ -1,0 +1,9 @@
+{
+  "services": [
+    [["com", "net"], ["https://rdap.verisign.com/com/v1/"]],
+    [["org"], ["https://rdap.publicinterestregistry.org/rdap/"]],
+    [["uk"], ["https://rdap.nominet.uk/uk/"]],
+    [["jp"], ["https://rdap.jprs.jp/"]],
+    [["vn"], ["https://rdap.vnnic.vn/rdap/"]]
+  ]
+}

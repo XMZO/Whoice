@@ -1,0 +1,50 @@
+name: Data Update
+
+on:
+  schedule:
+    - cron: "24 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  data-snapshots:
+    name: Update data snapshots
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Update RDAP bootstrap snapshots
+        run: sh scripts/update-data/update-rdap-bootstrap.sh
+
+      - name: Update ICANN registrar snapshot
+        run: sh scripts/update-data/update-registrars.sh
+
+      - name: Update Public Suffix List snapshot
+        run: sh scripts/update-data/update-public-suffix.sh
+
+      - name: Sync brand map snapshot
+        run: sh scripts/update-data/sync-brand-map.sh
+
+      - name: Sync WHOIS server snapshots
+        run: sh scripts/update-data/sync-whois-servers.sh
+
+      - name: Sync enrichment snapshots
+        run: sh scripts/update-data/sync-enrichment.sh
+
+      - name: Show diff
+        run: git diff -- packages/data services/lookup-api/internal/data/rdapbootstrap/snapshots services/lookup-api/internal/data/registrars/snapshots services/lookup-api/internal/data/brandmap/snapshots services/lookup-api/internal/data/whoisservers/snapshots services/lookup-api/internal/data/enrichment/snapshots services/lookup-api/internal/data/publicsuffixes/snapshots
+
+      - name: Commit changes
+        run: |
+          if git diff --quiet -- packages/data services/lookup-api/internal/data/rdapbootstrap/snapshots services/lookup-api/internal/data/registrars/snapshots services/lookup-api/internal/data/brandmap/snapshots services/lookup-api/internal/data/whoisservers/snapshots services/lookup-api/internal/data/enrichment/snapshots services/lookup-api/internal/data/publicsuffixes/snapshots; then
+            echo "No data snapshot changes."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add packages/data services/lookup-api/internal/data/rdapbootstrap/snapshots services/lookup-api/internal/data/registrars/snapshots services/lookup-api/internal/data/brandmap/snapshots services/lookup-api/internal/data/whoisservers/snapshots services/lookup-api/internal/data/enrichment/snapshots services/lookup-api/internal/data/publicsuffixes/snapshots
+          git commit -m "chore(data): update data snapshots"
+          git push

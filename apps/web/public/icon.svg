@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Whoice">
+  <rect width="128" height="128" rx="20" fill="#111827"/>
+  <circle cx="64" cy="64" r="38" fill="none" stroke="#7dd3fc" stroke-width="8"/>
+  <path d="M40 64h48M64 40v48" stroke="#f4f4f5" stroke-width="8" stroke-linecap="round"/>
+  <path d="M88 88l18 18" stroke="#22c55e" stroke-width="10" stroke-linecap="round"/>
+</svg>

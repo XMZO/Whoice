@@ -1,0 +1,14 @@
+services:
+  lookup-api:
+    image: whoice-lookup-api:local
+    pull_policy: never
+    build:
+      context: ../..
+      dockerfile: services/lookup-api/Dockerfile
+
+  web:
+    image: whoice-web:local
+    pull_policy: never
+    build:
+      context: ../..
+      dockerfile: apps/web/Dockerfile

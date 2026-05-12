@@ -1,0 +1,16 @@
+// Whoice Public Suffix overlay.
+// Lines follow the Public Suffix List format. Keep this file small and reviewable:
+// it covers suffixes that are important for lookup routing when the bundled
+// golang.org/x/net/publicsuffix snapshot lags the live PSL.
+
+cc.cd
+ccwu.cc
+de5.net
+dpdns.org
+edu.kg
+eu.org
+pp.ua
+qzz.io
+us.ci
+us.kg
+xx.kg

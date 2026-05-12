@@ -1,0 +1,40 @@
+package plugin
+
+import (
+	"github.com/xmzo/whoice/services/lookup-api/internal/config"
+	"github.com/xmzo/whoice/services/lookup-api/internal/parsers"
+	"github.com/xmzo/whoice/services/lookup-api/internal/providers/rdap"
+	"github.com/xmzo/whoice/services/lookup-api/internal/providers/whois"
+	"github.com/xmzo/whoice/services/lookup-api/internal/providers/whoisweb"
+)
+
+func RegisterDefaults(registry *Registry, cfg config.Config) {
+	registry.RegisterProvider(rdap.New(cfg.DataDir), cfg.RDAPEnabled)
+	registry.RegisterProvider(whois.New(cfg.DataDir), cfg.WHOISEnabled)
+	registry.RegisterProvider(whoisweb.New(), cfg.WHOISWebEnabled)
+	registry.RegisterParser(parsers.RDAPParser{})
+	registry.RegisterParser(parsers.UKWHOISParser{})
+	registry.RegisterParser(parsers.JPWHOISParser{})
+	registry.RegisterParser(parsers.FRWHOISParser{})
+	registry.RegisterParser(parsers.CNWHOISParser{})
+	registry.RegisterParser(parsers.BRWHOISParser{})
+	registry.RegisterParser(parsers.ITWHOISParser{})
+	registry.RegisterParser(parsers.EUWHOISParser{})
+	registry.RegisterParser(parsers.BEWHOISParser{})
+	registry.RegisterParser(parsers.PLWHOISParser{})
+	registry.RegisterParser(parsers.CZWHOISParser{})
+	registry.RegisterParser(parsers.HUWHOISParser{})
+	registry.RegisterParser(parsers.SKWHOISParser{})
+	registry.RegisterParser(parsers.ROWHOISParser{})
+	registry.RegisterParser(parsers.WHOISParser{})
+	registry.RegisterBuiltIn("enricher", "epp", cfg.EnrichEPP)
+	registry.RegisterBuiltIn("enricher", "registrar", cfg.EnrichRegistrar)
+	registry.RegisterBuiltIn("enricher", "brand-map", cfg.EnrichBrands)
+	registry.RegisterBuiltIn("enricher", "dns", cfg.EnrichDNS)
+	registry.RegisterBuiltIn("enricher", "dnsviz", cfg.EnrichDNSViz)
+	registry.RegisterBuiltIn("enricher", "pricing", cfg.EnrichPricing)
+	registry.RegisterBuiltIn("enricher", "moz", cfg.EnrichMoz)
+	registry.RegisterBuiltIn("auth", cfg.AuthMode, cfg.AuthMode != "none")
+	registry.RegisterBuiltIn("rate-limit", "builtin", cfg.RateLimitEnabled)
+	registry.RegisterBuiltIn("reporter", "prometheus-metrics", cfg.MetricsEnabled)
+}
