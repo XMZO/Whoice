@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "description": "Built-in Whoice brand map. It is derived from Whoice's own defaults plus UI-branding ideas observed in unofficial/next-whois, rewritten as data rather than page code.",
+  "description": "Reviewable copy of the built-in Whoice brand map. The API embeds a synchronized copy and runtime can override it with data/brands/brand-map.json.",
   "registrars": [
     { "name": "Cloudflare", "slug": "cloudflare", "color": "#f6821f", "patterns": ["cloudflare"] },
     { "name": "GoDaddy", "slug": "godaddy", "color": "#111111", "patterns": ["godaddy", "go daddy"] },
