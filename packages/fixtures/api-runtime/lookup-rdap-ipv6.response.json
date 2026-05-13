@@ -1,0 +1,99 @@
+{
+  "meta": {
+    "elapsedMs": 0,
+    "providers": [
+      {
+        "bytes": 309,
+        "contentType": "application/rdap+json",
+        "elapsedMs": 6,
+        "query": "2001:db8::1",
+        "server": "https://rdap.example.test/ip/",
+        "source": "rdap",
+        "status": "ok",
+        "statusCode": 200
+      }
+    ],
+    "traceId": "runtime-schema-rdap-ipv6"
+  },
+  "ok": true,
+  "result": {
+    "dates": {},
+    "dnssec": {},
+    "domain": {
+      "name": "2001:db8::1",
+      "punycodeName": "2001:db8::1",
+      "registered": false,
+      "reserved": false
+    },
+    "enrichment": {},
+    "meta": {
+      "elapsedMs": 0,
+      "providers": [
+        {
+          "bytes": 309,
+          "contentType": "application/rdap+json",
+          "elapsedMs": 6,
+          "query": "2001:db8::1",
+          "server": "https://rdap.example.test/ip/",
+          "source": "rdap",
+          "status": "ok",
+          "statusCode": 200
+        }
+      ],
+      "traceId": "runtime-schema-rdap-ipv6"
+    },
+    "nameservers": [],
+    "network": {
+      "cidr": "2001:db8::-2001:db8::ffff",
+      "country": "ZZ",
+      "name": "EXAMPLE-V6",
+      "range": "2001:db8:: - 2001:db8::ffff",
+      "type": "ALLOCATED-BY-RIR"
+    },
+    "normalizedQuery": "2001:db8::1",
+    "query": "2001:db8::1",
+    "raw": {
+      "rdap": "{\"objectClassName\":\"ip network\",\"startAddress\":\"2001:db8::\",\"endAddress\":\"2001:db8::ffff\",\"name\":\"EXAMPLE-V6\",\"type\":\"ALLOCATED-BY-RIR\",\"country\":\"ZZ\",\"status\":[\"active\"],\"entities\":[{\"roles\":[\"registrant\"],\"vcardArray\":[\"vcard\",[[\"fn\",{},\"text\",\"Example IPv6 Operations\"],[\"country-name\",{},\"text\",\"ZZ\"]]]}]}"
+    },
+    "registrant": {
+      "country": "ZZ",
+      "fieldSources": {
+        "country": [
+          {
+            "label": "country",
+            "source": "rdap",
+            "value": "ZZ"
+          }
+        ],
+        "organization": [
+          {
+            "label": "organization",
+            "source": "rdap",
+            "value": "Example IPv6 Operations"
+          }
+        ]
+      },
+      "organization": "Example IPv6 Operations"
+    },
+    "registrar": {},
+    "registry": {
+      "rdapServer": "https://rdap.example.test/ip/"
+    },
+    "source": {
+      "primary": "rdap",
+      "used": [
+        "rdap"
+      ]
+    },
+    "status": "registered",
+    "statuses": [
+      {
+        "code": "active",
+        "label": "active",
+        "source": "rdap",
+        "url": "https://icann.org/epp"
+      }
+    ],
+    "type": "ipv6"
+  }
+}

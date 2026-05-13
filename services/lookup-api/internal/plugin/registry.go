@@ -6,7 +6,7 @@ import (
 	"github.com/xmzo/whoice/services/lookup-api/internal/providers"
 )
 
-const DefaultVersion = "0.01alpha"
+const DefaultVersion = "v0.01beta"
 
 type Registry struct {
 	providers []providers.Provider

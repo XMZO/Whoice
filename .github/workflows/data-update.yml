@@ -16,6 +16,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
       - name: Update RDAP bootstrap snapshots
         run: sh scripts/update-data/update-rdap-bootstrap.sh
 
@@ -33,6 +46,9 @@ jobs:
 
       - name: Sync enrichment snapshots
         run: sh scripts/update-data/sync-enrichment.sh
+
+      - name: Validate data snapshots
+        run: pnpm test:data
 
       - name: Show diff
         run: git diff -- packages/data services/lookup-api/internal/data/rdapbootstrap/snapshots services/lookup-api/internal/data/registrars/snapshots services/lookup-api/internal/data/brandmap/snapshots services/lookup-api/internal/data/whoisservers/snapshots services/lookup-api/internal/data/enrichment/snapshots services/lookup-api/internal/data/publicsuffixes/snapshots

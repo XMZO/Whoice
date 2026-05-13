@@ -55,6 +55,9 @@ jobs:
       - name: Schema check
         run: pnpm test:schema
 
+      - name: Data snapshot check
+        run: pnpm test:data
+
       - name: Verify brand map snapshot sync
         run: sh scripts/update-data/sync-brand-map.sh && git diff --exit-code -- services/lookup-api/internal/data/brandmap/snapshots/brand-map.json
 

@@ -1,7 +1,7 @@
 {
   "name": "whoice",
   "private": true,
-  "version": "0.0.1-alpha",
+  "version": "0.0.1-beta",
   "scripts": {
     "dev:api": "go run ./services/lookup-api/cmd/whoice-api",
     "dev:web": "pnpm --dir apps/web dev",
@@ -10,10 +10,11 @@
     "test:api": "go test ./services/lookup-api/...",
     "test:web": "pnpm --dir apps/web typecheck",
     "test:e2e": "playwright test",
+    "test:data": "node scripts/validate-data.mjs",
     "test:schema": "node scripts/validate-schema.mjs && pnpm generate:schema-types && tsc -p packages/schema/tsconfig.json --noEmit",
     "update:psl": "sh scripts/update-data/update-public-suffix.sh",
     "build": "pnpm build:web",
-    "test": "pnpm test:api && pnpm test:web && pnpm test:schema"
+    "test": "pnpm test:api && pnpm test:web && pnpm test:schema && pnpm test:data"
   },
   "packageManager": "pnpm@10.30.3",
   "devDependencies": {

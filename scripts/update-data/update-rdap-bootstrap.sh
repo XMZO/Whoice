@@ -47,3 +47,6 @@ cp "$OUT/dns.json" "$EMBED/dns.json"
 cp "$OUT/ipv4.json" "$EMBED/ipv4.json"
 cp "$OUT/ipv6.json" "$EMBED/ipv6.json"
 cp "$OUT/asn.json" "$EMBED/asn.json"
+if [ -s "$OUT/extra.json" ]; then
+  cp "$OUT/extra.json" "$EMBED/extra.json"
+fi

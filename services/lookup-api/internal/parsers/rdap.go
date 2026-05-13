@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/netip"
 	"strings"
 
 	"github.com/xmzo/whoice/services/lookup-api/internal/model"
@@ -28,6 +29,10 @@ func (RDAPParser) Parse(_ context.Context, raw model.RawResponse, q model.Normal
 
 	if raw.StatusCode == 404 {
 		partial.Status = model.StatusUnregistered
+		return partial, nil
+	}
+	if raw.StatusCode >= 400 {
+		partial.Warnings = append(partial.Warnings, fmt.Sprintf("RDAP returned HTTP %d", raw.StatusCode))
 		return partial, nil
 	}
 	if raw.Body == "" {
@@ -160,7 +165,7 @@ func parseEntities(doc map[string]any) (model.RegistrarInfo, model.RegistrantInf
 		if contains(roles, "registrar") {
 			vcard := vcardMap(entity)
 			registrar.Name = firstNonEmpty(registrar.Name, vcard["fn"], vcard["org"], stringField(entity, "handle"))
-			registrar.URL = firstNonEmpty(registrar.URL, vcard["url"])
+			registrar.URL = firstNonEmpty(registrar.URL, registrarEntityURL(entity, vcard["url"]))
 			for _, publicID := range anySlice(entity["publicIds"]) {
 				item, ok := publicID.(map[string]any)
 				if !ok {
@@ -173,15 +178,76 @@ func parseEntities(doc map[string]any) (model.RegistrarInfo, model.RegistrantInf
 		}
 		if contains(roles, "registrant") {
 			vcard := vcardMap(entity)
+			if distinctRDAPName := distinctRegistrantName(vcard["fn"], vcard["org"]); distinctRDAPName != "" {
+				registrant.Name = firstNonEmpty(registrant.Name, distinctRDAPName)
+			}
 			registrant.Organization = firstNonEmpty(registrant.Organization, vcard["org"], vcard["fn"])
 			registrant.Country = firstNonEmpty(registrant.Country, vcard["country-name"])
 			registrant.Province = firstNonEmpty(registrant.Province, vcard["region"])
+			registrant.City = firstNonEmpty(registrant.City, vcard["locality"])
+			registrant.Address = firstNonEmpty(registrant.Address, vcard["street-address"])
+			registrant.PostalCode = firstNonEmpty(registrant.PostalCode, vcard["postal-code"])
 			registrant.Email = firstNonEmpty(registrant.Email, vcard["email"])
 			registrant.Phone = firstNonEmpty(registrant.Phone, strings.TrimPrefix(vcard["tel"], "tel:"))
 		}
 	}
 
 	return registrar, registrant
+}
+
+func distinctRegistrantName(name, organization string) string {
+	name = strings.TrimSpace(name)
+	organization = strings.TrimSpace(organization)
+	if name == "" || organization == "" || strings.EqualFold(name, organization) {
+		return ""
+	}
+	return name
+}
+
+func registrarEntityURL(entity map[string]any, vcardURL string) string {
+	if url := normalizeRegistrarURL(vcardURL); url != "" {
+		return url
+	}
+	if url := registrarEntityLinkURL(entity); url != "" {
+		return url
+	}
+	return normalizeRegistrarURL(stringField(entity, "url"))
+}
+
+func registrarEntityLinkURL(entity map[string]any) string {
+	links := anySlice(entity["links"])
+	for _, value := range links {
+		link, ok := value.(map[string]any)
+		if !ok {
+			continue
+		}
+		title := strings.ToLower(stringField(link, "title"))
+		if strings.Contains(title, "registrar") && strings.Contains(title, "website") {
+			if url := normalizeRegistrarURL(stringField(link, "href")); url != "" {
+				return url
+			}
+		}
+	}
+	for _, value := range links {
+		link, ok := value.(map[string]any)
+		if !ok || rdapLinkLooksLikeAPI(link) {
+			continue
+		}
+		if url := normalizeRegistrarURL(stringField(link, "href")); url != "" {
+			return url
+		}
+	}
+	return ""
+}
+
+func rdapLinkLooksLikeAPI(link map[string]any) bool {
+	rel := strings.ToLower(stringField(link, "rel"))
+	mediaType := strings.ToLower(stringField(link, "type"))
+	href := strings.ToLower(stringField(link, "href"))
+	if mediaType == "application/rdap+json" || rel == "self" {
+		return true
+	}
+	return strings.Contains(href, "/rdap/") || strings.Contains(href, "rdap.")
 }
 
 func parseDNSSEC(doc map[string]any) model.DNSSECInfo {
@@ -210,14 +276,33 @@ func parseNetwork(doc map[string]any, q model.NormalizedQuery) model.NetworkInfo
 	end := stringField(doc, "endAddress")
 	if start != "" && end != "" {
 		network.Range = start + " - " + end
-		network.CIDR = start + "-" + end
+		network.CIDR = rangeCIDR(start, end, q)
 	}
 	if startAS := stringField(doc, "startAutnum"); startAS != "" {
+		endAS := stringField(doc, "endAutnum")
+		if endAS != "" && endAS != startAS {
+			network.Range = "AS" + startAS + " - AS" + endAS
+		}
 		network.OriginAS = "AS" + startAS
 	} else if q.Type == model.QueryASN {
 		network.OriginAS = q.Query
 	}
 	return network
+}
+
+func rangeCIDR(start, end string, q model.NormalizedQuery) string {
+	if q.Type == model.QueryCIDR && q.Query != "" {
+		return q.Query
+	}
+	startAddr, startErr := netip.ParseAddr(start)
+	endAddr, endErr := netip.ParseAddr(end)
+	if startErr != nil || endErr != nil || startAddr.BitLen() != endAddr.BitLen() {
+		return start + "-" + end
+	}
+	if startAddr == endAddr {
+		return startAddr.String() + "/" + fmt.Sprint(startAddr.BitLen())
+	}
+	return start + "-" + end
 }
 
 func vcardMap(entity map[string]any) map[string]string {
@@ -267,6 +352,13 @@ func anySlice(value any) []any {
 }
 
 func stringSlice(value any) []string {
+	if text, ok := value.(string); ok {
+		text = strings.TrimSpace(text)
+		if text != "" {
+			return []string{text}
+		}
+		return nil
+	}
 	var result []string
 	for _, item := range anySlice(value) {
 		text := strings.TrimSpace(fmt.Sprint(item))

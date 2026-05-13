@@ -69,6 +69,104 @@ func TestVNModuleBuildsWHOISBody(t *testing.T) {
 	}
 }
 
+func TestDZModuleBuildsWHOISBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/domains/example.dz" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"domainName":   "example.dz",
+			"registrar":    "Example Registrar DZ",
+			"creationDate": "2000-01-10",
+			"orgName":      "Example Organization",
+			"contactAdm":   "Example Admin",
+			"emailAdm":     "admin@example.dz",
+		})
+	}))
+	defer server.Close()
+
+	provider := NewWithClient(server.Client(), DZModule{BaseURL: server.URL})
+	raw, err := provider.Lookup(context.Background(), domainQuery("example.dz", "dz"), model.LookupOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, want := range []string{
+		"Domain Name: example.dz",
+		"Registrar: Example Registrar DZ",
+		"Creation Date: 2000-01-10",
+		"Registrant Organization: Example Organization",
+		"Admin Email: admin@example.dz",
+	} {
+		if !strings.Contains(raw.Body, want) {
+			t.Fatalf("body missing %q:\n%s", want, raw.Body)
+		}
+	}
+}
+
+func TestNIModuleBuildsWHOISBodyAnd404(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("dominio") == "missing.ni" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.URL.Path != "/dominios/whois" || r.URL.Query().Get("dominio") != "example.ni" {
+			t.Fatalf("unexpected request %s", r.URL.String())
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"datos": map[string]any{
+				"fechaExpiracion": "2027-01-10",
+				"cliente":         "Example Registrant",
+				"direccion":       "Example Address",
+			},
+			"contactos": map[string]any{
+				"tipoContacto": "admin",
+				"nombre":       "Example Contact",
+				"correoElectronico": []map[string]string{
+					{"value": "admin@example.ni"},
+				},
+				"telefono": "50500000000",
+			},
+		})
+	}))
+	defer server.Close()
+
+	provider := NewWithClient(server.Client(), NIModule{BaseURL: server.URL})
+	raw, err := provider.Lookup(context.Background(), domainQuery("example.ni", "ni"), model.LookupOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"Domain Name: example.ni",
+		"Registry Expiry Date: 2027-01-10",
+		"Registrant Name: Example Registrant",
+		"Contact Email: admin@example.ni",
+	} {
+		if !strings.Contains(raw.Body, want) {
+			t.Fatalf("body missing %q:\n%s", want, raw.Body)
+		}
+	}
+
+	missing, err := provider.Lookup(context.Background(), domainQuery("missing.ni", "ni"), model.LookupOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(missing.Body, "Domain not found") {
+		t.Fatalf("expected not found body, got %q", missing.Body)
+	}
+}
+
+func TestDefaultModulesCoverPhase3WebFallbacks(t *testing.T) {
+	provider := NewWithClient(nil, DefaultModules()...)
+	for _, suffix := range []string{"ao", "az", "ba", "cy", "dj", "dz", "gq", "ni", "py", "vn"} {
+		if !provider.Supports(domainQuery("example."+suffix, suffix)) {
+			t.Fatalf("expected WHOIS Web module for .%s", suffix)
+		}
+	}
+}
+
 func domainQuery(value, suffix string) model.NormalizedQuery {
 	return model.NormalizedQuery{
 		Input:            value,

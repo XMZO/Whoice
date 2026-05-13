@@ -1,0 +1,11 @@
+{
+  "error": {
+    "code": "invalid_query",
+    "message": "query is not a valid domain: idna: disallowed rune U+005F"
+  },
+  "meta": {
+    "elapsedMs": 0,
+    "traceId": "runtime-schema-invalid-query"
+  },
+  "ok": false
+}

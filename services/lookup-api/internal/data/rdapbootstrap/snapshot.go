@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/xmzo/whoice/services/lookup-api/internal/model"
@@ -31,6 +32,11 @@ func NewSnapshotResolver() (*SnapshotResolver, error) {
 			return nil, fmt.Errorf("parse RDAP snapshot %s: %w", kind, err)
 		}
 		files[kind] = file
+	}
+	if extra, err := loadRDAPExtra(func(name string) ([]byte, error) {
+		return snapshotFS.ReadFile("snapshots/" + name)
+	}); err == nil {
+		applyDNSExtra(files, extra)
 	}
 	return &SnapshotResolver{files: files}, nil
 }
@@ -78,6 +84,11 @@ func NewFileResolver(dataDir string) (*FileResolver, error) {
 		}
 		files[kind] = file
 	}
+	if extra, err := loadRDAPExtra(func(name string) ([]byte, error) {
+		return readRDAPBootstrapNamedFile(dataDir, name)
+	}); err == nil {
+		applyDNSExtra(files, extra)
+	}
 	if len(files) == 0 {
 		return nil, fmt.Errorf("no RDAP bootstrap files found in %s", dataDir)
 	}
@@ -106,9 +117,13 @@ func (r *FileResolver) BaseURL(_ context.Context, q model.NormalizedQuery) (stri
 }
 
 func readRDAPBootstrapFile(dataDir, kind string) ([]byte, error) {
+	return readRDAPBootstrapNamedFile(dataDir, kind+".json")
+}
+
+func readRDAPBootstrapNamedFile(dataDir, name string) ([]byte, error) {
 	candidates := []string{
-		filepath.Join(dataDir, "rdap-bootstrap", kind+".json"),
-		filepath.Join(dataDir, kind+".json"),
+		filepath.Join(dataDir, "rdap-bootstrap", name),
+		filepath.Join(dataDir, name),
 	}
 	var lastErr error
 	for _, candidate := range candidates {
@@ -119,6 +134,57 @@ func readRDAPBootstrapFile(dataDir, kind string) ([]byte, error) {
 		lastErr = err
 	}
 	return nil, lastErr
+}
+
+func loadRDAPExtra(read func(string) ([]byte, error)) (map[string]string, error) {
+	body, err := read("extra.json")
+	if err != nil {
+		return nil, err
+	}
+	var raw map[string]string
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("parse RDAP extra data: %w", err)
+	}
+	extra := make(map[string]string, len(raw))
+	for suffix, endpoint := range raw {
+		suffix = strings.Trim(strings.ToLower(strings.TrimSpace(suffix)), ".")
+		endpoint = strings.TrimSpace(endpoint)
+		if suffix == "" || endpoint == "" {
+			continue
+		}
+		extra[suffix] = endpoint
+	}
+	return extra, nil
+}
+
+func applyDNSExtra(files map[string]bootstrapFile, extra map[string]string) {
+	if len(extra) == 0 {
+		return
+	}
+	file := files["dns"]
+	file.Services = append(extraDNSServices(extra), file.Services...)
+	files["dns"] = file
+}
+
+func extraDNSServices(extra map[string]string) [][][]string {
+	suffixes := make([]string, 0, len(extra))
+	for suffix := range extra {
+		suffixes = append(suffixes, suffix)
+	}
+	sort.Slice(suffixes, func(i, j int) bool {
+		li := strings.Count(suffixes[i], ".")
+		lj := strings.Count(suffixes[j], ".")
+		if li == lj {
+			return suffixes[i] < suffixes[j]
+		}
+		return li > lj
+	})
+
+	services := make([][][]string, 0, len(suffixes))
+	for _, suffix := range suffixes {
+		services = append(services, [][]string{{suffix}, {extra[suffix]}})
+	}
+	return services
 }
 
 type FallbackResolver struct {

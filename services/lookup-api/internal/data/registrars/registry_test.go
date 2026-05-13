@@ -24,6 +24,16 @@ func TestRegistryFindsByIANAIDAndName(t *testing.T) {
 	}
 }
 
+func TestRegistryHandlesUTF8BOM(t *testing.T) {
+	registry, err := NewRegistryFromReader(strings.NewReader("\ufeff\"Registrar Name\",\"IANA Number\",\"Country/Territory\",\"Public Contact\",\"Link\"\n\"Cloudflare, Inc.\",1910,\"United States of America\",\"Registrar Public\",\"http://www.cloudflare.com\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if item, ok := registry.FindByIANAID("1910"); !ok || item.Name != "Cloudflare, Inc." {
+		t.Fatalf("BOM csv row: %#v ok=%t", item, ok)
+	}
+}
+
 func TestSnapshotRegistryLoads(t *testing.T) {
 	registry, err := NewSnapshotRegistry()
 	if err != nil {

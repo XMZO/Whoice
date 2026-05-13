@@ -13,7 +13,7 @@
         "statusCode": 200
       }
     ],
-    "traceId": "runtime-schema-smoke"
+    "traceId": "runtime-schema-rdap-domain"
   },
   "ok": true,
   "result": {
@@ -46,7 +46,7 @@
           "statusCode": 200
         }
       ],
-      "traceId": "runtime-schema-smoke"
+      "traceId": "runtime-schema-rdap-domain"
     },
     "nameservers": [
       {

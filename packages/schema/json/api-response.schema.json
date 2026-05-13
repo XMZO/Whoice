@@ -26,6 +26,52 @@
       },
       "additionalProperties": false
     },
+    "ICPResponse": {
+      "type": "object",
+      "required": ["ok"],
+      "properties": {
+        "ok": { "type": "boolean" },
+        "result": { "$ref": "#/$defs/ICPResult" },
+        "error": { "$ref": "#/$defs/APIError" },
+        "meta": { "$ref": "#/$defs/ResultMeta" }
+      },
+      "additionalProperties": false
+    },
+    "ICPResult": {
+      "type": "object",
+      "required": ["domain", "status", "cached"],
+      "properties": {
+        "domain": { "type": "string" },
+        "status": { "enum": ["found", "not_found", "error"] },
+        "records": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ICPRecord" }
+        },
+        "source": { "type": "string" },
+        "cached": { "type": "boolean" },
+        "cachedAt": { "type": "string" },
+        "expiresAt": { "type": "string" },
+        "elapsedMs": { "type": "integer" },
+        "message": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "ICPRecord": {
+      "type": "object",
+      "properties": {
+        "domain": { "type": "string" },
+        "domainId": { "type": "integer" },
+        "unitName": { "type": "string" },
+        "natureName": { "type": "string" },
+        "mainLicence": { "type": "string" },
+        "serviceLicence": { "type": "string" },
+        "serviceName": { "type": "string" },
+        "contentTypeName": { "type": "string" },
+        "limitAccess": { "type": "string" },
+        "updateRecordTime": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
     "LookupResult": {
       "type": "object",
       "required": [
@@ -154,7 +200,10 @@
         "country": { "type": "string" },
         "whoisServer": { "type": "string" },
         "rdapServer": { "type": "string" },
-        "brand": { "$ref": "#/$defs/Brand" }
+        "brand": { "$ref": "#/$defs/Brand" },
+        "source": { "type": "string" },
+        "confidence": { "type": "number" },
+        "evidence": { "type": "string" }
       },
       "additionalProperties": false
     },
@@ -201,11 +250,41 @@
     "RegistrantInfo": {
       "type": "object",
       "properties": {
+        "name": { "type": "string" },
         "organization": { "type": "string" },
         "country": { "type": "string" },
         "province": { "type": "string" },
+        "city": { "type": "string" },
+        "address": { "type": "string" },
+        "postalCode": { "type": "string" },
         "email": { "type": "string" },
-        "phone": { "type": "string" }
+        "phone": { "type": "string" },
+        "extra": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/RegistrationField" }
+        },
+        "fieldSources": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/RegistrationField" }
+          }
+        },
+        "source": { "type": "string" },
+        "confidence": { "type": "number" },
+        "evidence": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "RegistrationField": {
+      "type": "object",
+      "required": ["label", "value"],
+      "properties": {
+        "label": { "type": "string" },
+        "value": { "type": "string" },
+        "source": { "type": "string" },
+        "confidence": { "type": "number" },
+        "evidence": { "type": "string" }
       },
       "additionalProperties": false
     },
@@ -234,7 +313,26 @@
         "providers": {
           "type": "array",
           "items": { "$ref": "#/$defs/ProviderTrace" }
-        }
+        },
+        "ai": { "$ref": "#/$defs/AITrace" }
+      },
+      "additionalProperties": false
+    },
+    "AITrace": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "provider": { "type": "string" },
+        "model": { "type": "string" },
+        "status": { "type": "string" },
+        "cached": { "type": "boolean" },
+        "elapsedMs": { "type": "integer" },
+        "attempts": { "type": "integer" },
+        "applied": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "error": { "type": "string" }
       },
       "additionalProperties": false
     },
@@ -243,7 +341,7 @@
       "required": ["source", "status", "elapsedMs"],
       "properties": {
         "source": { "enum": ["rdap", "whois", "whoisWeb"] },
-        "status": { "enum": ["ok", "error"] },
+        "status": { "enum": ["ok", "error", "skipped"] },
         "server": { "type": "string" },
         "query": { "type": "string" },
         "statusCode": { "type": "integer" },
@@ -256,7 +354,7 @@
     },
     "Capabilities": {
       "type": "object",
-      "required": ["rdap", "whois", "whoisWeb", "customServers", "auth", "rateLimit", "enrichment"],
+      "required": ["rdap", "whois", "whoisWeb", "customServers", "auth", "rateLimit", "icpAutoQuery", "enrichment"],
       "properties": {
         "rdap": { "type": "boolean" },
         "whois": { "type": "boolean" },
@@ -264,6 +362,7 @@
         "customServers": { "type": "boolean" },
         "auth": { "type": "string" },
         "rateLimit": { "type": "boolean" },
+        "icpAutoQuery": { "type": "boolean" },
         "enrichment": {
           "type": "object",
           "additionalProperties": { "type": "boolean" }
@@ -290,6 +389,15 @@
         "ns": {
           "type": "array",
           "items": { "type": "string" }
+        },
+        "registryNs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "nsMismatch": { "type": "boolean" },
+        "resolvers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/DNSResolverInfo" }
         },
         "elapsedMs": { "type": "integer" }
       },
@@ -333,7 +441,22 @@
       "properties": {
         "ip": { "type": "string" },
         "version": { "enum": ["ipv4", "ipv6"] },
-        "reverse": { "type": "string" }
+        "reverse": { "type": "string" },
+        "source": { "enum": ["udp", "doh", "system"] },
+        "resolver": { "type": "string" },
+        "endpoint": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "DNSResolverInfo": {
+      "type": "object",
+      "required": ["source", "resolver"],
+      "properties": {
+        "source": { "enum": ["udp", "doh", "system"] },
+        "resolver": { "type": "string" },
+        "endpoint": { "type": "string" },
+        "status": { "enum": ["ok", "empty", "error"] },
+        "error": { "type": "string" }
       },
       "additionalProperties": false
     },

@@ -153,6 +153,18 @@ paths:
             type: integer
             minimum: 0
             maximum: 5
+        - name: exact_domain
+          in: query
+          required: false
+          description: Query the full typed domain instead of reducing to the PSL registrable domain.
+          schema:
+            type: boolean
+        - name: ai
+          in: query
+          required: false
+          description: UI hint for background AI registration analysis; the lookup response itself does not wait for AI.
+          schema:
+            type: boolean
       responses:
         "200":
           description: Lookup succeeded
@@ -190,6 +202,89 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/APIResponse"
+  /api/lookup/ai:
+    post:
+      summary: Analyze registration fields from an existing lookup result with the optional AI parser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [result]
+              properties:
+                result:
+                  $ref: "#/components/schemas/LookupResult"
+                force:
+                  type: boolean
+                  default: true
+      responses:
+        "200":
+          description: AI analysis completed or was skipped
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIResponse"
+        "400":
+          description: Invalid AI analysis request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIResponse"
+        "503":
+          description: AI parser is disabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIResponse"
+  /api/icp:
+    get:
+      summary: Query ICP filing information for a domain
+      parameters:
+        - name: domain
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 512
+      responses:
+        "200":
+          description: ICP lookup completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ICPResponse"
+        "400":
+          description: Invalid or missing domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ICPResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ICPResponse"
+        "429":
+          description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ICPResponse"
+        "503":
+          description: ICP lookup is disabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ICPResponse"
+        "502":
+          description: Upstream ICP lookup failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ICPResponse"
 components:
   schemas:
     APIResponse:
@@ -218,6 +313,66 @@ components:
           type: array
           items:
             type: string
+    ICPResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+        result:
+          $ref: "#/components/schemas/ICPResult"
+        error:
+          $ref: "#/components/schemas/APIError"
+        meta:
+          $ref: "#/components/schemas/ResultMeta"
+    ICPResult:
+      type: object
+      required: [domain, status, cached]
+      properties:
+        domain:
+          type: string
+        status:
+          type: string
+          enum: [found, not_found, error]
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/ICPRecord"
+        source:
+          type: string
+        cached:
+          type: boolean
+        cachedAt:
+          type: string
+        expiresAt:
+          type: string
+        elapsedMs:
+          type: integer
+        message:
+          type: string
+    ICPRecord:
+      type: object
+      properties:
+        domain:
+          type: string
+        domainId:
+          type: integer
+        unitName:
+          type: string
+        natureName:
+          type: string
+        mainLicence:
+          type: string
+        serviceLicence:
+          type: string
+        serviceName:
+          type: string
+        contentTypeName:
+          type: string
+        limitAccess:
+          type: string
+        updateRecordTime:
+          type: string
     LookupResult:
       type: object
       required:
@@ -356,6 +511,12 @@ components:
           type: string
         brand:
           $ref: "#/components/schemas/Brand"
+        source:
+          type: string
+        confidence:
+          type: number
+        evidence:
+          type: string
     Brand:
       type: object
       required: [name]
@@ -413,15 +574,53 @@ components:
     RegistrantInfo:
       type: object
       properties:
+        name:
+          type: string
         organization:
           type: string
         country:
           type: string
         province:
           type: string
+        city:
+          type: string
+        address:
+          type: string
+        postalCode:
+          type: string
         email:
           type: string
         phone:
+          type: string
+        extra:
+          type: array
+          items:
+            $ref: "#/components/schemas/RegistrationField"
+        fieldSources:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              $ref: "#/components/schemas/RegistrationField"
+        source:
+          type: string
+        confidence:
+          type: number
+        evidence:
+          type: string
+    RegistrationField:
+      type: object
+      required: [label, value]
+      properties:
+        label:
+          type: string
+        value:
+          type: string
+        source:
+          type: string
+        confidence:
+          type: number
+        evidence:
           type: string
     NetworkInfo:
       type: object
@@ -507,6 +706,16 @@ components:
           type: array
           items:
             type: string
+        registryNs:
+          type: array
+          items:
+            type: string
+        nsMismatch:
+          type: boolean
+        resolvers:
+          type: array
+          items:
+            $ref: "#/components/schemas/DNSResolverInfo"
         elapsedMs:
           type: integer
     DNSAddress:
@@ -519,6 +728,29 @@ components:
           type: string
           enum: [ipv4, ipv6]
         reverse:
+          type: string
+        source:
+          type: string
+          enum: [udp, doh, system]
+        resolver:
+          type: string
+        endpoint:
+          type: string
+    DNSResolverInfo:
+      type: object
+      required: [source, resolver]
+      properties:
+        source:
+          type: string
+          enum: [udp, doh, system]
+        resolver:
+          type: string
+        endpoint:
+          type: string
+        status:
+          type: string
+          enum: [ok, empty, error]
+        error:
           type: string
     DNSMX:
       type: object
@@ -553,6 +785,30 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ProviderTrace"
+        ai:
+          $ref: "#/components/schemas/AITrace"
+    AITrace:
+      type: object
+      required: [status]
+      properties:
+        provider:
+          type: string
+        model:
+          type: string
+        status:
+          type: string
+        cached:
+          type: boolean
+        elapsedMs:
+          type: integer
+        attempts:
+          type: integer
+        applied:
+          type: array
+          items:
+            type: string
+        error:
+          type: string
     ProviderTrace:
       type: object
       required: [source, status, elapsedMs]
@@ -561,7 +817,7 @@ components:
           $ref: "#/components/schemas/SourceName"
         status:
           type: string
-          enum: [ok, error]
+          enum: [ok, error, skipped]
         server:
           type: string
         query:
@@ -578,7 +834,7 @@ components:
           type: string
     Capabilities:
       type: object
-      required: [rdap, whois, whoisWeb, customServers, auth, rateLimit, enrichment]
+      required: [rdap, whois, whoisWeb, customServers, auth, rateLimit, icpAutoQuery, enrichment]
       properties:
         rdap:
           type: boolean
@@ -591,6 +847,8 @@ components:
         auth:
           type: string
         rateLimit:
+          type: boolean
+        icpAutoQuery:
           type: boolean
         enrichment:
           type: object

@@ -84,6 +84,27 @@ func TestSnapshotResolverCoversCommonQueries(t *testing.T) {
 	}
 }
 
+func TestSnapshotResolverUsesExtraRDAPOverlay(t *testing.T) {
+	resolver, err := NewSnapshotResolver()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := map[string]string{
+		"example.li":     "https://rdap.nic.li/",
+		"example.ch":     "https://rdap.nic.ch/",
+		"example.eu.com": "https://rdap.centralnic.com/eu.com/",
+	}
+	for query, want := range tests {
+		base, ok, err := resolver.BaseURL(context.Background(), model.NormalizedQuery{Type: model.QueryDomain, Query: query})
+		if err != nil {
+			t.Fatalf("%s: %v", query, err)
+		}
+		if !ok || base != want {
+			t.Fatalf("%s: got %q %v want %q", query, base, ok, want)
+		}
+	}
+}
+
 type resolverFunc func(model.NormalizedQuery) (string, bool, error)
 
 func (f resolverFunc) BaseURL(_ context.Context, q model.NormalizedQuery) (string, bool, error) {
@@ -133,5 +154,40 @@ func TestFileResolverReadsMountedDataDir(t *testing.T) {
 	}
 	if !ok || base != "https://rdap.mounted.example/" {
 		t.Fatalf("unexpected mounted data result %q %v", base, ok)
+	}
+}
+
+func TestFileResolverAppliesExtraRDAPOverlay(t *testing.T) {
+	dir := t.TempDir()
+	rdapDir := filepath.Join(dir, "rdap-bootstrap")
+	if err := os.MkdirAll(rdapDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"services":[[["com"],["https://rdap.example/com/"]]]}`
+	if err := os.WriteFile(filepath.Join(rdapDir, "dns.json"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	extra := `{"li":"https://rdap.nic.li/","eu.com":"https://rdap.centralnic.com/eu.com/"}`
+	if err := os.WriteFile(filepath.Join(rdapDir, "extra.json"), []byte(extra), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	resolver, err := NewFileResolver(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, ok, err := resolver.BaseURL(context.Background(), model.NormalizedQuery{Type: model.QueryDomain, Query: "example.li"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || base != "https://rdap.nic.li/" {
+		t.Fatalf("unexpected extra RDAP result %q %v", base, ok)
+	}
+	base, ok, err = resolver.BaseURL(context.Background(), model.NormalizedQuery{Type: model.QueryDomain, Query: "www.example.eu.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || base != "https://rdap.centralnic.com/eu.com/" {
+		t.Fatalf("unexpected second-level RDAP result %q %v", base, ok)
 	}
 }

@@ -66,3 +66,31 @@ func TestMergeKeepsWHOISWebNoticeUnknown(t *testing.T) {
 		t.Fatal("expected WHOIS Web raw evidence to be preserved")
 	}
 }
+
+func TestMergeDoesNotTreatRawRDAPOnlyAsRegisteredEvidence(t *testing.T) {
+	q := model.NormalizedQuery{
+		Input:            "example.com",
+		Query:            "example.com",
+		UnicodeQuery:     "example.com",
+		Type:             model.QueryDomain,
+		Suffix:           "com",
+		RegisteredDomain: "example.com",
+	}
+	part := &model.PartialResult{
+		Source:   model.SourceRDAP,
+		Status:   model.StatusUnknown,
+		Raw:      model.RawData{RDAP: "temporarily unavailable"},
+		Warnings: []string{"RDAP returned HTTP 500"},
+	}
+
+	result := New().Merge(q, []*model.PartialResult{part})
+	if result.Status != model.StatusUnknown {
+		t.Fatalf("status: got %q want %q", result.Status, model.StatusUnknown)
+	}
+	if result.Raw.RDAP == "" {
+		t.Fatal("expected RDAP raw payload to be preserved")
+	}
+	if len(result.Meta.Warnings) != 1 {
+		t.Fatalf("warnings: got %#v", result.Meta.Warnings)
+	}
+}

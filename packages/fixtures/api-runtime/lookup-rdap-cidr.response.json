@@ -1,0 +1,99 @@
+{
+  "meta": {
+    "elapsedMs": 0,
+    "providers": [
+      {
+        "bytes": 335,
+        "contentType": "application/rdap+json",
+        "elapsedMs": 8,
+        "query": "2001:db8::/32",
+        "server": "https://rdap.example.test/ip/",
+        "source": "rdap",
+        "status": "ok",
+        "statusCode": 200
+      }
+    ],
+    "traceId": "runtime-schema-rdap-cidr"
+  },
+  "ok": true,
+  "result": {
+    "dates": {},
+    "dnssec": {},
+    "domain": {
+      "name": "2001:db8::/32",
+      "punycodeName": "2001:db8::/32",
+      "registered": false,
+      "reserved": false
+    },
+    "enrichment": {},
+    "meta": {
+      "elapsedMs": 0,
+      "providers": [
+        {
+          "bytes": 335,
+          "contentType": "application/rdap+json",
+          "elapsedMs": 8,
+          "query": "2001:db8::/32",
+          "server": "https://rdap.example.test/ip/",
+          "source": "rdap",
+          "status": "ok",
+          "statusCode": 200
+        }
+      ],
+      "traceId": "runtime-schema-rdap-cidr"
+    },
+    "nameservers": [],
+    "network": {
+      "cidr": "2001:db8::/32",
+      "country": "ZZ",
+      "name": "EXAMPLE-CIDR",
+      "range": "2001:db8:: - 2001:db8:ffff:ffff:ffff:ffff:ffff:ffff",
+      "type": "ALLOCATED-BY-RIR"
+    },
+    "normalizedQuery": "2001:db8::/32",
+    "query": "2001:db8::/32",
+    "raw": {
+      "rdap": "{\"objectClassName\":\"ip network\",\"startAddress\":\"2001:db8::\",\"endAddress\":\"2001:db8:ffff:ffff:ffff:ffff:ffff:ffff\",\"name\":\"EXAMPLE-CIDR\",\"type\":\"ALLOCATED-BY-RIR\",\"country\":\"ZZ\",\"status\":[\"active\"],\"entities\":[{\"roles\":[\"registrant\"],\"vcardArray\":[\"vcard\",[[\"fn\",{},\"text\",\"Example CIDR Operations\"],[\"country-name\",{},\"text\",\"ZZ\"]]]}]}"
+    },
+    "registrant": {
+      "country": "ZZ",
+      "fieldSources": {
+        "country": [
+          {
+            "label": "country",
+            "source": "rdap",
+            "value": "ZZ"
+          }
+        ],
+        "organization": [
+          {
+            "label": "organization",
+            "source": "rdap",
+            "value": "Example CIDR Operations"
+          }
+        ]
+      },
+      "organization": "Example CIDR Operations"
+    },
+    "registrar": {},
+    "registry": {
+      "rdapServer": "https://rdap.example.test/ip/"
+    },
+    "source": {
+      "primary": "rdap",
+      "used": [
+        "rdap"
+      ]
+    },
+    "status": "registered",
+    "statuses": [
+      {
+        "code": "active",
+        "label": "active",
+        "source": "rdap",
+        "url": "https://icann.org/epp"
+      }
+    ],
+    "type": "cidr"
+  }
+}

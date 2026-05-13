@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/xmzo/whoice/services/lookup-api/internal/auth"
 	"github.com/xmzo/whoice/services/lookup-api/internal/config"
+	"github.com/xmzo/whoice/services/lookup-api/internal/icp"
 	"github.com/xmzo/whoice/services/lookup-api/internal/lookup"
 	"github.com/xmzo/whoice/services/lookup-api/internal/model"
 	"github.com/xmzo/whoice/services/lookup-api/internal/normalize"
@@ -22,17 +24,20 @@ import (
 	"github.com/xmzo/whoice/services/lookup-api/internal/security"
 )
 
-const Version = "0.01alpha"
+const Version = "v0.01beta"
+const maxAIRequestBytes = 8 << 20
 
 type Server struct {
-	cfg     config.Config
-	service *lookup.Service
-	plugins []model.PluginInfo
-	policy  security.ServerPolicy
-	auth    auth.Authenticator
-	limiter *ratelimit.Limiter
-	stats   *observability.Stats
-	mux     *http.ServeMux
+	cfg      config.Config
+	service  *lookup.Service
+	icp      *icp.Client
+	plugins  []model.PluginInfo
+	policy   security.ServerPolicy
+	auth     auth.Authenticator
+	limiter  *ratelimit.Limiter
+	stats    *observability.Stats
+	reporter observability.Reporter
+	mux      *http.ServeMux
 }
 
 func New(cfg config.Config, service *lookup.Service, plugins []model.PluginInfo, stats *observability.Stats) *Server {
@@ -43,12 +48,18 @@ func New(cfg config.Config, service *lookup.Service, plugins []model.PluginInfo,
 	s := &Server{
 		cfg:     cfg,
 		service: service,
+		icp:     icp.NewClient(cfg),
 		plugins: plugins,
 		policy:  security.NewServerPolicy(cfg.AllowPrivateServers),
 		auth:    auth.NewStatic(cfg.AuthMode, cfg.SitePassword, cfg.APITokens),
 		limiter: &limiter,
 		stats:   stats,
 		mux:     http.NewServeMux(),
+	}
+	if reporter, err := observability.NewReporter(cfg.Reporter, cfg.ReporterWebhookURL, cfg.ReporterTimeout); err == nil {
+		s.reporter = reporter
+	} else {
+		log.Printf("observability reporter disabled: %v", err)
 	}
 	s.routes()
 	return s
@@ -64,6 +75,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/capabilities", s.handleCapabilities)
 	s.mux.HandleFunc("GET /api/metrics", s.handleMetrics)
 	s.mux.HandleFunc("GET /api/lookup", s.withLookupGuards(s.handleLookup))
+	s.mux.HandleFunc("POST /api/lookup/ai", s.withLookupGuards(s.handleLookupAI))
+	s.mux.HandleFunc("GET /api/icp", s.withLookupGuards(s.handleICP))
 	s.mux.HandleFunc("GET /api/admin/status", s.withAdminGuard(s.handleAdminStatus))
 }
 
@@ -129,6 +142,15 @@ func (s *Server) handleLookup(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Trace-ID", traceID)
 	query := normalize.CleanUserInput(firstNonEmpty(r.URL.Query().Get("query"), r.URL.Query().Get("q")))
 	if query == "" {
+		if s.stats != nil {
+			s.stats.RecordLookup(false, 0)
+		}
+		s.reportLookup(observability.LookupEvent{
+			TraceID:   traceID,
+			OK:        false,
+			ErrorCode: "query_required",
+			Error:     "Query is required.",
+		})
 		writeJSON(w, http.StatusBadRequest, model.APIResponse{
 			OK: false,
 			Error: &model.APIError{
@@ -145,6 +167,13 @@ func (s *Server) handleLookup(w http.ResponseWriter, r *http.Request) {
 		if s.stats != nil {
 			s.stats.RecordLookup(false, 0)
 		}
+		s.reportLookup(observability.LookupEvent{
+			TraceID:   traceID,
+			Query:     query,
+			OK:        false,
+			ErrorCode: "option_not_allowed",
+			Error:     err.Error(),
+		})
 		writeJSON(w, http.StatusForbidden, model.APIResponse{
 			OK: false,
 			Error: &model.APIError{
@@ -162,6 +191,13 @@ func (s *Server) handleLookup(w http.ResponseWriter, r *http.Request) {
 			s.stats.RecordLookup(false, 0)
 		}
 		if _, ok := err.(normalize.InputError); ok {
+			s.reportLookup(observability.LookupEvent{
+				TraceID:   traceID,
+				Query:     query,
+				OK:        false,
+				ErrorCode: "invalid_query",
+				Error:     err.Error(),
+			})
 			writeJSON(w, http.StatusBadRequest, model.APIResponse{
 				OK: false,
 				Error: &model.APIError{
@@ -172,6 +208,13 @@ func (s *Server) handleLookup(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
+		s.reportLookup(observability.LookupEvent{
+			TraceID:   traceID,
+			Query:     query,
+			OK:        false,
+			ErrorCode: "lookup_failed",
+			Error:     err.Error(),
+		})
 		writeJSON(w, http.StatusBadGateway, model.APIResponse{
 			OK: false,
 			Error: &model.APIError{
@@ -189,12 +232,158 @@ func (s *Server) handleLookup(w http.ResponseWriter, r *http.Request) {
 		s.stats.RecordLookup(true, meta.ElapsedMs)
 		s.stats.RecordProviders(providerTraceViews(meta.Providers))
 	}
+	s.reportLookup(observability.LookupEvent{
+		TraceID:         traceID,
+		Query:           result.Query,
+		NormalizedQuery: result.NormalizedQuery,
+		Type:            string(result.Type),
+		Status:          string(result.Status),
+		OK:              true,
+		ElapsedMs:       meta.ElapsedMs,
+		Providers:       providerTraceViews(meta.Providers),
+	})
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, model.APIResponse{
 		OK:     true,
 		Result: result,
 		Meta:   &meta,
 	})
+}
+
+func (s *Server) handleLookupAI(w http.ResponseWriter, r *http.Request) {
+	traceID := requestTraceID(r)
+	w.Header().Set("X-Trace-ID", traceID)
+	w.Header().Set("Cache-Control", "no-store")
+	if !s.cfg.AIEnabled || s.service == nil {
+		writeJSON(w, http.StatusServiceUnavailable, model.APIResponse{
+			OK: false,
+			Error: &model.APIError{
+				Code:    "ai_disabled",
+				Message: "AI registration analysis is disabled.",
+			},
+			Meta: &model.ResultMeta{TraceID: traceID},
+		})
+		return
+	}
+
+	var payload struct {
+		Result *model.LookupResult `json:"result"`
+		Force  *bool               `json:"force,omitempty"`
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxAIRequestBytes))
+	if err := decoder.Decode(&payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, model.APIResponse{
+			OK: false,
+			Error: &model.APIError{
+				Code:    "invalid_ai_request",
+				Message: "AI request must contain a lookup result.",
+			},
+			Meta: &model.ResultMeta{TraceID: traceID},
+		})
+		return
+	}
+	if payload.Result == nil || payload.Result.Type != model.QueryDomain {
+		writeJSON(w, http.StatusBadRequest, model.APIResponse{
+			OK: false,
+			Error: &model.APIError{
+				Code:    "invalid_ai_request",
+				Message: "AI registration analysis only supports domain lookup results.",
+			},
+			Meta: &model.ResultMeta{TraceID: traceID},
+		})
+		return
+	}
+
+	force := true
+	if payload.Force != nil {
+		force = *payload.Force
+	}
+	result, err := s.service.ApplyAI(r.Context(), payload.Result, force)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, model.APIResponse{
+			OK: false,
+			Error: &model.APIError{
+				Code:    "ai_lookup_failed",
+				Message: err.Error(),
+			},
+			Meta: &model.ResultMeta{TraceID: traceID},
+		})
+		return
+	}
+	result.Meta.TraceID = traceID
+	meta := result.Meta
+	writeJSON(w, http.StatusOK, model.APIResponse{
+		OK:     true,
+		Result: result,
+		Meta:   &meta,
+	})
+}
+
+func (s *Server) handleICP(w http.ResponseWriter, r *http.Request) {
+	traceID := requestTraceID(r)
+	w.Header().Set("X-Trace-ID", traceID)
+	w.Header().Set("Cache-Control", "no-store")
+	if s.icp == nil || !s.icp.Enabled() {
+		writeJSON(w, http.StatusServiceUnavailable, model.APIResponse{
+			OK: false,
+			Error: &model.APIError{
+				Code:    "icp_disabled",
+				Message: "ICP lookup is disabled.",
+			},
+			Meta: &model.ResultMeta{TraceID: traceID},
+		})
+		return
+	}
+	query := normalize.CleanUserInput(firstNonEmpty(r.URL.Query().Get("domain"), r.URL.Query().Get("query"), r.URL.Query().Get("q")))
+	if query == "" {
+		writeJSON(w, http.StatusBadRequest, model.APIResponse{
+			OK: false,
+			Error: &model.APIError{
+				Code:    "query_required",
+				Message: "Domain is required.",
+			},
+			Meta: &model.ResultMeta{TraceID: traceID},
+		})
+		return
+	}
+	normalized, err := normalize.New(s.cfg.DataDir).Normalize(query)
+	if err != nil || normalized.Type != model.QueryDomain {
+		writeJSON(w, http.StatusBadRequest, model.APIResponse{
+			OK: false,
+			Error: &model.APIError{
+				Code:    "invalid_domain",
+				Message: "ICP lookup only supports domain queries.",
+			},
+			Meta: &model.ResultMeta{TraceID: traceID},
+		})
+		return
+	}
+
+	result, err := s.icp.Query(r.Context(), normalized.RegisteredDomain)
+	status := http.StatusOK
+	response := map[string]any{
+		"ok":     true,
+		"result": result,
+		"meta": map[string]any{
+			"traceId": traceID,
+		},
+	}
+	if err != nil && result.Status == icp.StatusError {
+		status = http.StatusBadGateway
+		response["ok"] = false
+		response["error"] = model.APIError{
+			Code:    "icp_lookup_failed",
+			Message: result.Message,
+		}
+	}
+	writeJSON(w, status, response)
+}
+
+func (s *Server) reportLookup(event observability.LookupEvent) {
+	if s == nil || s.reporter == nil {
+		return
+	}
+	go s.reporter.ReportLookup(context.Background(), event)
 }
 
 func providerTraceViews(traces []model.ProviderTrace) []observability.ProviderTraceView {
@@ -230,6 +419,8 @@ func (s *Server) optionsFromRequest(r *http.Request) (model.LookupOptions, error
 
 	opts.RDAPServer = normalize.CleanUserInput(values.Get("rdap_server"))
 	opts.WHOISServer = normalize.CleanUserInput(values.Get("whois_server"))
+	opts.ExactDomain = parseBool(firstNonEmpty(values.Get("exact_domain"), values.Get("exact")))
+	opts.ForceAI = parseBool(firstNonEmpty(values.Get("ai"), values.Get("force_ai")))
 	if values.Has("whois_follow") {
 		follow, err := strconv.Atoi(values.Get("whois_follow"))
 		if err != nil || follow < 0 || follow > 5 {
@@ -260,7 +451,7 @@ func (s *Server) optionsFromRequest(r *http.Request) (model.LookupOptions, error
 func (s *Server) withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

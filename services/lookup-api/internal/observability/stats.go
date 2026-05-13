@@ -29,6 +29,7 @@ type ProviderStats struct {
 	Total       uint64            `json:"total"`
 	Succeeded   uint64            `json:"succeeded"`
 	Failed      uint64            `json:"failed"`
+	Skipped     uint64            `json:"skipped"`
 	LastElapsed int64             `json:"lastElapsedMs"`
 	Latency     HistogramSnapshot `json:"latencyMs"`
 }
@@ -87,9 +88,12 @@ func (s *Stats) RecordProviders(traces []ProviderTraceView) {
 		}
 		current := s.providers[trace.Source]
 		current.Total++
-		if trace.Status == "ok" {
+		switch trace.Status {
+		case "ok":
 			current.Succeeded++
-		} else {
+		case "skipped":
+			current.Skipped++
+		default:
 			current.Failed++
 		}
 		current.LastElapsed = trace.ElapsedMs
@@ -134,6 +138,7 @@ func (s *Stats) Prometheus() string {
 		stats := snapshot.Providers[name]
 		writeMetric(&builder, "whoice_provider_requests_total", "Total provider requests by provider and outcome.", map[string]string{"provider": name, "outcome": "success"}, stats.Succeeded)
 		writeMetric(&builder, "whoice_provider_requests_total", "Total provider requests by provider and outcome.", map[string]string{"provider": name, "outcome": "failure"}, stats.Failed)
+		writeMetric(&builder, "whoice_provider_requests_total", "Total provider requests by provider and outcome.", map[string]string{"provider": name, "outcome": "skipped"}, stats.Skipped)
 		writeMetric(&builder, "whoice_provider_last_elapsed_milliseconds", "Elapsed milliseconds for the most recent provider request.", map[string]string{"provider": name}, stats.LastElapsed)
 		writeHistogram(&builder, "whoice_provider_latency_milliseconds", "Provider latency histogram in milliseconds.", map[string]string{"provider": name}, stats.Latency)
 	}

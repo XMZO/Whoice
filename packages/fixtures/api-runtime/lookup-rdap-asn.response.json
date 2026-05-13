@@ -1,0 +1,97 @@
+{
+  "meta": {
+    "elapsedMs": 0,
+    "providers": [
+      {
+        "bytes": 258,
+        "contentType": "application/rdap+json",
+        "elapsedMs": 4,
+        "query": "AS64496",
+        "server": "https://rdap.example.test/autnum/",
+        "source": "rdap",
+        "status": "ok",
+        "statusCode": 200
+      }
+    ],
+    "traceId": "runtime-schema-rdap-asn"
+  },
+  "ok": true,
+  "result": {
+    "dates": {},
+    "dnssec": {},
+    "domain": {
+      "name": "as64496",
+      "punycodeName": "as64496",
+      "registered": false,
+      "reserved": false
+    },
+    "enrichment": {},
+    "meta": {
+      "elapsedMs": 0,
+      "providers": [
+        {
+          "bytes": 258,
+          "contentType": "application/rdap+json",
+          "elapsedMs": 4,
+          "query": "AS64496",
+          "server": "https://rdap.example.test/autnum/",
+          "source": "rdap",
+          "status": "ok",
+          "statusCode": 200
+        }
+      ],
+      "traceId": "runtime-schema-rdap-asn"
+    },
+    "nameservers": [],
+    "network": {
+      "country": "ZZ",
+      "name": "EXAMPLE-AS",
+      "originAS": "AS64496"
+    },
+    "normalizedQuery": "AS64496",
+    "query": "AS64496",
+    "raw": {
+      "rdap": "{\"objectClassName\":\"autnum\",\"startAutnum\":64496,\"endAutnum\":64496,\"name\":\"EXAMPLE-AS\",\"country\":\"ZZ\",\"status\":[\"active\"],\"entities\":[{\"roles\":[\"registrant\"],\"vcardArray\":[\"vcard\",[[\"fn\",{},\"text\",\"Example ASN Operations\"],[\"country-name\",{},\"text\",\"ZZ\"]]]}]}"
+    },
+    "registrant": {
+      "country": "ZZ",
+      "fieldSources": {
+        "country": [
+          {
+            "label": "country",
+            "source": "rdap",
+            "value": "ZZ"
+          }
+        ],
+        "organization": [
+          {
+            "label": "organization",
+            "source": "rdap",
+            "value": "Example ASN Operations"
+          }
+        ]
+      },
+      "organization": "Example ASN Operations"
+    },
+    "registrar": {},
+    "registry": {
+      "rdapServer": "https://rdap.example.test/autnum/"
+    },
+    "source": {
+      "primary": "rdap",
+      "used": [
+        "rdap"
+      ]
+    },
+    "status": "registered",
+    "statuses": [
+      {
+        "code": "active",
+        "label": "active",
+        "source": "rdap",
+        "url": "https://icann.org/epp"
+      }
+    ],
+    "type": "asn"
+  }
+}

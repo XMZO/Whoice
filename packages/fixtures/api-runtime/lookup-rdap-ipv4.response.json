@@ -1,0 +1,99 @@
+{
+  "meta": {
+    "elapsedMs": 0,
+    "providers": [
+      {
+        "bytes": 304,
+        "contentType": "application/rdap+json",
+        "elapsedMs": 5,
+        "query": "192.0.2.1",
+        "server": "https://rdap.example.test/ip/",
+        "source": "rdap",
+        "status": "ok",
+        "statusCode": 200
+      }
+    ],
+    "traceId": "runtime-schema-rdap-ipv4"
+  },
+  "ok": true,
+  "result": {
+    "dates": {},
+    "dnssec": {},
+    "domain": {
+      "name": "192.0.2.1",
+      "punycodeName": "192.0.2.1",
+      "registered": false,
+      "reserved": false
+    },
+    "enrichment": {},
+    "meta": {
+      "elapsedMs": 0,
+      "providers": [
+        {
+          "bytes": 304,
+          "contentType": "application/rdap+json",
+          "elapsedMs": 5,
+          "query": "192.0.2.1",
+          "server": "https://rdap.example.test/ip/",
+          "source": "rdap",
+          "status": "ok",
+          "statusCode": 200
+        }
+      ],
+      "traceId": "runtime-schema-rdap-ipv4"
+    },
+    "nameservers": [],
+    "network": {
+      "cidr": "192.0.2.0-192.0.2.255",
+      "country": "ZZ",
+      "name": "EXAMPLE-NET",
+      "range": "192.0.2.0 - 192.0.2.255",
+      "type": "ASSIGNED PA"
+    },
+    "normalizedQuery": "192.0.2.1",
+    "query": "192.0.2.1",
+    "raw": {
+      "rdap": "{\"objectClassName\":\"ip network\",\"startAddress\":\"192.0.2.0\",\"endAddress\":\"192.0.2.255\",\"name\":\"EXAMPLE-NET\",\"type\":\"ASSIGNED PA\",\"country\":\"ZZ\",\"status\":[\"active\"],\"entities\":[{\"roles\":[\"registrant\"],\"vcardArray\":[\"vcard\",[[\"fn\",{},\"text\",\"Example Network Operations\"],[\"country-name\",{},\"text\",\"ZZ\"]]]}]}"
+    },
+    "registrant": {
+      "country": "ZZ",
+      "fieldSources": {
+        "country": [
+          {
+            "label": "country",
+            "source": "rdap",
+            "value": "ZZ"
+          }
+        ],
+        "organization": [
+          {
+            "label": "organization",
+            "source": "rdap",
+            "value": "Example Network Operations"
+          }
+        ]
+      },
+      "organization": "Example Network Operations"
+    },
+    "registrar": {},
+    "registry": {
+      "rdapServer": "https://rdap.example.test/ip/"
+    },
+    "source": {
+      "primary": "rdap",
+      "used": [
+        "rdap"
+      ]
+    },
+    "status": "registered",
+    "statuses": [
+      {
+        "code": "active",
+        "label": "active",
+        "source": "rdap",
+        "url": "https://icann.org/epp"
+      }
+    ],
+    "type": "ipv4"
+  }
+}

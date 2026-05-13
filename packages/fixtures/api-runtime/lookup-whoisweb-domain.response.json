@@ -1,0 +1,80 @@
+{
+  "meta": {
+    "elapsedMs": 0,
+    "providers": [
+      {
+        "bytes": 97,
+        "contentType": "text/plain; charset=utf-8",
+        "elapsedMs": 13,
+        "query": "example.vn",
+        "server": "https://whoisweb.example.test/vn",
+        "source": "whoisWeb",
+        "status": "ok",
+        "statusCode": 200
+      }
+    ],
+    "traceId": "runtime-schema-whoisweb-domain"
+  },
+  "ok": true,
+  "result": {
+    "dates": {},
+    "dnssec": {},
+    "domain": {
+      "name": "EXAMPLE.VN",
+      "punycodeName": "EXAMPLE.VN",
+      "registered": true,
+      "registeredDomain": "example.vn",
+      "reserved": false,
+      "suffix": "vn",
+      "unicodeName": "example.vn"
+    },
+    "enrichment": {},
+    "meta": {
+      "elapsedMs": 0,
+      "providers": [
+        {
+          "bytes": 97,
+          "contentType": "text/plain; charset=utf-8",
+          "elapsedMs": 13,
+          "query": "example.vn",
+          "server": "https://whoisweb.example.test/vn",
+          "source": "whoisWeb",
+          "status": "ok",
+          "statusCode": 200
+        }
+      ],
+      "traceId": "runtime-schema-whoisweb-domain"
+    },
+    "nameservers": [
+      {
+        "host": "ns1.example.vn"
+      }
+    ],
+    "network": {},
+    "normalizedQuery": "example.vn",
+    "query": "example.vn",
+    "raw": {
+      "whoisWeb": "Domain Name: EXAMPLE.VN\nRegistrar: WHOIS Web Registrar\nName Server: NS1.EXAMPLE.VN\nStatus: active"
+    },
+    "registrant": {},
+    "registrar": {
+      "name": "WHOIS Web Registrar"
+    },
+    "registry": {},
+    "source": {
+      "primary": "whoisWeb",
+      "used": [
+        "whoisWeb"
+      ]
+    },
+    "status": "registered",
+    "statuses": [
+      {
+        "code": "active",
+        "label": "active",
+        "source": "whois"
+      }
+    ],
+    "type": "domain"
+  }
+}

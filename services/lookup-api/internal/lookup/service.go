@@ -11,6 +11,7 @@ import (
 	"github.com/xmzo/whoice/services/lookup-api/internal/data/brandmap"
 	enrichmentdata "github.com/xmzo/whoice/services/lookup-api/internal/data/enrichment"
 	"github.com/xmzo/whoice/services/lookup-api/internal/data/registrars"
+	aienrich "github.com/xmzo/whoice/services/lookup-api/internal/enrich/ai"
 	"github.com/xmzo/whoice/services/lookup-api/internal/enrich/brand"
 	dnsenrich "github.com/xmzo/whoice/services/lookup-api/internal/enrich/dns"
 	"github.com/xmzo/whoice/services/lookup-api/internal/enrich/dnsviz"
@@ -34,6 +35,7 @@ type Service struct {
 	registrars *registrars.Registry
 	brands     *brandmap.Registry
 	enrichment *enrichmentdata.Registry
+	ai         *aienrich.Enricher
 	inflight   *singleflight
 }
 
@@ -50,13 +52,14 @@ func NewService(cfg config.Config, providerList []providers.Provider, parserRegi
 		registrars: registrarRegistry,
 		brands:     brandRegistry,
 		enrichment: enrichmentRegistry,
+		ai:         aienrich.New(cfg),
 		inflight:   newSingleflight(),
 	}
 }
 
 func (s *Service) Lookup(ctx context.Context, input string, opts model.LookupOptions) (*model.LookupResult, error) {
 	start := time.Now()
-	q, err := s.normalizer.Normalize(input)
+	q, err := s.normalizer.NormalizeWithOptions(input, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -120,10 +123,43 @@ func (s *Service) lookupFresh(ctx context.Context, q model.NormalizedQuery, opts
 		epp.Apply(result)
 	}
 	if s.cfg.EnrichDNS {
-		dnsenrich.Apply(ctx, result, s.cfg.DNSTimeout)
+		dnsenrich.ApplyWithOptions(ctx, result, dnsenrich.Options{
+			Timeout:      s.cfg.DNSTimeout,
+			Servers:      s.cfg.DNSServers(),
+			DoHServers:   s.cfg.DNSDoHResolvers,
+			FilterFakeIP: s.cfg.DNSFilterFakeIP,
+		})
 	}
 	if s.cfg.EnrichDNSViz {
 		dnsviz.Apply(result)
+	}
+	s.applyStaticEnrichment(result)
+
+	return result, nil
+}
+
+func (s *Service) ApplyAI(ctx context.Context, result *model.LookupResult, force bool) (*model.LookupResult, error) {
+	if result == nil {
+		return nil, errors.New("lookup result is required")
+	}
+	result = cloneResult(result)
+	if s.ai == nil || !s.ai.Enabled() {
+		trace := model.AITrace{Status: "skipped"}
+		result.Meta.AI = &trace
+		return result, nil
+	}
+	trace := s.ai.Apply(ctx, result, force)
+	result.Meta.AI = &trace
+	if trace.Status == "error" && trace.Error != "" {
+		result.Meta.Warnings = append(result.Meta.Warnings, "AI registration analysis failed: "+trace.Error)
+	}
+	s.applyStaticEnrichment(result)
+	return result, nil
+}
+
+func (s *Service) applyStaticEnrichment(result *model.LookupResult) {
+	if result == nil {
+		return
 	}
 	if s.cfg.EnrichRegistrar {
 		registrarenrich.Apply(result, s.registrars)
@@ -137,8 +173,6 @@ func (s *Service) lookupFresh(ctx context.Context, q model.NormalizedQuery, opts
 	if s.cfg.EnrichMoz {
 		moz.Apply(result, s.enrichment)
 	}
-
-	return result, nil
 }
 
 func (s *Service) runProviders(ctx context.Context, q model.NormalizedQuery, opts model.LookupOptions) ([]model.RawResponse, []model.SourceError, []model.ProviderTrace) {
@@ -182,6 +216,9 @@ func (s *Service) runProviders(ctx context.Context, q model.NormalizedQuery, opt
 			if err != nil {
 				trace.Status = "error"
 				trace.Error = err.Error()
+				if providers.IsSkip(err) {
+					trace.Status = "skipped"
+				}
 			}
 			ch <- outcome{raw: raw, err: err, src: provider.Name(), trace: trace}
 		}()
@@ -196,6 +233,9 @@ func (s *Service) runProviders(ctx context.Context, q model.NormalizedQuery, opt
 	for item := range ch {
 		traces = append(traces, item.trace)
 		if item.err != nil {
+			if providers.IsSkip(item.err) {
+				continue
+			}
 			errs = append(errs, model.SourceError{Source: item.src, Error: item.err.Error()})
 			continue
 		}
@@ -221,5 +261,5 @@ func (s *Service) providerEnabled(source model.SourceName, opts model.LookupOpti
 }
 
 func requestKey(q model.NormalizedQuery, opts model.LookupOptions) string {
-	return fmt.Sprintf("%s:%s:rdap=%t:whois=%t:rs=%s:ws=%s:wf=%d", q.Type, q.Query, opts.UseRDAP, opts.UseWHOIS, opts.RDAPServer, opts.WHOISServer, opts.WHOISFollow)
+	return fmt.Sprintf("%s:%s:rdap=%t:whois=%t:rs=%s:ws=%s:wf=%d:exact=%t", q.Type, q.Query, opts.UseRDAP, opts.UseWHOIS, opts.RDAPServer, opts.WHOISServer, opts.WHOISFollow, opts.ExactDomain)
 }

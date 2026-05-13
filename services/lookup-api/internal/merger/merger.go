@@ -1,6 +1,7 @@
 package merger
 
 import (
+	"strings"
 	"time"
 
 	"github.com/xmzo/whoice/services/lookup-api/internal/model"
@@ -116,6 +117,11 @@ func mergeRegistrar(result *model.LookupResult, part *model.PartialResult) {
 	result.Registrar.Country = pick(result.Registrar.Country, part.Registrar.Country)
 	result.Registrar.WHOISServer = pick(result.Registrar.WHOISServer, part.Registrar.WHOISServer)
 	result.Registrar.RDAPServer = pick(result.Registrar.RDAPServer, part.Registrar.RDAPServer)
+	result.Registrar.Source = pick(result.Registrar.Source, part.Registrar.Source)
+	if result.Registrar.Confidence == nil {
+		result.Registrar.Confidence = part.Registrar.Confidence
+	}
+	result.Registrar.Evidence = pick(result.Registrar.Evidence, part.Registrar.Evidence)
 }
 
 func mergeDates(result *model.LookupResult, part *model.PartialResult) {
@@ -161,11 +167,41 @@ func mergeDNSSEC(result *model.LookupResult, part *model.PartialResult) {
 }
 
 func mergeRegistrant(result *model.LookupResult, part *model.PartialResult) {
-	result.Registrant.Organization = pick(result.Registrant.Organization, part.Registrant.Organization)
-	result.Registrant.Country = pick(result.Registrant.Country, part.Registrant.Country)
-	result.Registrant.Province = pick(result.Registrant.Province, part.Registrant.Province)
-	result.Registrant.Email = pick(result.Registrant.Email, part.Registrant.Email)
-	result.Registrant.Phone = pick(result.Registrant.Phone, part.Registrant.Phone)
+	result.Registrant.Name = mergeRegistrantField(result, "name", result.Registrant.Name, part.Registrant.Name, part)
+	result.Registrant.Organization = mergeRegistrantField(result, "organization", result.Registrant.Organization, part.Registrant.Organization, part)
+	result.Registrant.Country = mergeRegistrantField(result, "country", result.Registrant.Country, part.Registrant.Country, part)
+	result.Registrant.Province = mergeRegistrantField(result, "province", result.Registrant.Province, part.Registrant.Province, part)
+	result.Registrant.City = mergeRegistrantField(result, "city", result.Registrant.City, part.Registrant.City, part)
+	result.Registrant.Address = mergeRegistrantField(result, "address", result.Registrant.Address, part.Registrant.Address, part)
+	result.Registrant.PostalCode = mergeRegistrantField(result, "postalCode", result.Registrant.PostalCode, part.Registrant.PostalCode, part)
+	result.Registrant.Email = mergeRegistrantField(result, "email", result.Registrant.Email, part.Registrant.Email, part)
+	result.Registrant.Phone = mergeRegistrantField(result, "phone", result.Registrant.Phone, part.Registrant.Phone, part)
+	result.Registrant.Extra = mergeRegistrationFields(result.Registrant.Extra, part.Registrant.Extra)
+	result.Registrant.FieldSources = mergeRegistrantFieldSources(result.Registrant.FieldSources, part.Registrant.FieldSources)
+	result.Registrant.Source = pick(result.Registrant.Source, part.Registrant.Source)
+	if result.Registrant.Confidence == nil {
+		result.Registrant.Confidence = part.Registrant.Confidence
+	}
+	result.Registrant.Evidence = pick(result.Registrant.Evidence, part.Registrant.Evidence)
+}
+
+func mergeRegistrantField(result *model.LookupResult, key, current, incoming string, part *model.PartialResult) string {
+	incoming = strings.TrimSpace(incoming)
+	if incoming == "" {
+		return current
+	}
+	source := strings.TrimSpace(string(part.Source))
+	if source == "" {
+		source = strings.TrimSpace(part.Registrant.Source)
+	}
+	addRegistrantFieldSource(&result.Registrant, key, model.RegistrationField{
+		Label:      key,
+		Value:      incoming,
+		Source:     source,
+		Confidence: part.Registrant.Confidence,
+		Evidence:   part.Registrant.Evidence,
+	})
+	return pick(current, incoming)
 }
 
 func mergeNetwork(result *model.LookupResult, part *model.PartialResult) {
@@ -190,6 +226,86 @@ func pick(current, incoming string) string {
 	return incoming
 }
 
+func mergeRegistrationFields(current, incoming []model.RegistrationField) []model.RegistrationField {
+	if len(incoming) == 0 {
+		return current
+	}
+	seen := map[string]bool{}
+	for _, field := range current {
+		seen[registrationFieldKey(field)] = true
+	}
+	out := current
+	for _, field := range incoming {
+		field.Label = strings.TrimSpace(field.Label)
+		field.Value = strings.TrimSpace(field.Value)
+		field.Source = strings.TrimSpace(field.Source)
+		field.Evidence = strings.TrimSpace(field.Evidence)
+		if field.Label == "" || field.Value == "" {
+			continue
+		}
+		key := registrationFieldKey(field)
+		if seen[key] {
+			continue
+		}
+		out = append(out, field)
+		seen[key] = true
+	}
+	return out
+}
+
+func mergeRegistrantFieldSources(current, incoming map[string][]model.RegistrationField) map[string][]model.RegistrationField {
+	if len(incoming) == 0 {
+		return current
+	}
+	out := current
+	for key, values := range incoming {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		for _, value := range values {
+			addRegistrantFieldSourceToMap(&out, key, value)
+		}
+	}
+	return out
+}
+
+func addRegistrantFieldSource(registrant *model.RegistrantInfo, key string, field model.RegistrationField) {
+	if registrant == nil {
+		return
+	}
+	addRegistrantFieldSourceToMap(&registrant.FieldSources, key, field)
+}
+
+func addRegistrantFieldSourceToMap(target *map[string][]model.RegistrationField, key string, field model.RegistrationField) {
+	key = strings.TrimSpace(key)
+	field.Label = strings.TrimSpace(field.Label)
+	field.Value = strings.TrimSpace(field.Value)
+	field.Source = strings.TrimSpace(field.Source)
+	field.Evidence = strings.TrimSpace(field.Evidence)
+	if target == nil || key == "" || field.Value == "" {
+		return
+	}
+	if *target == nil {
+		*target = map[string][]model.RegistrationField{}
+	}
+	key = strings.TrimSpace(key)
+	existing := (*target)[key]
+	candidateKey := registrationFieldKey(field)
+	for _, item := range existing {
+		if registrationFieldKey(item) == candidateKey {
+			return
+		}
+	}
+	(*target)[key] = append(existing, field)
+}
+
+func registrationFieldKey(field model.RegistrationField) string {
+	return strings.ToLower(strings.TrimSpace(field.Label)) + "\x00" +
+		strings.ToLower(strings.TrimSpace(field.Value)) + "\x00" +
+		strings.ToLower(strings.TrimSpace(field.Source))
+}
+
 func appendUniqueSource(values []model.SourceName, source model.SourceName) []model.SourceName {
 	for _, value := range values {
 		if value == source {
@@ -206,7 +322,6 @@ func hasEvidence(result *model.LookupResult) bool {
 		len(result.Statuses) > 0 ||
 		len(result.Nameservers) > 0 ||
 		result.Network.Range != "" ||
-		result.Raw.RDAP != "" ||
 		result.Raw.WHOIS != ""
 }
 

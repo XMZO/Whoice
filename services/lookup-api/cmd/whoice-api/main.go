@@ -22,7 +22,13 @@ func main() {
 		return
 	}
 
-	cfg := config.Load()
+	cfg, err := config.LoadWithError()
+	if err != nil {
+		log.Fatalf("load config: %v", err)
+	}
+	if cfg.ConfigCreated {
+		log.Printf("created default config at %s", cfg.ConfigPath)
+	}
 	if cfg.PSLAutoUpdate {
 		if err := publicsuffixes.UpdateFromRemote(context.Background(), cfg.DataDir, cfg.PSLURL, cfg.PSLUpdateTimeout); err != nil {
 			log.Printf("public suffix auto update failed: %v", err)
@@ -36,6 +42,9 @@ func main() {
 
 	service := lookup.NewService(cfg, pluginRegistry.Providers(), pluginRegistry.ParserRegistry())
 	stats := observability.NewStats()
+	if _, err := observability.NewReporter(cfg.Reporter, cfg.ReporterWebhookURL, cfg.ReporterTimeout); err != nil {
+		log.Fatalf("invalid observability reporter config: %v", err)
+	}
 	server := httpapi.New(cfg, service, pluginRegistry.Plugins(), stats)
 
 	log.Printf("whoice lookup-api listening on %s", cfg.Addr)
@@ -45,9 +54,9 @@ func main() {
 }
 
 func healthcheck() {
-	addr := os.Getenv("WHOICE_API_ADDR")
-	if addr == "" {
-		addr = ":8080"
+	addr := config.Default().Addr
+	if cfg, err := config.LoadWithError(); err == nil && strings.TrimSpace(cfg.Addr) != "" {
+		addr = cfg.Addr
 	}
 	if strings.HasPrefix(addr, ":") {
 		addr = "127.0.0.1" + addr

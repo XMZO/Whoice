@@ -4,13 +4,8 @@ import { useRouter } from "next/router";
 import { FormEvent, useEffect, useState } from "react";
 import { AppControls } from "@/components/AppControls";
 import { appendLookupOptions, normalizeLookupInput, type LookupOptions } from "@/lib/api";
+import { detectLookupType, readHistory, writeHistory, type HistoryItem } from "@/lib/history";
 import { useI18n } from "@/lib/i18n";
-
-type HistoryItem = {
-  query: string;
-  type: string;
-  timestamp: number;
-};
 
 type SourceMode = "all" | "rdap" | "whois";
 
@@ -18,33 +13,9 @@ type AdvancedState = {
   rdapServer: string;
   whoisServer: string;
   whoisFollow: string;
+  exactDomain: boolean;
+  forceAI: boolean;
 };
-
-function detectType(query: string) {
-  if (/^AS\d+$/i.test(query.trim())) return "asn";
-  if (/\/\d{1,3}$/.test(query.trim())) return "cidr";
-  if (query.includes(":")) return "ipv6";
-  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(query.trim())) return "ipv4";
-  return "domain";
-}
-
-function readHistory(): HistoryItem[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const value = localStorage.getItem("whoice.history");
-    if (!value) return [];
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed.slice(0, 12) : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeHistory(query: string) {
-  const item = { query, type: detectType(query), timestamp: Date.now() };
-  const next = [item, ...readHistory().filter((entry) => entry.query !== query)].slice(0, 24);
-  localStorage.setItem("whoice.history", JSON.stringify(next));
-}
 
 function sourceParams(mode: SourceMode) {
   const params = new URLSearchParams();
@@ -58,6 +29,8 @@ function advancedOptions(value: AdvancedState): LookupOptions {
     rdapServer: value.rdapServer.trim(),
     whoisServer: value.whoisServer.trim(),
     whoisFollow: value.whoisFollow,
+    exactDomain: value.exactDomain ? "1" : undefined,
+    ai: value.forceAI ? "1" : undefined,
   };
 }
 
@@ -95,12 +68,16 @@ export default function HomePage() {
     rdapServer: "",
     whoisServer: "",
     whoisFollow: "",
+    exactDomain: false,
+    forceAI: false,
   });
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const { t } = useI18n();
 
   useEffect(() => {
     setHistory(readHistory());
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
       if (event.key === "/" && document.activeElement?.tagName !== "INPUT") {
         event.preventDefault();
         document.getElementById("whoice-search")?.focus();
@@ -160,9 +137,18 @@ export default function HomePage() {
           </form>
           <div className="lookup-options">
             <SourceToggle value={sourceMode} onChange={setSourceMode} />
-            <details className="advanced-lookup">
-              <summary>{t("advanced")}</summary>
-              <div className="advanced-grid">
+            <div className="advanced-lookup">
+              <button
+                type="button"
+                className="advanced-toggle"
+                aria-expanded={advancedOpen}
+                aria-controls="advanced-lookup-panel"
+                onClick={() => setAdvancedOpen((open) => !open)}
+              >
+                {t("advanced")}
+              </button>
+              {advancedOpen && (
+                <div id="advanced-lookup-panel" className="advanced-grid">
                 <label>
                   <span>{t("rdapServer")}</span>
                   <input
@@ -191,11 +177,28 @@ export default function HomePage() {
                     onChange={(event) => setAdvanced((current) => ({ ...current, whoisFollow: event.target.value }))}
                   />
                 </label>
-              </div>
-            </details>
+                <label className="check-row wide-check" title={t("exactDomainHint")}>
+                  <input
+                    type="checkbox"
+                    checked={advanced.exactDomain}
+                    onChange={(event) => setAdvanced((current) => ({ ...current, exactDomain: event.target.checked }))}
+                  />
+                  <span>{t("exactDomain")}</span>
+                </label>
+                <label className="check-row wide-check" title={t("forceAIHint")}>
+                  <input
+                    type="checkbox"
+                    checked={advanced.forceAI}
+                    onChange={(event) => setAdvanced((current) => ({ ...current, forceAI: event.target.checked }))}
+                  />
+                  <span>{t("forceAI")}</span>
+                </label>
+                </div>
+              )}
+            </div>
           </div>
           <div className="search-meta">
-            {query && <span className="type-pill">{detectType(query)}</span>}
+            {query && <span className="type-pill">{detectLookupType(query)}</span>}
             <span className="type-pill">{sourceMode}</span>
           </div>
         </section>

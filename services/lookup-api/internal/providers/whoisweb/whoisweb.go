@@ -15,7 +15,11 @@ import (
 	"github.com/xmzo/whoice/services/lookup-api/internal/model"
 )
 
-const defaultVNBaseURL = "https://whois.inet.vn"
+const (
+	defaultDZBaseURL = "https://api.nic.dz/v1"
+	defaultNIBaseURL = "https://apiecommercenic.uni.edu.ni/api/v1"
+	defaultVNBaseURL = "https://whois.inet.vn"
+)
 
 type Module interface {
 	Name() string
@@ -57,6 +61,8 @@ func DefaultModules() []Module {
 			"gq": "http://www.dominio.gq/en/whois.html",
 			"py": "https://www.nic.py/consultdompy.php",
 		}),
+		DZModule{BaseURL: defaultDZBaseURL},
+		NIModule{BaseURL: defaultNIBaseURL},
 		VNModule{BaseURL: defaultVNBaseURL},
 	}
 }
@@ -135,6 +141,181 @@ func (m NoticeModule) Lookup(_ context.Context, _ *http.Client, q model.Normaliz
 		Endpoint:    target,
 		ContentType: "text/plain; charset=utf-8",
 	}, nil
+}
+
+type DZModule struct {
+	BaseURL string
+}
+
+func (m DZModule) Name() string { return "dz" }
+
+func (m DZModule) Supports(suffix string) bool {
+	suffix = strings.ToLower(strings.TrimPrefix(suffix, "."))
+	return suffix == "dz" || suffix == "xn--lgbbat1ad8j"
+}
+
+func (m DZModule) Lookup(ctx context.Context, client *http.Client, q model.NormalizedQuery) (*ModuleResult, error) {
+	baseURL := strings.TrimRight(m.BaseURL, "/")
+	if baseURL == "" {
+		baseURL = defaultDZBaseURL
+	}
+	segment := "/"
+	if strings.EqualFold(q.Suffix, "xn--lgbbat1ad8j") {
+		segment = "/arabic/"
+	}
+	endpoint := baseURL + segment + "domains/" + url.PathEscape(q.Query)
+	var payload dzResponse
+	statusCode, contentType, err := getJSON(ctx, client, endpoint, &payload)
+	if err != nil {
+		return nil, err
+	}
+	body := payload.toWHOIS()
+	return &ModuleResult{
+		Body:        body,
+		Endpoint:    endpoint,
+		ContentType: contentType,
+		StatusCode:  statusCode,
+	}, nil
+}
+
+type dzResponse struct {
+	Title             string `json:"title"`
+	DomainName        string `json:"domainName"`
+	Registrar         string `json:"registrar"`
+	CreationDate      string `json:"creationDate"`
+	RegistrantOrg     string `json:"orgName"`
+	RegistrantAddress string `json:"addressOrg"`
+	AdminName         string `json:"contactAdm"`
+	AdminOrg          string `json:"orgNameAdm"`
+	AdminAddress      string `json:"addressAdm"`
+	AdminPhone        string `json:"phoneAdm"`
+	AdminFax          string `json:"faxAdm"`
+	AdminEmail        string `json:"emailAdm"`
+	TechName          string `json:"contactTech"`
+	TechOrg           string `json:"orgNameTech"`
+	TechAddress       string `json:"addressTech"`
+	TechPhone         string `json:"phoneTech"`
+	TechFax           string `json:"faxTech"`
+	TechEmail         string `json:"emailTech"`
+}
+
+func (r dzResponse) toWHOIS() string {
+	if strings.TrimSpace(r.Title) != "" {
+		return strings.TrimSpace(r.Title)
+	}
+	var builder strings.Builder
+	writeLine(&builder, "Domain Name", r.DomainName)
+	writeLine(&builder, "Registrar", r.Registrar)
+	writeLine(&builder, "Creation Date", r.CreationDate)
+	writeLine(&builder, "Registrant Organization", r.RegistrantOrg)
+	writeLine(&builder, "Registrant Address", r.RegistrantAddress)
+	writeLine(&builder, "Admin Name", r.AdminName)
+	writeLine(&builder, "Admin Organization", r.AdminOrg)
+	writeLine(&builder, "Admin Address", r.AdminAddress)
+	writeLine(&builder, "Admin Phone", r.AdminPhone)
+	writeLine(&builder, "Admin Fax", r.AdminFax)
+	writeLine(&builder, "Admin Email", r.AdminEmail)
+	writeLine(&builder, "Tech Name", r.TechName)
+	writeLine(&builder, "Tech Organization", r.TechOrg)
+	writeLine(&builder, "Tech Address", r.TechAddress)
+	writeLine(&builder, "Tech Phone", r.TechPhone)
+	writeLine(&builder, "Tech Fax", r.TechFax)
+	writeLine(&builder, "Tech Email", r.TechEmail)
+	return strings.TrimSpace(builder.String())
+}
+
+type NIModule struct {
+	BaseURL string
+}
+
+func (m NIModule) Name() string { return "ni" }
+
+func (m NIModule) Supports(suffix string) bool {
+	return strings.EqualFold(strings.TrimPrefix(suffix, "."), "ni")
+}
+
+func (m NIModule) Lookup(ctx context.Context, client *http.Client, q model.NormalizedQuery) (*ModuleResult, error) {
+	baseURL := strings.TrimRight(m.BaseURL, "/")
+	if baseURL == "" {
+		baseURL = defaultNIBaseURL
+	}
+	endpoint := baseURL + "/dominios/whois?dominio=" + url.QueryEscape(q.Query)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "Whoice/0.1 (+https://github.com/xmzo/whoice)")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024))
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		return &ModuleResult{
+			Body:        "Domain not found",
+			Endpoint:    endpoint,
+			ContentType: resp.Header.Get("Content-Type"),
+			StatusCode:  resp.StatusCode,
+		}, nil
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("WHOIS Web HTTP %d", resp.StatusCode)
+	}
+	var payload niResponse
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, err
+	}
+	return &ModuleResult{
+		Body:        payload.toWHOIS(q.Query),
+		Endpoint:    endpoint,
+		ContentType: resp.Header.Get("Content-Type"),
+		StatusCode:  resp.StatusCode,
+	}, nil
+}
+
+type niResponse struct {
+	Data *struct {
+		ExpirationDate string `json:"fechaExpiracion"`
+		Client         string `json:"cliente"`
+		Address        string `json:"direccion"`
+	} `json:"datos"`
+	Contacts *struct {
+		Type  string `json:"tipoContacto"`
+		Name  string `json:"nombre"`
+		Email []struct {
+			Value string `json:"value"`
+		} `json:"correoElectronico"`
+		Phone    string `json:"telefono"`
+		Cellular string `json:"celular"`
+	} `json:"contactos"`
+}
+
+func (r niResponse) toWHOIS(domain string) string {
+	var builder strings.Builder
+	writeLine(&builder, "Domain Name", domain)
+	if r.Data != nil {
+		writeLine(&builder, "Registry Expiry Date", r.Data.ExpirationDate)
+		writeLine(&builder, "Registrant Name", r.Data.Client)
+		writeLine(&builder, "Registrant Address", r.Data.Address)
+	}
+	if r.Contacts != nil {
+		var emails []string
+		for _, email := range r.Contacts.Email {
+			if strings.TrimSpace(email.Value) != "" {
+				emails = append(emails, strings.TrimSpace(email.Value))
+			}
+		}
+		writeLine(&builder, "Contact Type", r.Contacts.Type)
+		writeLine(&builder, "Contact Name", r.Contacts.Name)
+		writeLine(&builder, "Contact Email", strings.Join(emails, ","))
+		writeLine(&builder, "Contact Phone", r.Contacts.Phone)
+		writeLine(&builder, "Contact Cellphone", r.Contacts.Cellular)
+	}
+	return strings.TrimSpace(builder.String())
 }
 
 type VNModule struct {

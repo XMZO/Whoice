@@ -49,6 +49,8 @@ type LookupOptions struct {
 	RDAPServer    string
 	WHOISServer   string
 	WHOISFollow   int
+	ExactDomain   bool
+	ForceAI       bool
 	ProviderLimit time.Duration
 	LookupLimit   time.Duration
 }
@@ -94,13 +96,16 @@ type RegistryInfo struct {
 }
 
 type RegistrarInfo struct {
-	Name        string `json:"name,omitempty"`
-	URL         string `json:"url,omitempty"`
-	IANAID      string `json:"ianaId,omitempty"`
-	Country     string `json:"country,omitempty"`
-	WHOISServer string `json:"whoisServer,omitempty"`
-	RDAPServer  string `json:"rdapServer,omitempty"`
-	Brand       *Brand `json:"brand,omitempty"`
+	Name        string   `json:"name,omitempty"`
+	URL         string   `json:"url,omitempty"`
+	IANAID      string   `json:"ianaId,omitempty"`
+	Country     string   `json:"country,omitempty"`
+	WHOISServer string   `json:"whoisServer,omitempty"`
+	RDAPServer  string   `json:"rdapServer,omitempty"`
+	Brand       *Brand   `json:"brand,omitempty"`
+	Source      string   `json:"source,omitempty"`
+	Confidence  *float64 `json:"confidence,omitempty"`
+	Evidence    string   `json:"evidence,omitempty"`
 }
 
 type Brand struct {
@@ -137,12 +142,29 @@ type DNSSECInfo struct {
 	Text   string `json:"text,omitempty"`
 }
 
+type RegistrationField struct {
+	Label      string   `json:"label"`
+	Value      string   `json:"value"`
+	Source     string   `json:"source,omitempty"`
+	Confidence *float64 `json:"confidence,omitempty"`
+	Evidence   string   `json:"evidence,omitempty"`
+}
+
 type RegistrantInfo struct {
-	Organization string `json:"organization,omitempty"`
-	Country      string `json:"country,omitempty"`
-	Province     string `json:"province,omitempty"`
-	Email        string `json:"email,omitempty"`
-	Phone        string `json:"phone,omitempty"`
+	Name         string                         `json:"name,omitempty"`
+	Organization string                         `json:"organization,omitempty"`
+	Country      string                         `json:"country,omitempty"`
+	Province     string                         `json:"province,omitempty"`
+	City         string                         `json:"city,omitempty"`
+	Address      string                         `json:"address,omitempty"`
+	PostalCode   string                         `json:"postalCode,omitempty"`
+	Email        string                         `json:"email,omitempty"`
+	Phone        string                         `json:"phone,omitempty"`
+	Extra        []RegistrationField            `json:"extra,omitempty"`
+	FieldSources map[string][]RegistrationField `json:"fieldSources,omitempty"`
+	Source       string                         `json:"source,omitempty"`
+	Confidence   *float64                       `json:"confidence,omitempty"`
+	Evidence     string                         `json:"evidence,omitempty"`
 }
 
 type NetworkInfo struct {
@@ -184,18 +206,32 @@ type DNSVizInfo struct {
 }
 
 type DNSInfo struct {
-	A         []DNSAddress `json:"a,omitempty"`
-	AAAA      []DNSAddress `json:"aaaa,omitempty"`
-	CNAME     string       `json:"cname,omitempty"`
-	MX        []DNSMX      `json:"mx,omitempty"`
-	NS        []string     `json:"ns,omitempty"`
-	ElapsedMs int64        `json:"elapsedMs,omitempty"`
+	A          []DNSAddress      `json:"a,omitempty"`
+	AAAA       []DNSAddress      `json:"aaaa,omitempty"`
+	CNAME      string            `json:"cname,omitempty"`
+	MX         []DNSMX           `json:"mx,omitempty"`
+	NS         []string          `json:"ns,omitempty"`
+	RegistryNS []string          `json:"registryNs,omitempty"`
+	NSMismatch bool              `json:"nsMismatch,omitempty"`
+	Resolvers  []DNSResolverInfo `json:"resolvers,omitempty"`
+	ElapsedMs  int64             `json:"elapsedMs,omitempty"`
 }
 
 type DNSAddress struct {
-	IP      string `json:"ip"`
-	Version string `json:"version"`
-	Reverse string `json:"reverse,omitempty"`
+	IP       string `json:"ip"`
+	Version  string `json:"version"`
+	Reverse  string `json:"reverse,omitempty"`
+	Source   string `json:"source,omitempty"`
+	Resolver string `json:"resolver,omitempty"`
+	Endpoint string `json:"endpoint,omitempty"`
+}
+
+type DNSResolverInfo struct {
+	Source   string `json:"source"`
+	Resolver string `json:"resolver"`
+	Endpoint string `json:"endpoint,omitempty"`
+	Status   string `json:"status,omitempty"`
+	Error    string `json:"error,omitempty"`
 }
 
 type DNSMX struct {
@@ -214,6 +250,7 @@ type ResultMeta struct {
 	Warnings  []string        `json:"warnings,omitempty"`
 	TraceID   string          `json:"traceId,omitempty"`
 	Providers []ProviderTrace `json:"providers,omitempty"`
+	AI        *AITrace        `json:"ai,omitempty"`
 }
 
 type ProviderTrace struct {
@@ -226,6 +263,17 @@ type ProviderTrace struct {
 	Bytes       int        `json:"bytes,omitempty"`
 	ElapsedMs   int64      `json:"elapsedMs"`
 	Error       string     `json:"error,omitempty"`
+}
+
+type AITrace struct {
+	Provider  string   `json:"provider,omitempty"`
+	Model     string   `json:"model,omitempty"`
+	Status    string   `json:"status"`
+	Cached    bool     `json:"cached,omitempty"`
+	ElapsedMs int64    `json:"elapsedMs,omitempty"`
+	Attempts  int      `json:"attempts,omitempty"`
+	Applied   []string `json:"applied,omitempty"`
+	Error     string   `json:"error,omitempty"`
 }
 
 type LookupResult struct {
@@ -271,6 +319,7 @@ type Capabilities struct {
 	CustomServers bool            `json:"customServers"`
 	Auth          string          `json:"auth"`
 	RateLimit     bool            `json:"rateLimit"`
+	ICPAutoQuery  bool            `json:"icpAutoQuery"`
 	Enrichment    map[string]bool `json:"enrichment"`
 }
 

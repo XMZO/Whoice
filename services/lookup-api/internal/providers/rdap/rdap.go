@@ -12,6 +12,7 @@ import (
 
 	"github.com/xmzo/whoice/services/lookup-api/internal/data/rdapbootstrap"
 	"github.com/xmzo/whoice/services/lookup-api/internal/model"
+	"github.com/xmzo/whoice/services/lookup-api/internal/providers"
 )
 
 type Provider struct {
@@ -82,17 +83,17 @@ func (p *Provider) Lookup(ctx context.Context, q model.NormalizedQuery, opts mod
 }
 
 func (p *Provider) endpointFor(ctx context.Context, q model.NormalizedQuery, override string) (string, error) {
-	base := strings.TrimRight(override, "/")
+	base := strings.TrimRight(strings.TrimSpace(override), "/")
 	if base == "" {
 		if p.resolver != nil {
 			if resolved, ok, err := p.resolver.BaseURL(ctx, q); err != nil {
-				return "", err
+				return "", providers.Skip(fmt.Sprintf("RDAP bootstrap lookup failed for %s %q: %v", q.Type, q.Query, err))
 			} else if ok {
 				base = resolved
 			}
 		}
 		if base == "" {
-			base = "https://rdap.org"
+			return "", providers.Skip(fmt.Sprintf("no RDAP bootstrap server for %s %q", q.Type, q.Query))
 		}
 	}
 	parsed, err := url.Parse(base)

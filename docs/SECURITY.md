@@ -4,20 +4,20 @@ Whoice treats lookup input and upstream responses as untrusted.
 
 ## Custom Servers
 
-`WHOICE_ALLOW_CUSTOM_SERVERS=false` by default. When custom RDAP or WHOIS servers are enabled, the API still rejects loopback, private, link-local, multicast, malformed, and unresolvable targets unless `WHOICE_ALLOW_PRIVATE_SERVERS=true` is explicitly set for an admin-only environment.
+`allow_custom_servers = false` by default in `data/whoice.toml`. When custom RDAP or WHOIS servers are enabled, the API still rejects loopback, private, link-local, multicast, malformed, and unresolvable targets unless `allow_private_servers = true` is explicitly set for an admin-only environment.
 
 ## Authentication
 
 Lookup requests can be protected without blocking health/version probes:
 
-- `WHOICE_AUTH_MODE=password` with `WHOICE_SITE_PASSWORD`.
-- `WHOICE_AUTH_MODE=token` with comma-separated `WHOICE_API_TOKENS`.
+- `[auth] mode = "password"` with `site_password`.
+- `[auth] mode = "token"` with `api_tokens`.
 
 Accepted token carriers are `Authorization: Bearer ...`, `X-API-Key`, or the `token` query parameter. Password mode accepts `X-Whoice-Password`, `Authorization: Bearer ...`, or a `whoice_password` cookie.
 
 ## Rate Limit
 
-Set `WHOICE_RATE_LIMIT_ENABLED=true` and tune `WHOICE_RATE_LIMIT_ANON`, for example `60/min`. The current adapter is an in-memory fixed-window limiter for single-node deployments; distributed limits are still planned.
+Set `[rate_limit] enabled = true` and tune `anon`, for example `60/min`. The current adapter is an in-memory fixed-window limiter for single-node deployments; distributed limits are still planned.
 
 ## Raw Data
 

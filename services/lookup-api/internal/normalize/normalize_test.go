@@ -110,6 +110,23 @@ func TestNormalizePublicSuffixSecondLevelDomains(t *testing.T) {
 	}
 }
 
+func TestNormalizeExactDomainKeepsFullDomain(t *testing.T) {
+	n := New()
+	got, err := n.NormalizeWithOptions("deep.preview.example.com", model.LookupOptions{ExactDomain: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Query != "deep.preview.example.com" {
+		t.Fatalf("query: got %q", got.Query)
+	}
+	if got.RegisteredDomain != "deep.preview.example.com" {
+		t.Fatalf("registered domain: got %q want full domain", got.RegisteredDomain)
+	}
+	if got.Suffix != "com" {
+		t.Fatalf("suffix: got %q want com", got.Suffix)
+	}
+}
+
 func TestNormalizeDomainInputError(t *testing.T) {
 	n := New()
 	_, err := n.Normalize("example_com")

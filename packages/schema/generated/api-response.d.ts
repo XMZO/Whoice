@@ -94,6 +94,9 @@ export interface RegistrarInfo {
   whoisServer?: string;
   rdapServer?: string;
   brand?: Brand;
+  source?: string;
+  confidence?: number;
+  evidence?: string;
 }
 /**
  * This interface was referenced by `WhoiceAPIResponse`'s JSON-Schema
@@ -149,11 +152,33 @@ export interface DNSSECInfo {
  * via the `definition` "RegistrantInfo".
  */
 export interface RegistrantInfo {
+  name?: string;
   organization?: string;
   country?: string;
   province?: string;
+  city?: string;
+  address?: string;
+  postalCode?: string;
   email?: string;
   phone?: string;
+  extra?: RegistrationField[];
+  fieldSources?: {
+    [k: string]: RegistrationField[];
+  };
+  source?: string;
+  confidence?: number;
+  evidence?: string;
+}
+/**
+ * This interface was referenced by `WhoiceAPIResponse`'s JSON-Schema
+ * via the `definition` "RegistrationField".
+ */
+export interface RegistrationField {
+  label: string;
+  value: string;
+  source?: string;
+  confidence?: number;
+  evidence?: string;
 }
 /**
  * This interface was referenced by `WhoiceAPIResponse`'s JSON-Schema
@@ -177,6 +202,9 @@ export interface DNSInfo {
   cname?: string;
   mx?: DNSMX[];
   ns?: string[];
+  registryNs?: string[];
+  nsMismatch?: boolean;
+  resolvers?: DNSResolverInfo[];
   elapsedMs?: number;
 }
 /**
@@ -187,6 +215,9 @@ export interface DNSAddress {
   ip: string;
   version: 'ipv4' | 'ipv6';
   reverse?: string;
+  source?: 'udp' | 'doh' | 'system';
+  resolver?: string;
+  endpoint?: string;
 }
 /**
  * This interface was referenced by `WhoiceAPIResponse`'s JSON-Schema
@@ -195,6 +226,17 @@ export interface DNSAddress {
 export interface DNSMX {
   host: string;
   pref: number;
+}
+/**
+ * This interface was referenced by `WhoiceAPIResponse`'s JSON-Schema
+ * via the `definition` "DNSResolverInfo".
+ */
+export interface DNSResolverInfo {
+  source: 'udp' | 'doh' | 'system';
+  resolver: string;
+  endpoint?: string;
+  status?: 'ok' | 'empty' | 'error';
+  error?: string;
 }
 /**
  * This interface was referenced by `WhoiceAPIResponse`'s JSON-Schema
@@ -245,6 +287,7 @@ export interface ResultMeta {
   warnings?: string[];
   traceId?: string;
   providers?: ProviderTrace[];
+  ai?: AITrace;
 }
 /**
  * This interface was referenced by `WhoiceAPIResponse`'s JSON-Schema
@@ -252,13 +295,27 @@ export interface ResultMeta {
  */
 export interface ProviderTrace {
   source: 'rdap' | 'whois' | 'whoisWeb';
-  status: 'ok' | 'error';
+  status: 'ok' | 'error' | 'skipped';
   server?: string;
   query?: string;
   statusCode?: number;
   contentType?: string;
   bytes?: number;
   elapsedMs: number;
+  error?: string;
+}
+/**
+ * This interface was referenced by `WhoiceAPIResponse`'s JSON-Schema
+ * via the `definition` "AITrace".
+ */
+export interface AITrace {
+  provider?: string;
+  model?: string;
+  status: string;
+  cached?: boolean;
+  elapsedMs?: number;
+  attempts?: number;
+  applied?: string[];
   error?: string;
 }
 /**
@@ -281,7 +338,49 @@ export interface Capabilities {
   customServers: boolean;
   auth: string;
   rateLimit: boolean;
+  icpAutoQuery: boolean;
   enrichment: {
     [k: string]: boolean;
   };
+}
+/**
+ * This interface was referenced by `WhoiceAPIResponse`'s JSON-Schema
+ * via the `definition` "ICPResponse".
+ */
+export interface ICPResponse {
+  ok: boolean;
+  result?: ICPResult;
+  error?: APIError;
+  meta?: ResultMeta;
+}
+/**
+ * This interface was referenced by `WhoiceAPIResponse`'s JSON-Schema
+ * via the `definition` "ICPResult".
+ */
+export interface ICPResult {
+  domain: string;
+  status: 'found' | 'not_found' | 'error';
+  records?: ICPRecord[];
+  source?: string;
+  cached: boolean;
+  cachedAt?: string;
+  expiresAt?: string;
+  elapsedMs?: number;
+  message?: string;
+}
+/**
+ * This interface was referenced by `WhoiceAPIResponse`'s JSON-Schema
+ * via the `definition` "ICPRecord".
+ */
+export interface ICPRecord {
+  domain?: string;
+  domainId?: number;
+  unitName?: string;
+  natureName?: string;
+  mainLicence?: string;
+  serviceLicence?: string;
+  serviceName?: string;
+  contentTypeName?: string;
+  limitAccess?: string;
+  updateRecordTime?: string;
 }

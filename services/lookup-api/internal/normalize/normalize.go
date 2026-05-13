@@ -39,6 +39,10 @@ func New(dataDir ...string) Normalizer {
 }
 
 func (n Normalizer) Normalize(input string) (*model.NormalizedQuery, error) {
+	return n.NormalizeWithOptions(input, model.LookupOptions{})
+}
+
+func (n Normalizer) NormalizeWithOptions(input string, opts model.LookupOptions) (*model.NormalizedQuery, error) {
 	original := input
 	input = CleanUserInput(input)
 	if input == "" {
@@ -108,6 +112,9 @@ func (n Normalizer) Normalize(input string) (*model.NormalizedQuery, error) {
 	if overlaySuffix, ok := n.suffixRules.PublicSuffix(ascii); ok && (n.suffixRules.IsAuthoritative() || publicsuffixes.MoreSpecific(overlaySuffix, suffix)) {
 		suffix = overlaySuffix
 		registeredDomain = publicsuffixes.EffectiveTLDPlusOne(ascii, suffix)
+	}
+	if opts.ExactDomain {
+		registeredDomain = ascii
 	}
 
 	return &model.NormalizedQuery{

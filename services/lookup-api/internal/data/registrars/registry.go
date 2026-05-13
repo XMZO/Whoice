@@ -1,6 +1,7 @@
 package registrars
 
 import (
+	"bytes"
 	"encoding/csv"
 	"fmt"
 	"io"
@@ -24,7 +25,7 @@ type Registry struct {
 }
 
 func NewRegistryFromReader(reader io.Reader) (*Registry, error) {
-	csvReader := csv.NewReader(reader)
+	csvReader := csv.NewReader(stripUTF8BOM(reader))
 	csvReader.FieldsPerRecord = -1
 
 	rows, err := csvReader.ReadAll()
@@ -63,6 +64,14 @@ func NewRegistryFromReader(reader io.Reader) (*Registry, error) {
 		}
 	}
 	return registry, nil
+}
+
+func stripUTF8BOM(reader io.Reader) io.Reader {
+	body, err := io.ReadAll(reader)
+	if err != nil {
+		return reader
+	}
+	return bytes.NewReader(bytes.TrimPrefix(body, []byte{0xef, 0xbb, 0xbf}))
 }
 
 func NewFileRegistry(dataDir string) (*Registry, error) {

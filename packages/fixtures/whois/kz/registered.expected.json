@@ -1,0 +1,14 @@
+{
+  "status": "registered",
+  "domainName": "example.kz",
+  "statuses": ["ok"],
+  "nameservers": ["ns1.example.kz", "ns2.example.kz"],
+  "registrantName": "Example LLP",
+  "registrantOrganization": "Example LLP",
+  "registrantCountry": "KZ",
+  "registrantExtra": [
+    "IP Address=203.0.113.20",
+    "Server=web01.example.kz",
+    "Hosting Provider=Example Hosting KZ"
+  ]
+}

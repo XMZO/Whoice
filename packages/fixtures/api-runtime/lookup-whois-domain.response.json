@@ -1,0 +1,98 @@
+{
+  "meta": {
+    "elapsedMs": 0,
+    "providers": [
+      {
+        "bytes": 318,
+        "contentType": "text/plain; charset=utf-8",
+        "elapsedMs": 11,
+        "query": "example.net",
+        "server": "whois.example.test",
+        "source": "whois",
+        "status": "ok",
+        "statusCode": 200
+      }
+    ],
+    "traceId": "runtime-schema-whois-domain"
+  },
+  "ok": true,
+  "result": {
+    "dates": {},
+    "dnssec": {
+      "text": "signedDelegation"
+    },
+    "domain": {
+      "name": "EXAMPLE.NET",
+      "punycodeName": "EXAMPLE.NET",
+      "registered": true,
+      "registeredDomain": "example.net",
+      "reserved": false,
+      "suffix": "net",
+      "unicodeName": "example.net"
+    },
+    "enrichment": {},
+    "meta": {
+      "elapsedMs": 0,
+      "providers": [
+        {
+          "bytes": 318,
+          "contentType": "text/plain; charset=utf-8",
+          "elapsedMs": 11,
+          "query": "example.net",
+          "server": "whois.example.test",
+          "source": "whois",
+          "status": "ok",
+          "statusCode": 200
+        }
+      ],
+      "traceId": "runtime-schema-whois-domain"
+    },
+    "nameservers": [
+      {
+        "host": "ns1.example.net"
+      },
+      {
+        "host": "ns2.example.net"
+      }
+    ],
+    "network": {},
+    "normalizedQuery": "example.net",
+    "query": "example.net",
+    "raw": {
+      "whois": "Domain Name: EXAMPLE.NET\nRegistrar: Example Registrar, Inc.\nRegistrar IANA ID: 9999\nRegistrar URL: https://registrar.example/\nDomain Status: clientTransferProhibited https://icann.org/epp#clientTransferProhibited\nName Server: NS1.EXAMPLE.NET\nName Server: NS2.EXAMPLE.NET\nDNSSEC: signedDelegation\nRegistrant Country: US"
+    },
+    "registrant": {
+      "country": "US",
+      "fieldSources": {
+        "country": [
+          {
+            "label": "country",
+            "source": "whois",
+            "value": "US"
+          }
+        ]
+      }
+    },
+    "registrar": {
+      "ianaId": "9999",
+      "name": "Example Registrar, Inc.",
+      "url": "https://registrar.example/"
+    },
+    "registry": {},
+    "source": {
+      "primary": "whois",
+      "used": [
+        "whois"
+      ]
+    },
+    "status": "registered",
+    "statuses": [
+      {
+        "code": "clientTransferProhibited",
+        "label": "clientTransferProhibited",
+        "source": "whois"
+      }
+    ],
+    "type": "domain"
+  }
+}

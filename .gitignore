@@ -7,12 +7,12 @@ playwright-report/
 test-results/
 .env
 .env.*
-!.env.example
 *.log
 *.tmp
 *.tsbuildinfo
 *.exe
 *.test
 bin/
+data/
 
 /unofficial

@@ -53,3 +53,21 @@ func TestSingleflightCoalescesConcurrentCalls(t *testing.T) {
 		}
 	}
 }
+
+func TestCloneResultKeepsEmptyCollectionsNonNil(t *testing.T) {
+	result := cloneResult(&model.LookupResult{
+		Source:      model.SourceInfo{Used: []model.SourceName{}},
+		Statuses:    []model.DomainStatus{},
+		Nameservers: []model.Nameserver{},
+	})
+
+	if result.Source.Used == nil {
+		t.Fatal("source.used should stay an empty slice, not nil")
+	}
+	if result.Statuses == nil {
+		t.Fatal("statuses should stay an empty slice, not nil")
+	}
+	if result.Nameservers == nil {
+		t.Fatal("nameservers should stay an empty slice, not nil")
+	}
+}

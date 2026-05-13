@@ -5,6 +5,8 @@ on:
     tags:
       - "v*.*.*"
       - "*alpha"
+      - "v*beta"
+      - "*beta"
   workflow_dispatch:
     inputs:
       image_tag:

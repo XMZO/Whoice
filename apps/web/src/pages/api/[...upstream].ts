@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getServerAPIBase } from "@/lib/serverApi";
 
-const ALLOWED_PATHS = new Set(["health", "version", "capabilities", "metrics"]);
+const ALLOWED_PATHS = new Set(["health", "version", "capabilities", "metrics", "icp"]);
 
 const HOP_BY_HOP_HEADERS = new Set([
   "connection",

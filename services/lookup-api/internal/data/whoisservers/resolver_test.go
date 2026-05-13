@@ -59,6 +59,7 @@ func TestResolveUsesPublicSuffixSecondLevelServers(t *testing.T) {
 		"xxx.pp.ua":   "whois.pp.ua",
 		"xxx.eu.org":  "whois.eu.org",
 		"xxx.qzz.io":  "whois.digitalplat.org",
+		"xxx.edu.kg":  "whois.kg",
 		"xxx.de5.net": "whois.dnshe.com",
 		"xxx.cc.cd":   "whois.dnshe.com",
 		"xxx.us.ci":   "whois.dnshe.com",
@@ -161,5 +162,74 @@ func TestResolveExpandedCCTLDs(t *testing.T) {
 		if server.Host != wantHost {
 			t.Fatalf("%s: got %q want %q", suffix, server.Host, wantHost)
 		}
+	}
+}
+
+func TestResolveServerSpecificQueryTemplates(t *testing.T) {
+	tests := []struct {
+		name      string
+		query     model.NormalizedQuery
+		wantHost  string
+		wantQuery string
+	}{
+		{
+			name:      "verisign-exact-domain",
+			query:     domainQuery("example.com", "com"),
+			wantHost:  "whois.verisign-grs.com",
+			wantQuery: "=example.com",
+		},
+		{
+			name:      "denic-domain-mode",
+			query:     domainQuery("example.de", "de"),
+			wantHost:  "whois.denic.de",
+			wantQuery: "-T dn example.de",
+		},
+		{
+			name:      "jprs-english-output",
+			query:     domainQuery("example.jp", "jp"),
+			wantHost:  "whois.jprs.jp",
+			wantQuery: "example.jp/e",
+		},
+		{
+			name:      "punktum-show-handles",
+			query:     domainQuery("example.dk", "dk"),
+			wantHost:  "whois.punktum.dk",
+			wantQuery: "--show-handles example.dk",
+		},
+		{
+			name: "asn-normalizes-query",
+			query: model.NormalizedQuery{
+				Type:  model.QueryASN,
+				Query: "AS15169",
+				ASN:   15169,
+			},
+			wantHost:  "whois.iana.org",
+			wantQuery: "AS15169",
+		},
+	}
+
+	resolver := NewResolver()
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			server, query, err := resolver.Resolve(tc.query, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if server.Host != tc.wantHost {
+				t.Fatalf("host: got %q want %q", server.Host, tc.wantHost)
+			}
+			if query != tc.wantQuery {
+				t.Fatalf("query: got %q want %q", query, tc.wantQuery)
+			}
+		})
+	}
+}
+
+func domainQuery(query, suffix string) model.NormalizedQuery {
+	return model.NormalizedQuery{
+		Type:             model.QueryDomain,
+		Query:            query,
+		Suffix:           suffix,
+		RegisteredDomain: query,
 	}
 }

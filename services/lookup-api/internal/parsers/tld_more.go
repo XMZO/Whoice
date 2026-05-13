@@ -68,6 +68,7 @@ func (CNWHOISParser) Parse(ctx context.Context, raw model.RawResponse, q model.N
 	fields := parseKeyValues(raw.Body)
 	partial.Dates.CreatedAt = firstValue(fields, "registration time")
 	partial.Dates.ExpiresAt = firstValue(fields, "expiration time")
+	partial.Registrant.Email = pickString(partial.Registrant.Email, firstValue(fields, "registrant contact email", "registrant email", "email"))
 	partial.Dates.CreatedAt = normalizeCNDate(partial.Dates.CreatedAt)
 	partial.Dates.ExpiresAt = normalizeCNDate(partial.Dates.ExpiresAt)
 	partial.Dates.UpdatedAt = normalizeCNDate(partial.Dates.UpdatedAt)
