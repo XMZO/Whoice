@@ -16,27 +16,15 @@ import (
 var snapshotFS embed.FS
 
 type Registry struct {
-	pricing map[string]model.PricingInfo
-	moz     map[string]model.MozInfo
+	moz map[string]model.MozInfo
 }
 
 func NewDefaultRegistry(dataDir string) *Registry {
 	registry := &Registry{
-		pricing: map[string]model.PricingInfo{},
-		moz:     map[string]model.MozInfo{},
+		moz: map[string]model.MozInfo{},
 	}
-	_ = registry.loadPricing(readSnapshot("pricing.json"))
 	_ = registry.loadMoz(readSnapshot("moz.json"))
 	if dataDir != "" {
-		for _, path := range []string{
-			filepath.Join(dataDir, "enrichment", "pricing.json"),
-			filepath.Join(dataDir, "pricing.json"),
-		} {
-			if body, err := os.ReadFile(path); err == nil {
-				_ = registry.loadPricing(body, true)
-				break
-			}
-		}
 		for _, path := range []string{
 			filepath.Join(dataDir, "enrichment", "moz.json"),
 			filepath.Join(dataDir, "moz.json"),
@@ -48,14 +36,6 @@ func NewDefaultRegistry(dataDir string) *Registry {
 		}
 	}
 	return registry
-}
-
-func (r *Registry) PricingForSuffix(suffix string) (model.PricingInfo, bool) {
-	if r == nil {
-		return model.PricingInfo{}, false
-	}
-	value, ok := r.pricing[normalizeKey(suffix)]
-	return value, ok
 }
 
 func (r *Registry) MozForDomain(domain string) (model.MozInfo, bool) {
@@ -82,37 +62,6 @@ func readSnapshot(name string) []byte {
 		return nil
 	}
 	return body
-}
-
-func (r *Registry) loadPricing(body []byte, replace ...bool) error {
-	if len(body) == 0 {
-		return nil
-	}
-	var file struct {
-		Currency string                       `json:"currency"`
-		Source   string                       `json:"source"`
-		TLDs     map[string]model.PricingInfo `json:"tlds"`
-	}
-	if err := json.Unmarshal(body, &file); err != nil {
-		return fmt.Errorf("parse pricing data: %w", err)
-	}
-	if len(replace) > 0 && replace[0] {
-		r.pricing = map[string]model.PricingInfo{}
-	}
-	for suffix, value := range file.TLDs {
-		key := normalizeKey(suffix)
-		if key == "" {
-			continue
-		}
-		if value.Currency == "" {
-			value.Currency = file.Currency
-		}
-		if value.Source == "" {
-			value.Source = file.Source
-		}
-		r.pricing[key] = value
-	}
-	return nil
 }
 
 func (r *Registry) loadMoz(body []byte, replace ...bool) error {

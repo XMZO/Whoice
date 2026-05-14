@@ -611,9 +611,19 @@ func (KZWHOISParser) Parse(ctx context.Context, raw model.RawResponse, q model.N
 	partial.Registrant.Name = pickString(partial.Registrant.Name, firstValue(fields, "name", "person", "owner"))
 	partial.Registrant.Organization = pickString(partial.Registrant.Organization, firstValue(fields, "organization", "organization name", "organization using domain name", "org"))
 	partial.Registrant.Country = pickString(partial.Registrant.Country, firstValue(fields, "country", "registrant country"))
+	partial.Registrant.Province = pickString(partial.Registrant.Province, firstValue(fields, "state", "state/province", "province"))
+	partial.Registrant.City = pickString(partial.Registrant.City, firstValue(fields, "city"))
+	partial.Registrant.Address = pickString(partial.Registrant.Address, firstValue(fields, "street address", "address"))
+	partial.Registrant.PostalCode = pickString(partial.Registrant.PostalCode, firstValue(fields, "postal code", "zip code", "zip"))
 	partial.Registrant.Email = pickString(partial.Registrant.Email, firstValue(fields, "e-mail", "email", "email address", "registrant email"))
 	partial.Registrant.Phone = pickString(partial.Registrant.Phone, firstValue(fields, "phone", "phone number", "registrant phone"))
-	if nameservers := nameserversFromValues(valuesFor(fields, "primary server", "secondary server", "name server", "nameserver", "nserver")); len(nameservers) > 0 {
+	partial.Registrar.Name = pickString(partial.Registrar.Name, firstValue(fields, "current registar", "current registrar", "registar", "registrar"))
+	partial.Dates.CreatedAt = pickString(partial.Dates.CreatedAt, firstValue(fields, "domain created", "created"))
+	partial.Dates.UpdatedAt = pickString(partial.Dates.UpdatedAt, firstValue(fields, "last modified", "modified"))
+	if statuses := statusesFromValues(blockUntilNextField(raw.Body, "domain status"), raw.Source); len(statuses) > 0 {
+		partial.Statuses = statuses
+	}
+	if nameservers := kzNameservers(fields); len(nameservers) > 0 {
 		partial.Nameservers = nameservers
 	}
 	partial.Registrant.Extra = appendRegistrationExtras(partial.Registrant.Extra, fields, []registrationExtraSpec{
@@ -782,6 +792,64 @@ func nameserversFromValues(values []string) []model.Nameserver {
 		}
 	}
 	return out
+}
+
+func kzNameservers(fields map[string][]string) []model.Nameserver {
+	nameservers := nameserversFromValues(valuesFor(fields, "primary server", "secondary server", "name server", "nameserver", "nserver"))
+	pairs := []struct {
+		hostKeys []string
+		ipKeys   []string
+	}{
+		{hostKeys: []string{"primary server"}, ipKeys: []string{"primary ip address", "primary ip-address", "primary ip"}},
+		{hostKeys: []string{"secondary server"}, ipKeys: []string{"secondary ip address", "secondary ip-address", "secondary ip"}},
+	}
+	for _, pair := range pairs {
+		hosts := valuesFor(fields, pair.hostKeys...)
+		ips := valuesFor(fields, pair.ipKeys...)
+		for index, hostValue := range hosts {
+			host := strings.ToLower(strings.TrimSuffix(firstToken(hostValue), "."))
+			if host == "" || !strings.Contains(host, ".") {
+				continue
+			}
+			var ip string
+			if index < len(ips) {
+				ip = firstToken(ips[index])
+			}
+			nameservers = appendNameserverAddress(nameservers, host, ip)
+		}
+	}
+	return nameservers
+}
+
+func appendNameserverAddress(values []model.Nameserver, host, address string) []model.Nameserver {
+	host = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(host), "."))
+	address = strings.TrimSpace(address)
+	if host == "" {
+		return values
+	}
+	for i := range values {
+		if values[i].Host != host {
+			continue
+		}
+		if address != "" && !stringSliceContains(values[i].Addresses, address) {
+			values[i].Addresses = append(values[i].Addresses, address)
+		}
+		return values
+	}
+	ns := model.Nameserver{Host: host}
+	if address != "" {
+		ns.Addresses = []string{address}
+	}
+	return append(values, ns)
+}
+
+func stringSliceContains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 type registrationExtraSpec struct {

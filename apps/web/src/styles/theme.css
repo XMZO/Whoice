@@ -1,0 +1,139 @@
+/*
+  Whoice theme contract.
+
+  Third-party themes should override these variables after this file is loaded.
+  Layout CSS should consume variables from here instead of hard-coding colors,
+  font stacks, radii, or common shadows.
+*/
+:root {
+  color-scheme: light;
+
+  --bg: #f7f7f8;
+  --panel: #ffffff;
+  --panel-subtle: #f1f5f9;
+  --border: #dfe3ea;
+  --text: #111827;
+  --muted: #64748b;
+  --link: #075985;
+  --brand: #111827;
+  --brand-swatch: var(--link);
+
+  --green: #15803d;
+  --green-bg: #dcfce7;
+  --blue: #0369a1;
+  --blue-bg: #e0f2fe;
+  --amber: #92400e;
+  --amber-bg: #fef3c7;
+  --red: #b91c1c;
+  --red-bg: #fee2e2;
+
+  --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+  --radius-panel: 8px;
+  --radius-control: 6px;
+  --radius-chip: 6px;
+  --radius-pill: 999px;
+  --shadow-control: 0 1px 2px rgb(15 23 42 / 0.08);
+  --shadow-menu: 0 18px 40px rgb(15 23 42 / 0.12);
+  --shadow-popover: 0 18px 40px rgb(15 23 42 / 0.14);
+  --focus-ring: var(--link);
+  --raw-bg: #050505;
+  --raw-text: #e5e7eb;
+
+  --resolver-error-bg: #f8fafc;
+  --resolver-error-border: #cbd5e1;
+  --resolver-error-text: #64748b;
+  --resolver-cf-bg: #fff7ed;
+  --resolver-cf-border: #fed7aa;
+  --resolver-cf-text: #c2410c;
+  --resolver-google-bg: #eff6ff;
+  --resolver-google-border: #bfdbfe;
+  --resolver-google-text: #1d4ed8;
+  --resolver-tencent-bg: #eef2ff;
+  --resolver-tencent-border: #c7d2fe;
+  --resolver-tencent-text: #4338ca;
+  --resolver-ali-bg: #fff1f2;
+  --resolver-ali-border: #fecdd3;
+  --resolver-ali-text: #be123c;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #09090b;
+    --panel: #111113;
+    --panel-subtle: #18181b;
+    --border: #27272a;
+    --text: #f4f4f5;
+    --muted: #a1a1aa;
+    --link: #7dd3fc;
+    --brand: #fafafa;
+    --green: #86efac;
+    --green-bg: #052e16;
+    --blue: #7dd3fc;
+    --blue-bg: #082f49;
+    --amber: #fcd34d;
+    --amber-bg: #451a03;
+    --red: #fca5a5;
+    --red-bg: #450a0a;
+    --shadow-control: 0 1px 2px rgb(0 0 0 / 0.28);
+    --shadow-menu: 0 18px 40px rgb(0 0 0 / 0.35);
+    --shadow-popover: 0 18px 40px rgb(0 0 0 / 0.4);
+    --resolver-error-bg: #18181b;
+    --resolver-error-border: #3f3f46;
+    --resolver-error-text: #a1a1aa;
+  }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f7f7f8;
+  --panel: #ffffff;
+  --panel-subtle: #f1f5f9;
+  --border: #dfe3ea;
+  --text: #111827;
+  --muted: #64748b;
+  --link: #075985;
+  --brand: #111827;
+  --green: #15803d;
+  --green-bg: #dcfce7;
+  --blue: #0369a1;
+  --blue-bg: #e0f2fe;
+  --amber: #92400e;
+  --amber-bg: #fef3c7;
+  --red: #b91c1c;
+  --red-bg: #fee2e2;
+  --shadow-control: 0 1px 2px rgb(15 23 42 / 0.08);
+  --shadow-menu: 0 18px 40px rgb(15 23 42 / 0.12);
+  --shadow-popover: 0 18px 40px rgb(15 23 42 / 0.14);
+  --resolver-error-bg: #f8fafc;
+  --resolver-error-border: #cbd5e1;
+  --resolver-error-text: #64748b;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #09090b;
+  --panel: #111113;
+  --panel-subtle: #18181b;
+  --border: #27272a;
+  --text: #f4f4f5;
+  --muted: #a1a1aa;
+  --link: #7dd3fc;
+  --brand: #fafafa;
+  --green: #86efac;
+  --green-bg: #052e16;
+  --blue: #7dd3fc;
+  --blue-bg: #082f49;
+  --amber: #fcd34d;
+  --amber-bg: #451a03;
+  --red: #fca5a5;
+  --red-bg: #450a0a;
+  --shadow-control: 0 1px 2px rgb(0 0 0 / 0.28);
+  --shadow-menu: 0 18px 40px rgb(0 0 0 / 0.35);
+  --shadow-popover: 0 18px 40px rgb(0 0 0 / 0.4);
+  --resolver-error-bg: #18181b;
+  --resolver-error-border: #3f3f46;
+  --resolver-error-text: #a1a1aa;
+}

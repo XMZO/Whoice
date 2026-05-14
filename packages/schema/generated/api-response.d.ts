@@ -11,6 +11,7 @@ export interface WhoiceAPIResponse {
   error?: APIError;
   capabilities?: Capabilities;
   meta?: ResultMeta;
+  config?: ConfigStatus;
 }
 /**
  * This interface was referenced by `WhoiceAPIResponse`'s JSON-Schema
@@ -137,6 +138,7 @@ export interface DomainStatus {
  */
 export interface Nameserver {
   host: string;
+  addresses?: string[];
   brand?: Brand;
 }
 /**
@@ -257,6 +259,21 @@ export interface PricingInfo {
   provider?: string;
   source?: string;
   updatedAt?: string;
+  registerOffer?: PricingOffer;
+  renewOffer?: PricingOffer;
+  transferOffer?: PricingOffer;
+}
+/**
+ * This interface was referenced by `WhoiceAPIResponse`'s JSON-Schema
+ * via the `definition` "PricingOffer".
+ */
+export interface PricingOffer {
+  registrar?: string;
+  website?: string;
+  logo?: string;
+  price?: number;
+  currency?: string;
+  priceCny?: number;
 }
 /**
  * This interface was referenced by `WhoiceAPIResponse`'s JSON-Schema
@@ -286,6 +303,7 @@ export interface ResultMeta {
   elapsedMs: number;
   warnings?: string[];
   traceId?: string;
+  pendingEnrichments?: string[];
   providers?: ProviderTrace[];
   ai?: AITrace;
 }
@@ -316,6 +334,7 @@ export interface AITrace {
   elapsedMs?: number;
   attempts?: number;
   applied?: string[];
+  reason?: string;
   error?: string;
 }
 /**
@@ -332,6 +351,11 @@ export interface APIError {
  * via the `definition` "Capabilities".
  */
 export interface Capabilities {
+  api: boolean;
+  apiEndpoints: {
+    [k: string]: boolean;
+  };
+  apiIpAllowlist: boolean;
   rdap: boolean;
   whois: boolean;
   whoisWeb: boolean;
@@ -345,6 +369,21 @@ export interface Capabilities {
 }
 /**
  * This interface was referenced by `WhoiceAPIResponse`'s JSON-Schema
+ * via the `definition` "ConfigStatus".
+ */
+export interface ConfigStatus {
+  status: string;
+  path?: string;
+  loadedAt?: string;
+  lastCheckedAt?: string;
+  lastAttemptAt?: string;
+  lastErrorAt?: string;
+  lastError?: string;
+  rolledBack?: boolean;
+  usingLoadedAt?: string;
+}
+/**
+ * This interface was referenced by `WhoiceAPIResponse`'s JSON-Schema
  * via the `definition` "ICPResponse".
  */
 export interface ICPResponse {
@@ -352,6 +391,7 @@ export interface ICPResponse {
   result?: ICPResult;
   error?: APIError;
   meta?: ResultMeta;
+  config?: ConfigStatus;
 }
 /**
  * This interface was referenced by `WhoiceAPIResponse`'s JSON-Schema
@@ -383,4 +423,18 @@ export interface ICPRecord {
   contentTypeName?: string;
   limitAccess?: string;
   updateRecordTime?: string;
+}
+/**
+ * This interface was referenced by `WhoiceAPIResponse`'s JSON-Schema
+ * via the `definition` "ConfigEditorStatus".
+ */
+export interface ConfigEditorStatus {
+  status: string;
+  path?: string;
+  format: string;
+  writable: boolean;
+  sourceReadable: boolean;
+  surfaces: string[];
+  supportedOperations: string[];
+  reason?: string;
 }

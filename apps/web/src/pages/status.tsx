@@ -1,9 +1,10 @@
 import Head from "next/head";
 import Link from "next/link";
 import type { GetServerSideProps } from "next";
+import { useEffect, useState } from "react";
 import { AppControls } from "@/components/AppControls";
 import { getServerAPIBase } from "@/lib/serverApi";
-import type { APIResponse } from "@/lib/types";
+import type { APIResponse, ConfigStatus } from "@/lib/types";
 import { useI18n } from "@/lib/i18n";
 
 type Capabilities = NonNullable<APIResponse["capabilities"]>;
@@ -12,6 +13,7 @@ type HealthResponse = {
   ok?: boolean;
   version?: string;
   time?: string;
+  config?: ConfigStatus;
 };
 
 type PluginInfo = {
@@ -26,6 +28,7 @@ type VersionResponse = {
   data?: Record<string, string>;
   capabilities?: Capabilities;
   plugins?: PluginInfo[];
+  config?: ConfigStatus;
 };
 
 type FetchState<T> = {
@@ -150,11 +153,75 @@ function PluginList({ plugins }: { plugins?: PluginInfo[] }) {
   );
 }
 
+function ConfigNotice({ config }: { config?: ConfigStatus }) {
+  if (!config) return null;
+  if (config.status !== "error") {
+    return (
+      <section className="panel config-panel">
+        <div className="panel-head">
+          <h2>Configuration</h2>
+          <StatusPill ok>hot reload ok</StatusPill>
+        </div>
+        <div className="config-facts">
+          {config.path && <span><strong>File</strong>{config.path}</span>}
+          {config.loadedAt && <span><strong>Loaded</strong>{config.loadedAt}</span>}
+          {config.lastCheckedAt && <span><strong>Checked</strong>{config.lastCheckedAt}</span>}
+        </div>
+      </section>
+    );
+  }
+  return (
+    <section className="panel warning-panel config-panel">
+      <div className="panel-head">
+        <h2>Configuration</h2>
+        <StatusPill ok={false}>rolled back</StatusPill>
+      </div>
+      <p>
+        The current config file has an error. Whoice is temporarily using the last valid runtime config loaded at{" "}
+        {config.usingLoadedAt || config.loadedAt || "an earlier time"}.
+      </p>
+      <div className="config-facts">
+        {config.path && <span><strong>File</strong>{config.path}</span>}
+        {config.lastErrorAt && <span><strong>Error time</strong>{config.lastErrorAt}</span>}
+        {config.lastError && <span className="config-error"><strong>Error</strong>{config.lastError}</span>}
+      </div>
+    </section>
+  );
+}
+
 export default function StatusPage({ health, version, capabilities }: Props) {
   const { t } = useI18n();
-  const apiCaps = version.data?.capabilities || capabilities.data?.capabilities;
-  const healthOK = health.ok && Boolean(health.data?.ok);
-  const apiVersion = version.data?.version || health.data?.version || "unknown";
+  const [liveVersion, setLiveVersion] = useState(version);
+  const apiCaps = liveVersion.data?.capabilities || capabilities.data?.capabilities;
+  const configStatus = liveVersion.data?.config || health.data?.config || capabilities.data?.config;
+  const configOK = configStatus?.status !== "error";
+  const apiReachable = health.ok && Boolean(health.data?.ok);
+  const healthOK = apiReachable && configOK;
+  const apiVersion = liveVersion.data?.version || health.data?.version || "unknown";
+
+  useEffect(() => {
+    let active = true;
+    const refresh = async () => {
+      try {
+        const response = await fetch("/api/version", { headers: { accept: "application/json" }, cache: "no-store" });
+        const data = (await response.json()) as VersionResponse;
+        if (active) setLiveVersion({ ok: response.ok, status: response.status, data });
+      } catch (error) {
+        if (active) {
+          setLiveVersion({
+            ok: false,
+            status: 502,
+            error: error instanceof Error ? error.message : "Lookup API is unreachable.",
+          });
+        }
+      }
+    };
+    const timer = window.setInterval(refresh, 3000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   return (
     <>
@@ -183,13 +250,15 @@ export default function StatusPage({ health, version, capabilities }: Props) {
           </div>
         </section>
 
-        {!healthOK && (
+        {!apiReachable && (
           <section className="panel error-panel">
             <p className="eyebrow">API</p>
             <h1>Lookup API is not healthy</h1>
             <p className="muted">{health.error || `HTTP ${health.status}`}</p>
           </section>
         )}
+
+        <ConfigNotice config={configStatus} />
 
         <section className="panel">
           <div className="panel-head">
@@ -202,7 +271,7 @@ export default function StatusPage({ health, version, capabilities }: Props) {
           <div className="panel-head">
             <h2>Plugins</h2>
           </div>
-          <PluginList plugins={version.data?.plugins} />
+          <PluginList plugins={liveVersion.data?.plugins} />
         </section>
 
         <section className="panel">

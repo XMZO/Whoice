@@ -1,20 +1,22 @@
 {
   "name": "whoice",
   "private": true,
-  "version": "0.0.1-beta",
+  "version": "0.0.1",
   "scripts": {
     "dev:api": "go run ./services/lookup-api/cmd/whoice-api",
     "dev:web": "pnpm --dir apps/web dev",
     "build:web": "pnpm --dir apps/web build",
     "generate:schema-types": "json2ts -i packages/schema/json/api-response.schema.json -o packages/schema/generated/api-response.d.ts --style.singleQuote --unreachableDefinitions",
     "test:api": "go test ./services/lookup-api/...",
-    "test:web": "pnpm --dir apps/web typecheck",
+    "test:web": "pnpm --dir apps/web typecheck && node scripts/validate-web-theme.mjs",
     "test:e2e": "playwright test",
     "test:data": "node scripts/validate-data.mjs",
+    "test:pre5": "node scripts/validate-plan-pre5.mjs",
+    "test:phase5": "node scripts/validate-plan-phase5.mjs",
     "test:schema": "node scripts/validate-schema.mjs && pnpm generate:schema-types && tsc -p packages/schema/tsconfig.json --noEmit",
     "update:psl": "sh scripts/update-data/update-public-suffix.sh",
     "build": "pnpm build:web",
-    "test": "pnpm test:api && pnpm test:web && pnpm test:schema && pnpm test:data"
+    "test": "pnpm test:api && pnpm test:web && pnpm test:schema && pnpm test:data && pnpm test:pre5 && pnpm test:phase5"
   },
   "packageManager": "pnpm@10.30.3",
   "devDependencies": {

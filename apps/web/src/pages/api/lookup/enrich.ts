@@ -1,7 +1,13 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getServerAPIBase } from "@/lib/serverApi";
 
-const ALLOWED_PATHS = new Set(["health", "version", "capabilities", "metrics", "icp", "lookup/enrich", "admin/config"]);
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: "8mb",
+    },
+  },
+};
 
 const HOP_BY_HOP_HEADERS = new Set([
   "connection",
@@ -26,43 +32,29 @@ function forwardedFor(req: NextApiRequest) {
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const method = req.method || "GET";
-  const parts = Array.isArray(req.query.upstream) ? req.query.upstream : [];
-  const path = parts.join("/");
-  const reservedConfigEditorWrite = path === "admin/config" && method === "PATCH";
-  const lookupEnrichWrite = path === "lookup/enrich" && method === "POST";
-
-  if (method !== "GET" && !reservedConfigEditorWrite && !lookupEnrichWrite) {
-    res.setHeader("Allow", path === "admin/config" ? "GET, PATCH" : path === "lookup/enrich" ? "POST" : "GET");
+  if (req.method !== "POST") {
+    res.setHeader("Allow", "POST");
     res.status(405).json({ ok: false, error: { code: "method_not_allowed", message: "Method is not allowed." } });
     return;
   }
 
-  if (!ALLOWED_PATHS.has(path)) {
-    res.status(404).json({ ok: false, error: { code: "not_found", message: "API endpoint is not proxied by the web app." } });
-    return;
-  }
-
-  const target = new URL(`/api/${path}`, getServerAPIBase().replace(/\/$/, "") + "/");
-  const query = req.url?.split("?")[1] || "";
-  if (query) target.search = query;
-
+  const target = new URL("/api/lookup/enrich", getServerAPIBase().replace(/\/$/, "") + "/");
   try {
-    const headers: Record<string, string> = { accept: path === "metrics" ? "text/plain" : "application/json" };
+    const headers: Record<string, string> = { accept: "application/json", "content-type": "application/json" };
     for (const name of ["authorization", "cookie", "x-api-key", "x-whoice-password", "x-request-id"]) {
       const value = firstHeader(req.headers[name]);
       if (value) headers[name] = value;
     }
-    const contentType = firstHeader(req.headers["content-type"]);
-    if (contentType && (reservedConfigEditorWrite || lookupEnrichWrite)) headers["content-type"] = contentType;
     const xForwardedFor = forwardedFor(req);
     if (xForwardedFor) headers["x-forwarded-for"] = xForwardedFor;
     if (req.headers.host) headers["x-forwarded-host"] = firstHeader(req.headers.host) || "";
 
-    // Reserved for a future Web config editor. The API currently returns 501,
-    // but the same-origin proxy path is intentionally wired now so a later UI
-    // can add restricted controls or source-file editing without reshaping URLs.
-    const upstream = await fetch(target, { method, headers, body: reservedConfigEditorWrite || lookupEnrichWrite ? JSON.stringify(req.body || {}) : undefined, cache: "no-store" });
+    const upstream = await fetch(target, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req.body || {}),
+      cache: "no-store",
+    });
     upstream.headers.forEach((value, key) => {
       if (!HOP_BY_HOP_HEADERS.has(key.toLowerCase())) {
         res.setHeader(key, value);

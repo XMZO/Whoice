@@ -14,6 +14,7 @@ import (
 	"github.com/xmzo/whoice/services/lookup-api/internal/lookup"
 	"github.com/xmzo/whoice/services/lookup-api/internal/observability"
 	"github.com/xmzo/whoice/services/lookup-api/internal/plugin"
+	runtimecfg "github.com/xmzo/whoice/services/lookup-api/internal/runtime"
 )
 
 func main() {
@@ -41,11 +42,13 @@ func main() {
 	plugin.RegisterDefaults(pluginRegistry, cfg)
 
 	service := lookup.NewService(cfg, pluginRegistry.Providers(), pluginRegistry.ParserRegistry())
+	service.StartBackground(context.Background())
 	stats := observability.NewStats()
-	if _, err := observability.NewReporter(cfg.Reporter, cfg.ReporterWebhookURL, cfg.ReporterTimeout); err != nil {
-		log.Fatalf("invalid observability reporter config: %v", err)
+	server, err := httpapi.NewStrict(cfg, service, pluginRegistry.Plugins(), stats)
+	if err != nil {
+		log.Fatalf("build runtime: %v", err)
 	}
-	server := httpapi.New(cfg, service, pluginRegistry.Plugins(), stats)
+	runtimecfg.StartConfigWatcher(context.Background(), server, runtimecfg.Builder{Addr: cfg.Addr, ConfigPath: cfg.ConfigPath}, runtimecfg.DefaultWatchInterval)
 
 	log.Printf("whoice lookup-api listening on %s", cfg.Addr)
 	if err := http.ListenAndServe(cfg.Addr, server.Handler()); err != nil {
@@ -54,10 +57,23 @@ func main() {
 }
 
 func healthcheck() {
+	if envAddr := strings.TrimSpace(os.Getenv("WHOICE_HEALTHCHECK_ADDR")); envAddr != "" {
+		if checkHealth(envAddr) {
+			return
+		}
+		os.Exit(1)
+	}
 	addr := config.Default().Addr
 	if cfg, err := config.LoadWithError(); err == nil && strings.TrimSpace(cfg.Addr) != "" {
 		addr = cfg.Addr
 	}
+	if checkHealth(addr) {
+		return
+	}
+	os.Exit(1)
+}
+
+func checkHealth(addr string) bool {
 	if strings.HasPrefix(addr, ":") {
 		addr = "127.0.0.1" + addr
 	}
@@ -67,10 +83,8 @@ func healthcheck() {
 	client := http.Client{Timeout: 3 * time.Second}
 	res, err := client.Get(strings.TrimRight(addr, "/") + "/api/health")
 	if err != nil {
-		os.Exit(1)
+		return false
 	}
 	defer res.Body.Close()
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		os.Exit(1)
-	}
+	return res.StatusCode >= 200 && res.StatusCode < 300
 }

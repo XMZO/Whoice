@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
-import type { LookupResult } from "./types";
+import type { LookupResult, PricingOffer } from "./types";
 
 export type ResultPluginSlot = "details" | "debug";
 
@@ -109,15 +109,18 @@ function PricingPanel({ result }: { result: LookupResult }) {
   const pricing = result.enrichment?.pricing;
   if (!pricing) return null;
   const currency = pricing.currency || "USD";
+  const register = pricing.registerOffer ?? fallbackPricingOffer(pricing.register, currency, pricing.provider);
+  const renew = pricing.renewOffer ?? fallbackPricingOffer(pricing.renew, currency, pricing.provider);
+  const transfer = pricing.transferOffer ?? fallbackPricingOffer(pricing.transfer, currency, pricing.provider);
   return (
     <section className="panel">
       <div className="panel-head">
         <h2>Pricing</h2>
       </div>
       <div className="metric-grid">
-        <Metric label="Register" value={formatMoney(pricing.register, currency)} />
-        <Metric label="Renew" value={formatMoney(pricing.renew, currency)} />
-        <Metric label="Transfer" value={formatMoney(pricing.transfer, currency)} />
+        <PricingMetric label="Register" offer={register} fallbackCurrency={currency} />
+        <PricingMetric label="Renew" offer={renew} fallbackCurrency={currency} />
+        <PricingMetric label="Transfer" offer={transfer} fallbackCurrency={currency} />
       </div>
       <dl className="detail-list compact-details">
         <Row label="Provider" value={pricing.provider} />
@@ -126,6 +129,31 @@ function PricingPanel({ result }: { result: LookupResult }) {
       </dl>
     </section>
   );
+}
+
+function PricingMetric({
+  label,
+  offer,
+  fallbackCurrency,
+}: {
+  label: string;
+  offer?: PricingOffer;
+  fallbackCurrency: string;
+}) {
+  const currency = offer?.currency || fallbackCurrency;
+  const price = offer?.price;
+  const value = formatMoney(price, currency);
+  const registrar = offer?.registrar;
+  const secondary = registrar ? (
+    offer?.website ? (
+      <a href={offer.website} target="_blank" rel="noreferrer">
+        {registrar}
+      </a>
+    ) : (
+      registrar
+    )
+  ) : null;
+  return <Metric label={label} value={value} hint={secondary} />;
 }
 
 function MozPanel({ result }: { result: LookupResult }) {
@@ -149,14 +177,28 @@ function MozPanel({ result }: { result: LookupResult }) {
   );
 }
 
-function Metric({ label, value }: { label: string; value?: string | number }) {
+function Metric({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value?: string | number;
+  hint?: React.ReactNode;
+}) {
   if (value === undefined || value === null || value === "") return null;
   return (
     <div className="metric-item">
       <span>{label}</span>
       <strong>{value}</strong>
+      {hint ? <small>{hint}</small> : null}
     </div>
   );
+}
+
+function fallbackPricingOffer(price: number | undefined, currency: string, registrar?: string): PricingOffer | undefined {
+  if (price === undefined || price === null) return undefined;
+  return { price, currency, registrar };
 }
 
 function formatMoney(value: number | undefined, currency: string) {
@@ -168,10 +210,11 @@ function ProviderTracePanel({ result }: { result: LookupResult }) {
   const traces = Array.isArray(result.meta?.providers) ? result.meta.providers : [];
   if (traces.length === 0) return null;
   return (
-    <section className="panel">
-      <div className="panel-head">
+    <details className="panel diagnostic-panel">
+      <summary className="panel-summary">
         <h2>Provider Trace</h2>
-      </div>
+        <span>{traces.length} providers</span>
+      </summary>
       <div className="trace-list">
         {traces.map((trace) => (
           <div className={`trace-item trace-${trace.status}`} key={`${trace.source}-${trace.server || trace.error || trace.elapsedMs}`}>
@@ -189,7 +232,7 @@ function ProviderTracePanel({ result }: { result: LookupResult }) {
           </div>
         ))}
       </div>
-    </section>
+    </details>
   );
 }
 
@@ -242,5 +285,5 @@ export function renderResultPlugins(slot: ResultPluginSlot, result: LookupResult
   return resultPlugins
     .filter((plugin) => plugin.slot === slot && plugin.enabled(result))
     .sort((a, b) => a.order - b.order)
-    .map((plugin) => <div key={plugin.id}>{plugin.render(result)}</div>);
+    .map((plugin) => <div className="plugin-shell" key={plugin.id}>{plugin.render(result)}</div>);
 }

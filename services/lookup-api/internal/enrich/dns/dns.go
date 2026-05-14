@@ -101,8 +101,6 @@ func ApplyWithResolverOptions(ctx context.Context, result *model.LookupResult, o
 		opts.Timeout = 3 * time.Second
 	}
 	start := time.Now()
-	lookupCtx, cancel := context.WithTimeout(ctx, opts.Timeout)
-	defer cancel()
 
 	host := strings.TrimSuffix(result.NormalizedQuery, ".")
 	info := &model.DNSInfo{}
@@ -110,11 +108,16 @@ func ApplyWithResolverOptions(ctx context.Context, result *model.LookupResult, o
 	resolvers := resolversForSampling(resolver)
 
 	var heldFakeAddrs heldFakeIPAddrs
-	for _, sample := range sampleResolvers(lookupCtx, host, resolvers) {
+	udpCtx, cancelUDP := context.WithTimeout(ctx, opts.Timeout)
+	for _, sample := range sampleResolvers(udpCtx, host, resolvers) {
 		recorder.recordResolverSample(sample)
 		mergeResolverSample(info, &heldFakeAddrs, sample, opts.FilterFakeIP)
 	}
-	dohResult := lookupDoHIP(lookupCtx, host, opts.DoHServers)
+	cancelUDP()
+
+	dohCtx, cancelDoH := context.WithTimeout(ctx, opts.Timeout)
+	dohResult := lookupDoHIP(dohCtx, host, opts.DoHServers, opts.Timeout)
+	cancelDoH()
 	if dohResult.Err == nil {
 		heldFakeAddrs.merge(appendIPAddrs(info, dohResult.A, opts.FilterFakeIP))
 		heldFakeAddrs.merge(appendIPAddrs(info, dohResult.AAAA, opts.FilterFakeIP))
@@ -382,15 +385,39 @@ func reconcileHeldFakeIPFamily(result *model.LookupResult, values *[]model.DNSAd
 	if len(held) == 0 {
 		return
 	}
+	warnFakeIPAddrs(result, held, family, len(*values) > 0)
 	if len(*values) > 0 {
-		for _, answer := range held {
-			result.Meta.Warnings = append(result.Meta.Warnings, "DNS enrichment ignored reserved 198.18/15 "+family+" answer "+answer.Addr.IP.String()+" because a non-reserved answer was available")
-		}
 		return
 	}
 	for _, answer := range held {
-		result.Meta.Warnings = append(result.Meta.Warnings, "DNS enrichment kept reserved 198.18/15 "+family+" answer "+answer.Addr.IP.String()+" because no non-reserved replacement was available")
 		appendDNSAddressToFamily(values, answer)
+	}
+}
+
+func warnFakeIPAddrs(result *model.LookupResult, held []IPAnswer, family string, replacementAvailable bool) {
+	counts := map[string]int{}
+	for _, answer := range held {
+		if answer.Addr.IP == nil {
+			continue
+		}
+		counts[answer.Addr.IP.String()]++
+	}
+	ips := make([]string, 0, len(counts))
+	for ip := range counts {
+		ips = append(ips, ip)
+	}
+	sort.Strings(ips)
+	for _, ip := range ips {
+		count := counts[ip]
+		seen := ""
+		if count > 1 {
+			seen = fmt.Sprintf(" seen from %d resolvers; likely local fake-IP/TUN interception", count)
+		}
+		if replacementAvailable {
+			result.Meta.Warnings = append(result.Meta.Warnings, "DNS enrichment ignored reserved 198.18/15 "+family+" answer "+ip+seen+" because a non-reserved answer was available")
+			continue
+		}
+		result.Meta.Warnings = append(result.Meta.Warnings, "DNS enrichment kept reserved 198.18/15 "+family+" answer "+ip+seen+" because no non-reserved replacement was available")
 	}
 }
 
@@ -697,42 +724,104 @@ type dohResponse struct {
 	} `json:"Answer"`
 }
 
-func lookupDoHIP(ctx context.Context, host string, resolvers []string) dohLookupResult {
+type dohResolverResult struct {
+	Index int
+	A     []net.IPAddr
+	AAAA  []net.IPAddr
+	Info  model.DNSResolverInfo
+	Err   error
+}
+
+func lookupDoHIP(ctx context.Context, host string, resolvers []string, timeout time.Duration) dohLookupResult {
 	resolvers = normalizeDoHResolvers(resolvers)
 	if len(resolvers) == 0 {
 		return dohLookupResult{Err: errors.New("no DoH resolvers configured")}
+	}
+	if timeout <= 0 {
+		timeout = 3 * time.Second
 	}
 	var lastErr error
 	var outA []IPAnswer
 	var outAAAA []IPAnswer
 	infos := make([]model.DNSResolverInfo, 0, len(resolvers))
-	for _, resolver := range resolvers {
-		a, errA := queryDoH(ctx, resolver, host, "A")
-		aaaa, errAAAA := queryDoH(ctx, resolver, host, "AAAA")
-		label := dohResolverLabel(resolver)
-		info := model.DNSResolverInfo{
-			Source:   "doh",
-			Resolver: label,
-			Endpoint: resolver,
-			Status:   "empty",
+	results := make(chan dohResolverResult, len(resolvers))
+	var wg sync.WaitGroup
+	for index, resolver := range resolvers {
+		wg.Add(1)
+		go func(index int, resolver string) {
+			defer wg.Done()
+			results <- lookupDoHResolver(ctx, host, resolver, timeout, index)
+		}(index, resolver)
+	}
+	wg.Wait()
+	close(results)
+
+	ordered := make([]dohResolverResult, len(resolvers))
+	for result := range results {
+		ordered[result.Index] = result
+	}
+	for _, result := range ordered {
+		label := result.Info.Resolver
+		resolver := result.Info.Endpoint
+		if result.Err == nil {
+			outA = append(outA, ipAnswersFromDoH(result.A, label, resolver)...)
+			outAAAA = append(outAAAA, ipAnswersFromDoH(result.AAAA, label, resolver)...)
+		} else {
+			lastErr = result.Err
 		}
-		if errA == nil || errAAAA == nil {
-			outA = append(outA, ipAnswersFromDoH(a, label, resolver)...)
-			outAAAA = append(outAAAA, ipAnswersFromDoH(aaaa, label, resolver)...)
-		}
-		if errA != nil && errAAAA != nil {
-			info.Status = "error"
-			info.Error = fmt.Sprintf("A: %v; AAAA: %v", errA, errAAAA)
-			lastErr = fmt.Errorf("%s: %s", resolver, info.Error)
-		} else if len(a) > 0 || len(aaaa) > 0 {
-			info.Status = "ok"
-		}
-		infos = append(infos, info)
+		infos = append(infos, result.Info)
 	}
 	if len(outA) > 0 || len(outAAAA) > 0 {
 		return dohLookupResult{A: outA, AAAA: outAAAA, Resolvers: infos}
 	}
 	return dohLookupResult{Resolvers: infos, Err: lastErr}
+}
+
+func lookupDoHResolver(ctx context.Context, host, resolver string, timeout time.Duration, index int) dohResolverResult {
+	label := dohResolverLabel(resolver)
+	info := model.DNSResolverInfo{
+		Source:   "doh",
+		Resolver: label,
+		Endpoint: resolver,
+		Status:   "empty",
+	}
+	resolverCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	var a []net.IPAddr
+	var aaaa []net.IPAddr
+	var errA error
+	var errAAAA error
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		a, errA = queryDoH(resolverCtx, resolver, host, "A")
+	}()
+	go func() {
+		defer wg.Done()
+		aaaa, errAAAA = queryDoH(resolverCtx, resolver, host, "AAAA")
+	}()
+	wg.Wait()
+
+	result := dohResolverResult{
+		Index: index,
+		A:     a,
+		AAAA:  aaaa,
+		Info:  info,
+	}
+	if errA != nil && errAAAA != nil {
+		info.Status = "error"
+		info.Error = fmt.Sprintf("A: %v; AAAA: %v", errA, errAAAA)
+		result.Info = info
+		result.Err = fmt.Errorf("%s: %s", resolver, info.Error)
+		return result
+	}
+	if len(a) > 0 || len(aaaa) > 0 {
+		info.Status = "ok"
+	}
+	result.Info = info
+	return result
 }
 
 func ipAnswersFromDoH(addrs []net.IPAddr, resolver, endpoint string) []IPAnswer {
@@ -778,7 +867,9 @@ func queryDoHJSON(ctx context.Context, parsed url.URL, host, recordType string) 
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/dns-json")
-	res, err := http.DefaultClient.Do(req)
+	client, cleanup := dohHTTPClient(parsed)
+	defer cleanup()
+	res, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -828,7 +919,9 @@ func queryDoHMessage(ctx context.Context, parsed url.URL, host, recordType strin
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/dns-message")
-	res, err := http.DefaultClient.Do(req)
+	client, cleanup := dohHTTPClient(parsed)
+	defer cleanup()
+	res, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -841,6 +934,58 @@ func queryDoHMessage(ctx context.Context, parsed url.URL, host, recordType strin
 		return nil, err
 	}
 	return parseDNSMessageAddrs(body, recordType)
+}
+
+func dohHTTPClient(parsed url.URL) (*http.Client, func()) {
+	ips := dohBootstrapIPs(parsed.Hostname())
+	if len(ips) == 0 {
+		return http.DefaultClient, func() {}
+	}
+	port := parsed.Port()
+	if port == "" {
+		port = "443"
+	}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	dialer := &net.Dialer{Timeout: 5 * time.Second}
+	transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+		host, dialPort, err := net.SplitHostPort(address)
+		if err != nil || !strings.EqualFold(strings.TrimSuffix(host, "."), strings.TrimSuffix(parsed.Hostname(), ".")) {
+			return dialer.DialContext(ctx, network, address)
+		}
+		if dialPort != "" {
+			port = dialPort
+		}
+		var lastErr error
+		for _, ip := range ips {
+			conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(ip, port))
+			if err == nil {
+				return conn, nil
+			}
+			lastErr = err
+		}
+		if lastErr != nil {
+			return nil, lastErr
+		}
+		return dialer.DialContext(ctx, network, address)
+	}
+	client := &http.Client{Transport: transport}
+	return client, transport.CloseIdleConnections
+}
+
+func dohBootstrapIPs(host string) []string {
+	switch strings.ToLower(strings.TrimSuffix(host, ".")) {
+	case "cloudflare-dns.com":
+		return []string{"1.1.1.1", "1.0.0.1", "2606:4700:4700::1111", "2606:4700:4700::1001"}
+	case "dns.google":
+		return []string{"8.8.8.8", "8.8.4.4", "2001:4860:4860::8888", "2001:4860:4860::8844"}
+	case "doh.pub":
+		return []string{"1.12.12.12", "120.53.53.53"}
+	case "dns.alidns.com":
+		return []string{"223.5.5.5", "223.6.6.6", "2400:3200::1", "2400:3200:baba::1"}
+	default:
+		return nil
+	}
 }
 
 func buildDNSQuery(host, recordType string) (string, error) {

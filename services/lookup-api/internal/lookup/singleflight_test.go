@@ -71,3 +71,55 @@ func TestCloneResultKeepsEmptyCollectionsNonNil(t *testing.T) {
 		t.Fatal("nameservers should stay an empty slice, not nil")
 	}
 }
+
+func TestCloneResultCopiesNameserverAddresses(t *testing.T) {
+	original := &model.LookupResult{
+		Nameservers: []model.Nameserver{
+			{Host: "alice.ns.cloudflare.com", Addresses: []string{"173.245.58.60"}},
+		},
+	}
+
+	clone := cloneResult(original)
+	clone.Nameservers[0].Addresses[0] = "203.0.113.1"
+
+	if original.Nameservers[0].Addresses[0] != "173.245.58.60" {
+		t.Fatalf("clone mutated original nameserver address: %#v", original.Nameservers[0].Addresses)
+	}
+}
+
+func TestCloneResultCopiesPhase4EnrichmentPointers(t *testing.T) {
+	register := 9.99
+	renew := 12.34
+	renewCNY := 83.72
+	original := &model.LookupResult{
+		Enrichment: model.EnrichmentInfo{
+			DNSViz: &model.DNSVizInfo{URL: "https://dnsviz.net/d/example.com/dnssec/"},
+			Pricing: &model.PricingInfo{
+				Register:   &register,
+				Currency:   "USD",
+				RenewOffer: &model.PricingOffer{Price: &renew, PriceCNY: &renewCNY},
+			},
+			Moz: &model.MozInfo{DomainAuthority: 93},
+		},
+	}
+
+	clone := cloneResult(original)
+	clone.Enrichment.DNSViz.URL = "https://changed.example"
+	*clone.Enrichment.Pricing.Register = 1.23
+	*clone.Enrichment.Pricing.RenewOffer.Price = 4.56
+	*clone.Enrichment.Pricing.RenewOffer.PriceCNY = 7.89
+	clone.Enrichment.Moz.DomainAuthority = 1
+
+	if original.Enrichment.DNSViz.URL != "https://dnsviz.net/d/example.com/dnssec/" {
+		t.Fatalf("clone mutated DNSViz: %#v", original.Enrichment.DNSViz)
+	}
+	if *original.Enrichment.Pricing.Register != 9.99 {
+		t.Fatalf("clone mutated pricing: %#v", original.Enrichment.Pricing)
+	}
+	if *original.Enrichment.Pricing.RenewOffer.Price != 12.34 || *original.Enrichment.Pricing.RenewOffer.PriceCNY != 83.72 {
+		t.Fatalf("clone mutated pricing offer: %#v", original.Enrichment.Pricing.RenewOffer)
+	}
+	if original.Enrichment.Moz.DomainAuthority != 93 {
+		t.Fatalf("clone mutated moz: %#v", original.Enrichment.Moz)
+	}
+}

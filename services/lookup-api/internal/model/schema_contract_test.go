@@ -32,6 +32,7 @@ func TestAPIResponseSchemaCoversGoJSONFields(t *testing.T) {
 	assertStructMatchesSchema(t, reflect.TypeOf(DNSMX{}), schema, "DNSMX")
 	assertStructMatchesSchema(t, reflect.TypeOf(DNSVizInfo{}), schema, "DNSVizInfo")
 	assertStructMatchesSchema(t, reflect.TypeOf(PricingInfo{}), schema, "PricingInfo")
+	assertStructMatchesSchema(t, reflect.TypeOf(PricingOffer{}), schema, "PricingOffer")
 	assertStructMatchesSchema(t, reflect.TypeOf(MozInfo{}), schema, "MozInfo")
 	assertStructMatchesSchema(t, reflect.TypeOf(RawData{}), schema, "RawData")
 	assertStructMatchesSchema(t, reflect.TypeOf(ResultMeta{}), schema, "ResultMeta")
@@ -39,6 +40,8 @@ func TestAPIResponseSchemaCoversGoJSONFields(t *testing.T) {
 	assertStructMatchesSchema(t, reflect.TypeOf(ProviderTrace{}), schema, "ProviderTrace")
 	assertStructMatchesSchema(t, reflect.TypeOf(Capabilities{}), schema, "Capabilities")
 	assertStructMatchesSchema(t, reflect.TypeOf(APIError{}), schema, "APIError")
+	assertStructMatchesSchema(t, reflect.TypeOf(ConfigStatus{}), schema, "ConfigStatus")
+	assertStructMatchesSchema(t, reflect.TypeOf(ConfigEditorStatus{}), schema, "ConfigEditorStatus")
 }
 
 func readSchemaDefs(t *testing.T) map[string]any {

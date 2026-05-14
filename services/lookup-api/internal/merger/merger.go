@@ -146,17 +146,37 @@ func mergeStatuses(result *model.LookupResult, part *model.PartialResult) {
 }
 
 func mergeNameservers(result *model.LookupResult, part *model.PartialResult) {
-	seen := map[string]bool{}
-	for _, ns := range result.Nameservers {
-		seen[ns.Host] = true
+	seen := map[string]int{}
+	for i, ns := range result.Nameservers {
+		seen[ns.Host] = i
 	}
 	for _, ns := range part.Nameservers {
-		if ns.Host == "" || seen[ns.Host] {
+		if ns.Host == "" {
+			continue
+		}
+		if index, ok := seen[ns.Host]; ok {
+			result.Nameservers[index].Addresses = appendUniqueStrings(result.Nameservers[index].Addresses, ns.Addresses...)
 			continue
 		}
 		result.Nameservers = append(result.Nameservers, ns)
-		seen[ns.Host] = true
+		seen[ns.Host] = len(result.Nameservers) - 1
 	}
+}
+
+func appendUniqueStrings(values []string, incoming ...string) []string {
+	seen := map[string]bool{}
+	for _, value := range values {
+		seen[value] = true
+	}
+	for _, value := range incoming {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		values = append(values, value)
+		seen[value] = true
+	}
+	return values
 }
 
 func mergeDNSSEC(result *model.LookupResult, part *model.PartialResult) {

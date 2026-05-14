@@ -15,7 +15,7 @@ services:
       # 配置、缓存、可选数据覆盖都保存在本 yml 同级目录。
       - ./data:/data
     healthcheck:
-      test: ["CMD", "/app/whoice-api", "healthcheck"]
+      test: ["CMD-SHELL", "WHOICE_HEALTHCHECK_ADDR=:8080 /app/whoice-api healthcheck"]
       interval: 30s
       timeout: 5s
       retries: 3

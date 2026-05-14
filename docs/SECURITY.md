@@ -19,6 +19,14 @@ Accepted token carriers are `Authorization: Bearer ...`, `X-API-Key`, or the `to
 
 Set `[rate_limit] enabled = true` and tune `anon`, for example `60/min`. The current adapter is an in-memory fixed-window limiter for single-node deployments; distributed limits are still planned.
 
+## Webhook Reporter
+
+The `[observability]` webhook reporter sends lookup summaries asynchronously after responses are returned. Only point `webhook_url` at trusted internal endpoints, because event payloads include queried names, provider timings, and error summaries.
+
+## Admin Config
+
+`/api/admin/config` is reserved for a future Web editor and is guarded by admin authentication. This build intentionally does not read or write the config source over HTTP; config changes should be made through the mounted `data/whoice.toml` file and the hot-reload validator.
+
 ## Raw Data
 
 The web UI renders WHOIS/RDAP raw data as text, not HTML. Future linkification must keep this invariant and escape all upstream content.

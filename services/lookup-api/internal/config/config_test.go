@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,6 +26,26 @@ func TestLoadDNSResolverDefaults(t *testing.T) {
 	assertContains(t, cfg.DNSDoHResolvers, "https://dns.alidns.com/dns-query")
 	if !cfg.DNSFilterFakeIP {
 		t.Fatal("fake-ip filtering should default to enabled")
+	}
+}
+
+func TestLoadAPIDefaults(t *testing.T) {
+	disableConfigFile(t)
+	unsetEnv(t, "WHOICE_API_ENABLED")
+	unsetEnv(t, "WHOICE_API_IP_ALLOWLIST")
+	unsetEnv(t, "WHOICE_API_LOOKUP_ENABLED")
+	unsetEnv(t, "WHOICE_API_LOOKUP_ENRICH_ENABLED")
+	unsetEnv(t, "WHOICE_LOOKUP_FAST_RESPONSE")
+
+	cfg := Load()
+	if !cfg.APIEnabled || !cfg.APILookupEnabled || !cfg.APILookupEnrichEnabled {
+		t.Fatalf("api defaults: %#v", cfg.APIEndpointMap())
+	}
+	if len(cfg.APIIPAllowlist) != 0 {
+		t.Fatalf("api allowlist should default empty: %#v", cfg.APIIPAllowlist)
+	}
+	if !cfg.LookupFastResponse {
+		t.Fatal("lookup fast_response should default to enabled")
 	}
 }
 
@@ -136,6 +157,8 @@ func TestLoadAIDefaultsAndOverrides(t *testing.T) {
 	unsetEnv(t, "WHOICE_AI_TEMPERATURE")
 	unsetEnv(t, "WHOICE_AI_MAX_OUTPUT_TOKENS")
 	unsetEnv(t, "WHOICE_AI_MAX_ATTEMPTS")
+	unsetEnv(t, "WHOICE_AI_IGNORE_SUFFIXES")
+	unsetEnv(t, "WHOICE_AI_IGNORE_REGEX")
 	unsetEnv(t, "WHOICE_AI_PROMPT")
 
 	cfg := Load()
@@ -163,6 +186,12 @@ func TestLoadAIDefaultsAndOverrides(t *testing.T) {
 	if cfg.AIMaxAttempts != 3 {
 		t.Fatalf("max attempts: %d", cfg.AIMaxAttempts)
 	}
+	assertContains(t, cfg.AIIgnoreSuffixes, "com")
+	assertContains(t, cfg.AIIgnoreSuffixes, "cn")
+	assertContains(t, cfg.AIIgnoreSuffixes, "co.uk")
+	if reason := cfg.AIIgnoreReasonForSuffix(".COM"); !strings.Contains(reason, "ai.ignore_suffixes") {
+		t.Fatalf("ignore reason: got %q", reason)
+	}
 
 	t.Setenv("WHOICE_AI_ENABLED", "true")
 	t.Setenv("WHOICE_AI_PROVIDER", "ollama")
@@ -176,6 +205,8 @@ func TestLoadAIDefaultsAndOverrides(t *testing.T) {
 	t.Setenv("WHOICE_AI_TEMPERATURE", "0.1")
 	t.Setenv("WHOICE_AI_MAX_OUTPUT_TOKENS", "500")
 	t.Setenv("WHOICE_AI_MAX_ATTEMPTS", "2")
+	t.Setenv("WHOICE_AI_IGNORE_SUFFIXES", "li, kz")
+	t.Setenv("WHOICE_AI_IGNORE_REGEX", "^edu\\.")
 	t.Setenv("WHOICE_AI_PROMPT", "Return JSON.")
 	cfg = Load()
 	if !cfg.AIEnabled {
@@ -192,6 +223,12 @@ func TestLoadAIDefaultsAndOverrides(t *testing.T) {
 	}
 	if cfg.AITemperature != 0.1 || cfg.AIMaxOutputTokens != 500 || cfg.AIMaxAttempts != 2 {
 		t.Fatalf("AI generation: temp=%f max=%d attempts=%d", cfg.AITemperature, cfg.AIMaxOutputTokens, cfg.AIMaxAttempts)
+	}
+	if reason := cfg.AIIgnoreReasonForSuffix("kz"); !strings.Contains(reason, "ai.ignore_suffixes") {
+		t.Fatalf("suffix ignore reason: got %q", reason)
+	}
+	if reason := cfg.AIIgnoreReasonForSuffix("edu.cn"); !strings.Contains(reason, "ai.ignore_regex") {
+		t.Fatalf("regex ignore reason: got %q", reason)
 	}
 }
 
@@ -218,6 +255,31 @@ func TestLoadCreatesDefaultConfigFile(t *testing.T) {
 	}
 	assertContainsString(t, string(body), "[dns]")
 	assertContainsString(t, string(body), "doh_resolvers")
+	assertContainsString(t, string(body), "epp: Explain domain status codes")
+	assertContainsString(t, string(body), "pricing: Add new-registration/renewal/transfer prices by suffix")
+	assertContainsString(t, string(body), "ignore_suffixes")
+	assertContainsString(t, string(body), "ignore_regex")
+	assertContainsString(t, string(body), "prompt = '''")
+	assertContainsString(t, string(body), "You extract domain registration data")
+}
+
+func TestDefaultTemplateDocumentsOperationalSettings(t *testing.T) {
+	body := DefaultTemplate("data")
+	for _, want := range []string{
+		"Duration values use Go duration syntax",
+		"[api.endpoints]",
+		"lookup_enrich is the background follow-up route",
+		"allow_custom_servers",
+		"fast_response = true",
+		"Cache only structured AI analysis",
+		"Skip AI for suffixes",
+		"Setting prompt = \"\" is also valid",
+		"Hidden ICP blocklist",
+		"Fixed-window in-memory rate limit",
+		"Public Suffix List source",
+	} {
+		assertContainsString(t, body, want)
+	}
 }
 
 func TestLoadCreatesLocalDefaultConfigFile(t *testing.T) {
@@ -251,6 +313,16 @@ func TestLoadReadsTOMLAndEnvOverrides(t *testing.T) {
 data_dir = "toml-data"
 trust_proxy = true
 
+[api]
+enabled = true
+ip_allowlist = ["203.0.113.0/24"]
+
+[api.endpoints]
+metrics = false
+lookup_ai = false
+lookup_enrich = true
+admin_status = false
+
 [dns]
 ipv4_resolvers = ["9.9.9.9"]
 ipv6_resolvers = []
@@ -259,10 +331,16 @@ filter_fake_ip = false
 
 [ai]
 enabled = true
+base_url = "http://127.0.0.1:11434/v1"
 model = "from-file"
 temperature = 0.2
 cache_ttl = "none"
 max_attempts = 2
+ignore_suffixes = []
+ignore_regex = ["^museum$"]
+
+[lookup]
+fast_response = false
 
 [icp]
 auto_query = true
@@ -290,17 +368,120 @@ blocklist = ["example.com", "*.internal.example"]
 	if len(cfg.DNSIPv6Resolvers) != 0 {
 		t.Fatalf("ipv6 env override should disable list: %#v", cfg.DNSIPv6Resolvers)
 	}
+	if !cfg.APIEnabled || cfg.APIMetricsEnabled || cfg.APILookupAIEnabled || !cfg.APILookupEnrichEnabled || cfg.APIAdminStatusEnabled {
+		t.Fatalf("api endpoint config not applied: %#v", cfg.APIEndpointMap())
+	}
+	assertContains(t, cfg.APIIPAllowlist, "203.0.113.0/24")
+	if cfg.LookupFastResponse {
+		t.Fatal("lookup fast_response should be disabled by file config")
+	}
 	if cfg.DNSFilterFakeIP {
 		t.Fatal("fake-ip filter should be disabled by file config")
 	}
 	if !cfg.AIEnabled || cfg.AIModel != "from-env" || cfg.AITemperature != 0.2 || cfg.AICacheTTL != 0 || cfg.AIMaxAttempts != 2 {
 		t.Fatalf("AI config: %#v", cfg)
 	}
+	if len(cfg.AIIgnoreSuffixes) != 0 {
+		t.Fatalf("empty TOML ignore_suffixes should disable suffix ignores: %#v", cfg.AIIgnoreSuffixes)
+	}
+	if reason := cfg.AIIgnoreReasonForSuffix("museum"); !strings.Contains(reason, "ai.ignore_regex") {
+		t.Fatalf("regex ignore reason: got %q", reason)
+	}
 	if !cfg.ICPAutoQuery {
 		t.Fatal("ICP auto query should be enabled by file config")
 	}
 	assertContains(t, cfg.ICPBlocklist, "example.com")
 	assertContains(t, cfg.ICPBlocklist, "*.internal.example")
+}
+
+func TestLoadReadsBase64EncodedTOML(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "whoice.toml")
+	plain := `
+[server]
+data_dir = "encoded-data"
+
+[dns]
+ipv4_resolvers = ["9.9.9.9"]
+ipv6_resolvers = []
+
+[ai]
+enabled = true
+base_url = "http://127.0.0.1:11434/v1"
+model = "encoded-model"
+`
+	encoded := base64.StdEncoding.EncodeToString([]byte(plain))
+	if err := os.WriteFile(configPath, []byte(encoded), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WHOICE_CONFIG", configPath)
+
+	cfg, err := LoadWithError()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DataDir != "encoded-data" {
+		t.Fatalf("data dir: got %q", cfg.DataDir)
+	}
+	if len(cfg.DNSIPv4Resolvers) != 1 || cfg.DNSIPv4Resolvers[0] != "9.9.9.9" {
+		t.Fatalf("ipv4 resolvers: %#v", cfg.DNSIPv4Resolvers)
+	}
+	if len(cfg.DNSIPv6Resolvers) != 0 {
+		t.Fatalf("ipv6 resolvers: %#v", cfg.DNSIPv6Resolvers)
+	}
+	if !cfg.AIEnabled || cfg.AIModel != "encoded-model" {
+		t.Fatalf("AI config: %#v", cfg)
+	}
+}
+
+func TestLoadRejectsInvalidFileConfig(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "whoice.toml")
+	if err := os.WriteFile(configPath, []byte(`
+[lookup]
+timeout = "fast"
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WHOICE_CONFIG", configPath)
+
+	_, err := LoadWithError()
+	if err == nil {
+		t.Fatal("expected invalid duration to fail")
+	}
+	if !strings.Contains(err.Error(), "lookup.timeout") {
+		t.Fatalf("error should name invalid setting: %v", err)
+	}
+}
+
+func TestLoadRejectsInvalidAIIgnoreRegex(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "whoice.toml")
+	if err := os.WriteFile(configPath, []byte(`
+[ai]
+ignore_regex = ["["]
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WHOICE_CONFIG", configPath)
+
+	_, err := LoadWithError()
+	if err == nil {
+		t.Fatal("expected invalid AI ignore regex to fail")
+	}
+	if !strings.Contains(err.Error(), "ai.ignore_regex") {
+		t.Fatalf("error should name invalid regex setting: %v", err)
+	}
+}
+
+func TestLoadExistingDoesNotCreateMissingConfig(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "missing.toml")
+	t.Setenv("WHOICE_CONFIG", configPath)
+
+	_, err := LoadExistingWithError(configPath)
+	if err == nil {
+		t.Fatal("expected missing runtime config reload to fail")
+	}
+	if _, statErr := os.Stat(configPath); !os.IsNotExist(statErr) {
+		t.Fatalf("reload must not create missing config file, stat err=%v", statErr)
+	}
 }
 
 func assertContains(t *testing.T, values []string, want string) {

@@ -94,3 +94,44 @@ func TestMergeDoesNotTreatRawRDAPOnlyAsRegisteredEvidence(t *testing.T) {
 		t.Fatalf("warnings: got %#v", result.Meta.Warnings)
 	}
 }
+
+func TestMergeNameserverAddresses(t *testing.T) {
+	q := model.NormalizedQuery{
+		Input:            "example.kz",
+		Query:            "example.kz",
+		UnicodeQuery:     "example.kz",
+		Type:             model.QueryDomain,
+		Suffix:           "kz",
+		RegisteredDomain: "example.kz",
+	}
+	result := New().Merge(q, []*model.PartialResult{
+		{
+			Source: model.SourceWHOIS,
+			Status: model.StatusRegistered,
+			Nameservers: []model.Nameserver{
+				{Host: "alice.ns.cloudflare.com", Addresses: []string{"173.245.58.60"}},
+			},
+		},
+		{
+			Source: model.SourceRDAP,
+			Status: model.StatusRegistered,
+			Nameservers: []model.Nameserver{
+				{Host: "alice.ns.cloudflare.com", Addresses: []string{"173.245.58.60", "2400:cb00:2049:1::adf5:3a3c"}},
+			},
+		},
+	})
+
+	if len(result.Nameservers) != 1 {
+		t.Fatalf("nameservers: got %#v", result.Nameservers)
+	}
+	got := result.Nameservers[0].Addresses
+	want := []string{"173.245.58.60", "2400:cb00:2049:1::adf5:3a3c"}
+	if len(got) != len(want) {
+		t.Fatalf("addresses: got %#v want %#v", got, want)
+	}
+	for index, value := range want {
+		if got[index] != value {
+			t.Fatalf("address[%d]: got %q want %q", index, got[index], value)
+		}
+	}
+}

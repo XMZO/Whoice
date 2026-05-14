@@ -11,26 +11,32 @@ import (
 )
 
 type parserExpected struct {
-	Status            model.ResultStatus `json:"status"`
-	DomainName        string             `json:"domainName"`
-	RegistrarName     string             `json:"registrarName"`
-	RegistrarURL      string             `json:"registrarUrl"`
-	RegistrarIanaID   string             `json:"registrarIanaId"`
-	CreatedAt         string             `json:"createdAt"`
-	ExpiresAt         string             `json:"expiresAt"`
-	UpdatedAt         string             `json:"updatedAt"`
-	Statuses          []string           `json:"statuses"`
-	Nameservers       []string           `json:"nameservers"`
-	DNSSEC            string             `json:"dnssec"`
-	RegistrantName    string             `json:"registrantName"`
-	RegistrantOrg     string             `json:"registrantOrganization"`
-	RegistrantCountry string             `json:"registrantCountry"`
-	RegistrantEmail   string             `json:"registrantEmail"`
-	RegistrantExtra   []string           `json:"registrantExtra"`
-	NetworkCIDR       string             `json:"networkCidr"`
-	NetworkRange      string             `json:"networkRange"`
-	NetworkName       string             `json:"networkName"`
-	NetworkOriginAS   string             `json:"networkOriginAS"`
+	Status             model.ResultStatus  `json:"status"`
+	DomainName         string              `json:"domainName"`
+	RegistrarName      string              `json:"registrarName"`
+	RegistrarURL       string              `json:"registrarUrl"`
+	RegistrarIanaID    string              `json:"registrarIanaId"`
+	CreatedAt          string              `json:"createdAt"`
+	ExpiresAt          string              `json:"expiresAt"`
+	UpdatedAt          string              `json:"updatedAt"`
+	Statuses           []string            `json:"statuses"`
+	Nameservers        []string            `json:"nameservers"`
+	NameserverIPs      map[string][]string `json:"nameserverIps"`
+	DNSSEC             string              `json:"dnssec"`
+	RegistrantName     string              `json:"registrantName"`
+	RegistrantOrg      string              `json:"registrantOrganization"`
+	RegistrantCountry  string              `json:"registrantCountry"`
+	RegistrantProvince string              `json:"registrantProvince"`
+	RegistrantCity     string              `json:"registrantCity"`
+	RegistrantAddress  string              `json:"registrantAddress"`
+	RegistrantPostal   string              `json:"registrantPostalCode"`
+	RegistrantEmail    string              `json:"registrantEmail"`
+	RegistrantPhone    string              `json:"registrantPhone"`
+	RegistrantExtra    []string            `json:"registrantExtra"`
+	NetworkCIDR        string              `json:"networkCidr"`
+	NetworkRange       string              `json:"networkRange"`
+	NetworkName        string              `json:"networkName"`
+	NetworkOriginAS    string              `json:"networkOriginAS"`
 }
 
 func TestWHOISParserFixtures(t *testing.T) {
@@ -601,8 +607,23 @@ func assertPartial(t *testing.T, part *model.PartialResult, expected parserExpec
 	if expected.RegistrantCountry != "" && part.Registrant.Country != expected.RegistrantCountry {
 		t.Fatalf("registrant country: got %q want %q", part.Registrant.Country, expected.RegistrantCountry)
 	}
+	if expected.RegistrantProvince != "" && part.Registrant.Province != expected.RegistrantProvince {
+		t.Fatalf("registrant province: got %q want %q", part.Registrant.Province, expected.RegistrantProvince)
+	}
+	if expected.RegistrantCity != "" && part.Registrant.City != expected.RegistrantCity {
+		t.Fatalf("registrant city: got %q want %q", part.Registrant.City, expected.RegistrantCity)
+	}
+	if expected.RegistrantAddress != "" && part.Registrant.Address != expected.RegistrantAddress {
+		t.Fatalf("registrant address: got %q want %q", part.Registrant.Address, expected.RegistrantAddress)
+	}
+	if expected.RegistrantPostal != "" && part.Registrant.PostalCode != expected.RegistrantPostal {
+		t.Fatalf("registrant postal code: got %q want %q", part.Registrant.PostalCode, expected.RegistrantPostal)
+	}
 	if expected.RegistrantEmail != "" && part.Registrant.Email != expected.RegistrantEmail {
 		t.Fatalf("registrant email: got %q want %q", part.Registrant.Email, expected.RegistrantEmail)
+	}
+	if expected.RegistrantPhone != "" && part.Registrant.Phone != expected.RegistrantPhone {
+		t.Fatalf("registrant phone: got %q want %q", part.Registrant.Phone, expected.RegistrantPhone)
 	}
 	if len(expected.RegistrantExtra) > 0 {
 		if len(part.Registrant.Extra) != len(expected.RegistrantExtra) {
@@ -629,6 +650,7 @@ func assertPartial(t *testing.T, part *model.PartialResult, expected parserExpec
 	}
 	assertStatuses(t, part.Statuses, expected.Statuses)
 	assertNameservers(t, part.Nameservers, expected.Nameservers)
+	assertNameserverIPs(t, part.Nameservers, expected.NameserverIPs)
 }
 
 func assertStatuses(t *testing.T, got []model.DomainStatus, expected []string) {
@@ -651,6 +673,28 @@ func assertNameservers(t *testing.T, got []model.Nameserver, expected []string) 
 	for i, value := range expected {
 		if got[i].Host != value {
 			t.Fatalf("nameserver[%d]: got %q want %q", i, got[i].Host, value)
+		}
+	}
+}
+
+func assertNameserverIPs(t *testing.T, got []model.Nameserver, expected map[string][]string) {
+	t.Helper()
+	if len(expected) == 0 {
+		return
+	}
+	byHost := map[string][]string{}
+	for _, ns := range got {
+		byHost[ns.Host] = ns.Addresses
+	}
+	for host, want := range expected {
+		values := byHost[host]
+		if len(values) != len(want) {
+			t.Fatalf("nameserver %s addresses: got %#v want %#v", host, values, want)
+		}
+		for i, value := range want {
+			if values[i] != value {
+				t.Fatalf("nameserver %s address[%d]: got %q want %q", host, i, values[i], value)
+			}
 		}
 	}
 }

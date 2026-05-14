@@ -61,7 +61,7 @@ export type LookupResult = {
     remainingDays?: number;
   };
   statuses: { code: string; label?: string; category?: string; description?: string; url?: string; source?: string }[];
-  nameservers: { host: string; brand?: Brand }[];
+  nameservers: { host: string; addresses?: string[]; brand?: Brand }[];
   dnssec: { signed?: boolean; text?: string };
   registrant: {
     name?: string;
@@ -110,6 +110,9 @@ export type LookupResult = {
       provider?: string;
       source?: string;
       updatedAt?: string;
+      registerOffer?: PricingOffer;
+      renewOffer?: PricingOffer;
+      transferOffer?: PricingOffer;
     };
     moz?: {
       domainAuthority?: number;
@@ -128,6 +131,7 @@ export type LookupResult = {
     elapsedMs: number;
     warnings?: string[];
     traceId?: string;
+    pendingEnrichments?: string[];
     providers?: {
       source: SourceName;
       status: "ok" | "error" | "skipped";
@@ -147,12 +151,45 @@ export type LookupResult = {
       elapsedMs?: number;
       attempts?: number;
       applied?: string[];
+      reason?: string;
       error?: string;
     };
   };
 };
 
+export type PricingOffer = {
+  registrar?: string;
+  website?: string;
+  logo?: string;
+  price?: number;
+  currency?: string;
+  priceCny?: number;
+};
+
 export type ResultMeta = LookupResult["meta"];
+
+export type ConfigStatus = {
+  status: "ok" | "error" | string;
+  path?: string;
+  loadedAt?: string;
+  lastCheckedAt?: string;
+  lastAttemptAt?: string;
+  lastErrorAt?: string;
+  lastError?: string;
+  rolledBack?: boolean;
+  usingLoadedAt?: string;
+};
+
+export type ConfigEditorStatus = {
+  status: "reserved" | "disabled" | "enabled" | string;
+  path?: string;
+  format: string;
+  writable: boolean;
+  sourceReadable: boolean;
+  surfaces: string[];
+  supportedOperations: string[];
+  reason?: string;
+};
 
 export type ICPRecord = {
   domain?: string;
@@ -188,6 +225,9 @@ export type APIResponse = {
     details?: string[];
   };
   capabilities?: {
+    api: boolean;
+    apiEndpoints: Record<string, boolean>;
+    apiIpAllowlist: boolean;
     rdap: boolean;
     whois: boolean;
     whoisWeb: boolean;
@@ -198,6 +238,7 @@ export type APIResponse = {
     enrichment: Record<string, boolean>;
   };
   meta?: ResultMeta;
+  config?: ConfigStatus;
 };
 
 export type ICPResponse = {
@@ -209,4 +250,5 @@ export type ICPResponse = {
     details?: string[];
   };
   meta?: ResultMeta;
+  config?: ConfigStatus;
 };

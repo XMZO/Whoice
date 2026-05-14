@@ -60,6 +60,9 @@ func cloneResult(result *model.LookupResult) *model.LookupResult {
 	clone.Registrant.Extra = cloneRegistrationFields(result.Registrant.Extra)
 	clone.Registrant.FieldSources = cloneRegistrationFieldSources(result.Registrant.FieldSources)
 	clone.Enrichment.DNS = cloneDNSInfo(result.Enrichment.DNS)
+	clone.Enrichment.DNSViz = cloneDNSVizInfo(result.Enrichment.DNSViz)
+	clone.Enrichment.Pricing = clonePricingInfo(result.Enrichment.Pricing)
+	clone.Enrichment.Moz = cloneMozInfo(result.Enrichment.Moz)
 	if result.Registrar.Brand != nil {
 		brand := *result.Registrar.Brand
 		clone.Registrar.Brand = &brand
@@ -90,6 +93,7 @@ func cloneNameservers(values []model.Nameserver) []model.Nameserver {
 	out := make([]model.Nameserver, len(values))
 	copy(out, values)
 	for i := range out {
+		out[i].Addresses = append([]string(nil), values[i].Addresses...)
 		if values[i].Brand != nil {
 			brand := *values[i].Brand
 			out[i].Brand = &brand
@@ -132,5 +136,60 @@ func cloneDNSInfo(info *model.DNSInfo) *model.DNSInfo {
 	clone.NS = append([]string(nil), info.NS...)
 	clone.RegistryNS = append([]string(nil), info.RegistryNS...)
 	clone.Resolvers = append([]model.DNSResolverInfo(nil), info.Resolvers...)
+	return &clone
+}
+
+func cloneDNSVizInfo(info *model.DNSVizInfo) *model.DNSVizInfo {
+	if info == nil {
+		return nil
+	}
+	clone := *info
+	return &clone
+}
+
+func clonePricingInfo(info *model.PricingInfo) *model.PricingInfo {
+	if info == nil {
+		return nil
+	}
+	clone := *info
+	if info.Register != nil {
+		value := *info.Register
+		clone.Register = &value
+	}
+	if info.Renew != nil {
+		value := *info.Renew
+		clone.Renew = &value
+	}
+	if info.Transfer != nil {
+		value := *info.Transfer
+		clone.Transfer = &value
+	}
+	clone.RegisterOffer = clonePricingOffer(info.RegisterOffer)
+	clone.RenewOffer = clonePricingOffer(info.RenewOffer)
+	clone.TransferOffer = clonePricingOffer(info.TransferOffer)
+	return &clone
+}
+
+func clonePricingOffer(info *model.PricingOffer) *model.PricingOffer {
+	if info == nil {
+		return nil
+	}
+	clone := *info
+	if info.Price != nil {
+		value := *info.Price
+		clone.Price = &value
+	}
+	if info.PriceCNY != nil {
+		value := *info.PriceCNY
+		clone.PriceCNY = &value
+	}
+	return &clone
+}
+
+func cloneMozInfo(info *model.MozInfo) *model.MozInfo {
+	if info == nil {
+		return nil
+	}
+	clone := *info
 	return &clone
 }

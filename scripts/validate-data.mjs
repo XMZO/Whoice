@@ -76,7 +76,7 @@ async function validatePublicSuffix() {
 
 async function validateJSONData() {
   await readJSON('packages/data/brands/brand-map.json');
-  await readJSON('packages/data/enrichment/pricing.json');
+  await readJSON('packages/data/pricing/pricing.json');
   await readJSON('packages/data/enrichment/moz.json');
   const whoisIANA = await readJSON('packages/data/whois-servers/iana.json');
   const whoisExtra = await readJSON('packages/data/whois-servers/extra.json');
@@ -97,7 +97,7 @@ async function validateSnapshotSync() {
     ['packages/data/rdap-bootstrap/extra.json', 'services/lookup-api/internal/data/rdapbootstrap/snapshots/extra.json'],
     ['packages/data/registrars/icann-accredited-registrars.csv', 'services/lookup-api/internal/data/registrars/snapshots/icann-accredited-registrars.csv'],
     ['packages/data/brands/brand-map.json', 'services/lookup-api/internal/data/brandmap/snapshots/brand-map.json'],
-    ['packages/data/enrichment/pricing.json', 'services/lookup-api/internal/data/enrichment/snapshots/pricing.json'],
+    ['packages/data/pricing/pricing.json', 'services/lookup-api/internal/enrich/pricing/snapshots/pricing.json'],
     ['packages/data/enrichment/moz.json', 'services/lookup-api/internal/data/enrichment/snapshots/moz.json'],
     ['packages/data/whois-servers/iana.json', 'services/lookup-api/internal/data/whoisservers/snapshots/iana.json'],
     ['packages/data/whois-servers/extra.json', 'services/lookup-api/internal/data/whoisservers/snapshots/extra.json'],

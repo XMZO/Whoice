@@ -25,16 +25,21 @@ For local development, the web app defaults to `http://localhost:18081`; the loo
 ```sh
 pnpm test                         # Go API + Web typecheck + schema/contracts
 pnpm test:api                     # Go tests only
-pnpm test:web                     # Next.js/TypeScript typecheck only
+pnpm test:web                     # Next.js/TypeScript typecheck + theme contract guard
 pnpm test:schema                  # JSON Schema/OpenAPI/fixture contract checks
 pnpm test:data                    # Snapshot manifest/sync/routing checks
+pnpm test:pre5                    # PLAN Phase 0-4 guardrails
+pnpm test:phase5                  # Productionization guardrails
 pnpm test:e2e --project=chromium  # Playwright smoke tests
+pnpm test:e2e --project=mobile-chrome # Mobile/touch smoke tests
 pnpm build                        # Production web build
 ```
 
 `test:schema` validates curated samples, parser fixtures, and deterministic runtime API fixtures for RDAP domain, WHOIS domain, WHOIS Web fallback, RDAP IPv4, and invalid-query responses. When a reviewed API response shape intentionally changes, regenerate the runtime fixtures with `WHOICE_UPDATE_RUNTIME_FIXTURES=1 go test ./services/lookup-api/internal/httpapi -run TestRuntimeLookupResponsesMatchSchemaFixtures`.
 `test:data` validates RDAP bootstrap, ICANN registrar, PSL, brand, enrichment, and WHOIS server snapshots; it also checks manifest hashes, embedded snapshot sync, and critical second-level suffix routing such as `pp.ua`, `eu.org`, `qzz.io`, `edu.kg`, `de5.net`, `cc.cd`, and `us.ci`.
 Optional live TCP WHOIS smoke checks are disabled by default to keep CI deterministic. Run `WHOICE_LIVE_WHOIS_SMOKE=1 go test ./services/lookup-api/internal/providers/whois -run TestLiveWHOISSmoke -count=1` when you want to validate current upstream WHOIS behavior.
+`test:web` also runs a lightweight theme guard. It checks that `theme.css` stays token-only, that every theme variable used by the UI is defined by the base theme contract, and that critical lookup controls/results are not statically hidden by theme CSS.
+`test:phase5` checks the productionization surface: health/status/metrics, async reporters, data update workflow, runtime API fixtures, native multi-arch release workflow, Docker healthchecks, desktop/mobile Playwright coverage, and security/operations docs.
 
 ## Docker
 
@@ -47,7 +52,7 @@ curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/XMZO/Whoice/m
 docker compose up -d
 ```
 
-`docker-compose.yml` is designed to work as a single downloaded file. First startup creates `./data/whoice.toml` with comments; edit that file, then run `docker compose restart lookup-api` to apply runtime changes. Runtime data lives in the same folder under `./data`, mounted into the API container as `/data`. Docker exposes the Web UI on `0.0.0.0:18081` and the direct API on `0.0.0.0:18080`; edit the two `ports` lines in `docker-compose.yml` if you need different host ports.
+`docker-compose.yml` is designed to work as a single downloaded file. First startup creates `./data/whoice.toml` with comments; edit that file while the API is running and most runtime changes hot-reload automatically. If a change is invalid, Whoice keeps using the last valid runtime config, logs the error, and shows the rollback state on `/status` and lookup warnings. Runtime data lives in the same folder under `./data`, mounted into the API container as `/data`. Docker exposes the Web UI on `0.0.0.0:18081` and the direct API on `0.0.0.0:18080`; edit the two `ports` lines in `docker-compose.yml` if you need different host ports.
 
 The compose file uses the published `latest` multi-arch images directly, so no `.env` file or local image build is required.
 If the GHCR packages are private, run `docker login ghcr.io` on the VPS first.
@@ -76,8 +81,9 @@ whoice/
       icann-accredited-registrars.csv
     brands/
       brand-map.json
-    enrichment/
+    pricing/
       pricing.json
+    enrichment/
       moz.json
     whois-servers/
       iana.json
@@ -90,7 +96,7 @@ whoice/
 If `data/rdap-bootstrap` is empty, Whoice uses embedded RDAP bootstrap snapshots, a small `extra.json` RDAP overlay, and then live IANA fallback. The overlay covers ccTLDs and second-level suffixes that have working RDAP but are missing from IANA bootstrap data, including `.li`, `.ch`, and CentralNic-style domains such as `eu.com`.
 If `data/registrars/icann-accredited-registrars.csv` is present, it overrides the embedded ICANN registrar snapshot used to fill missing registrar URL, IANA ID, and country fields.
 If `data/brands/brand-map.json` is present, it overrides the embedded registrar/nameserver brand rules. This keeps the brand UI inspired by `unofficial/next-whois` as data, not hard-coded page logic.
-If `data/enrichment/pricing.json` or `data/enrichment/moz.json` is present, it overrides the optional local Pricing/Moz datasets. Enable those enrichers in `data/whoice.toml` with `pricing = true` or `moz = true`.
+If `data/pricing/pricing.json` is present, it provides the optional local Pricing fallback dataset. `data/enrichment/pricing.json` is still accepted as a legacy runtime path, but new installs should use `data/pricing/pricing.json` so pricing can evolve independently from other enrichment data. When `pricing = true`, the pricing module also maintains a Miqingju public price snapshot in memory and refreshes it periodically; lookup responses show the lowest registration and renewal registrar independently when the source provides that detail. If `data/enrichment/moz.json` is present, it overrides the optional local Moz dataset. Enable those enrichers in `data/whoice.toml` with `pricing = true` or `moz = true`.
 If `data/whois-servers/iana.json` or `data/whois-servers/extra.json` is present, it overrides the embedded WHOIS server maps. This is useful for ccTLDs and CentralNic-style second-level domains without rebuilding images.
 If `data/public-suffix/public_suffix_list.dat` is present, it overrides the embedded Public Suffix List snapshot. `data/public-suffix/extra.dat` is then applied as a small local overlay for emergency additions. Set `auto_update = true` under `[public_suffix]` in `data/whoice.toml` to fetch the official PSL into `./data` once during API startup; the default is off so compose deployments can start without depending on publicsuffix.org.
 
@@ -108,10 +114,10 @@ Pushing a version tag builds and publishes `linux/amd64` and `linux/arm64` image
 
 ```sh
 git add .
-git commit -m "Release v0.01beta"
-git tag v0.01beta
+git commit -m "Release v0.01"
+git tag v0.01
 git push origin main
-git push origin v0.01beta
+git push origin v0.01
 ```
 
 Images:
@@ -142,11 +148,9 @@ Images:
 
 ## Runtime Controls
 
-Edit `data/whoice.toml` and restart the API container:
-
-```sh
-docker compose restart lookup-api
-```
+Edit `data/whoice.toml`; the API hot-reloads it automatically:
+Only startup-only settings such as `server.addr` still need an API process/container restart.
+For compact or playful deployments, the same file can contain a base64-encoded TOML document; startup and hot reload decode it automatically before applying validation.
 
 Password auth:
 
@@ -287,6 +291,8 @@ EPP, registrar, and brand enrichment:
 epp = true
 registrar = true
 brands = true
+# Price lookup is only an on/off switch here. The pricing module owns its data source
+# and currently uses a Miqingju public snapshot with local JSON fallback.
 pricing = false
 moz = false
 ```

@@ -44,15 +44,17 @@ type NormalizedQuery struct {
 }
 
 type LookupOptions struct {
-	UseRDAP       bool
-	UseWHOIS      bool
-	RDAPServer    string
-	WHOISServer   string
-	WHOISFollow   int
-	ExactDomain   bool
-	ForceAI       bool
-	ProviderLimit time.Duration
-	LookupLimit   time.Duration
+	UseRDAP         bool
+	UseWHOIS        bool
+	RDAPServer      string
+	WHOISServer     string
+	WHOISFollow     int
+	ExactDomain     bool
+	ForceAI         bool
+	FastResponse    bool
+	FastResponseSet bool
+	ProviderLimit   time.Duration
+	LookupLimit     time.Duration
 }
 
 type RawResponse struct {
@@ -133,8 +135,9 @@ type DomainStatus struct {
 }
 
 type Nameserver struct {
-	Host  string `json:"host"`
-	Brand *Brand `json:"brand,omitempty"`
+	Host      string   `json:"host"`
+	Addresses []string `json:"addresses,omitempty"`
+	Brand     *Brand   `json:"brand,omitempty"`
 }
 
 type DNSSECInfo struct {
@@ -184,13 +187,25 @@ type EnrichmentInfo struct {
 }
 
 type PricingInfo struct {
-	Register  *float64 `json:"register,omitempty"`
-	Renew     *float64 `json:"renew,omitempty"`
-	Transfer  *float64 `json:"transfer,omitempty"`
+	Register      *float64      `json:"register,omitempty"`
+	Renew         *float64      `json:"renew,omitempty"`
+	Transfer      *float64      `json:"transfer,omitempty"`
+	Currency      string        `json:"currency,omitempty"`
+	Provider      string        `json:"provider,omitempty"`
+	Source        string        `json:"source,omitempty"`
+	UpdatedAt     string        `json:"updatedAt,omitempty"`
+	RegisterOffer *PricingOffer `json:"registerOffer,omitempty"`
+	RenewOffer    *PricingOffer `json:"renewOffer,omitempty"`
+	TransferOffer *PricingOffer `json:"transferOffer,omitempty"`
+}
+
+type PricingOffer struct {
+	Registrar string   `json:"registrar,omitempty"`
+	Website   string   `json:"website,omitempty"`
+	Logo      string   `json:"logo,omitempty"`
+	Price     *float64 `json:"price,omitempty"`
 	Currency  string   `json:"currency,omitempty"`
-	Provider  string   `json:"provider,omitempty"`
-	Source    string   `json:"source,omitempty"`
-	UpdatedAt string   `json:"updatedAt,omitempty"`
+	PriceCNY  *float64 `json:"priceCny,omitempty"`
 }
 
 type MozInfo struct {
@@ -246,11 +261,12 @@ type RawData struct {
 }
 
 type ResultMeta struct {
-	ElapsedMs int64           `json:"elapsedMs"`
-	Warnings  []string        `json:"warnings,omitempty"`
-	TraceID   string          `json:"traceId,omitempty"`
-	Providers []ProviderTrace `json:"providers,omitempty"`
-	AI        *AITrace        `json:"ai,omitempty"`
+	ElapsedMs          int64           `json:"elapsedMs"`
+	Warnings           []string        `json:"warnings,omitempty"`
+	TraceID            string          `json:"traceId,omitempty"`
+	PendingEnrichments []string        `json:"pendingEnrichments,omitempty"`
+	Providers          []ProviderTrace `json:"providers,omitempty"`
+	AI                 *AITrace        `json:"ai,omitempty"`
 }
 
 type ProviderTrace struct {
@@ -273,6 +289,7 @@ type AITrace struct {
 	ElapsedMs int64    `json:"elapsedMs,omitempty"`
 	Attempts  int      `json:"attempts,omitempty"`
 	Applied   []string `json:"applied,omitempty"`
+	Reason    string   `json:"reason,omitempty"`
 	Error     string   `json:"error,omitempty"`
 }
 
@@ -313,14 +330,17 @@ type PartialResult struct {
 }
 
 type Capabilities struct {
-	RDAP          bool            `json:"rdap"`
-	WHOIS         bool            `json:"whois"`
-	WHOISWeb      bool            `json:"whoisWeb"`
-	CustomServers bool            `json:"customServers"`
-	Auth          string          `json:"auth"`
-	RateLimit     bool            `json:"rateLimit"`
-	ICPAutoQuery  bool            `json:"icpAutoQuery"`
-	Enrichment    map[string]bool `json:"enrichment"`
+	API            bool            `json:"api"`
+	APIEndpoints   map[string]bool `json:"apiEndpoints"`
+	APIIPAllowlist bool            `json:"apiIpAllowlist"`
+	RDAP           bool            `json:"rdap"`
+	WHOIS          bool            `json:"whois"`
+	WHOISWeb       bool            `json:"whoisWeb"`
+	CustomServers  bool            `json:"customServers"`
+	Auth           string          `json:"auth"`
+	RateLimit      bool            `json:"rateLimit"`
+	ICPAutoQuery   bool            `json:"icpAutoQuery"`
+	Enrichment     map[string]bool `json:"enrichment"`
 }
 
 type PluginInfo struct {
@@ -336,10 +356,34 @@ type APIResponse struct {
 	Error        *APIError     `json:"error,omitempty"`
 	Capabilities *Capabilities `json:"capabilities,omitempty"`
 	Meta         *ResultMeta   `json:"meta,omitempty"`
+	Config       *ConfigStatus `json:"config,omitempty"`
 }
 
 type APIError struct {
 	Code    string   `json:"code"`
 	Message string   `json:"message"`
 	Details []string `json:"details,omitempty"`
+}
+
+type ConfigStatus struct {
+	Status        string `json:"status"`
+	Path          string `json:"path,omitempty"`
+	LoadedAt      string `json:"loadedAt,omitempty"`
+	LastCheckedAt string `json:"lastCheckedAt,omitempty"`
+	LastAttemptAt string `json:"lastAttemptAt,omitempty"`
+	LastErrorAt   string `json:"lastErrorAt,omitempty"`
+	LastError     string `json:"lastError,omitempty"`
+	RolledBack    bool   `json:"rolledBack,omitempty"`
+	UsingLoadedAt string `json:"usingLoadedAt,omitempty"`
+}
+
+type ConfigEditorStatus struct {
+	Status              string   `json:"status"`
+	Path                string   `json:"path,omitempty"`
+	Format              string   `json:"format"`
+	Writable            bool     `json:"writable"`
+	SourceReadable      bool     `json:"sourceReadable"`
+	Surfaces            []string `json:"surfaces"`
+	SupportedOperations []string `json:"supportedOperations"`
+	Reason              string   `json:"reason,omitempty"`
 }

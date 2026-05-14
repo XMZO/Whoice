@@ -49,14 +49,17 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: Typecheck
-        run: pnpm --dir apps/web typecheck
+      - name: Web checks
+        run: pnpm test:web
 
       - name: Schema check
         run: pnpm test:schema
 
       - name: Data snapshot check
         run: pnpm test:data
+
+      - name: Plan guardrails
+        run: pnpm test:pre5 && pnpm test:phase5
 
       - name: Verify brand map snapshot sync
         run: sh scripts/update-data/sync-brand-map.sh && git diff --exit-code -- services/lookup-api/internal/data/brandmap/snapshots/brand-map.json
@@ -66,6 +69,9 @@ jobs:
 
       - name: Verify enrichment snapshot sync
         run: sh scripts/update-data/sync-enrichment.sh && git diff --exit-code -- services/lookup-api/internal/data/enrichment/snapshots
+
+      - name: Verify pricing snapshot sync
+        run: sh scripts/update-data/sync-pricing.sh && git diff --exit-code -- services/lookup-api/internal/enrich/pricing/snapshots
 
       - name: Verify PSL snapshot sync
         run: sh scripts/update-data/sync-public-suffix.sh && git diff --exit-code -- services/lookup-api/internal/data/publicsuffixes/snapshots
@@ -106,7 +112,7 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Run smoke tests
-        run: pnpm test:e2e --project=chromium
+        run: pnpm test:e2e --project=chromium --project=mobile-chrome
 
       - name: Upload Playwright report
         if: failure()

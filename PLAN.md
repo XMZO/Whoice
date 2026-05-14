@@ -2110,12 +2110,12 @@ docker compose up -d
 
 ### 9.1.1 多架构镜像发布
 
-每次发布版本 tag，例如当前 beta 的 `v0.01beta` 或未来稳定版 `v0.1.0`，GitHub Actions 自动用 Buildx 构建并推送：
+每次发布版本 tag，例如当前稳定版 `v0.01` 或未来 semver 稳定版 `v0.1.0`，GitHub Actions 自动用 Buildx 构建并推送：
 
 - `linux/amd64`：普通 x86_64 Debian VPS。
 - `linux/arm64`：ARM Debian VPS、Ampere、Oracle ARM、树莓派类环境。
 - `whoice-web` 和 `whoice-lookup-api` 同版本发布。
-- beta 发布保留原始标签，例如 `v0.01beta`，并同时更新 `latest`，所以单文件 compose 直接使用 `latest`。
+- 短版本发布保留原始标签，例如 `v0.01`，并同时更新 `latest`，所以单文件 compose 直接使用 `latest`。
 - 稳定 semver 发布保留 `v0.1.0`，并额外生成 `0.1.0`、`0.1`、`latest`。
 - 镜像构建使用原生 runner：amd64 用 `ubuntu-latest`，arm64 用 `ubuntu-24.04-arm`，最后合并 multi-arch manifest；不使用 QEMU 模拟构建。
 
@@ -2390,7 +2390,7 @@ API 用户需要稳定契约；数据更新不应等同功能更新。
 ### 当前最佳方案
 
 ```txt
-app version: v0.01beta
+app version: v0.01
 schema version: 2026-05-11
 data version: 2026-05-11
 ```

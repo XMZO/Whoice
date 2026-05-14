@@ -1,17 +1,17 @@
 # Implementation Status
 
-This audit compares the current repository with `PLAN.md`. The goal is not to soften the truth: Whoice is still an MVP, not the full plan.
+This audit compares the current repository with `PLAN.md`. The goal is to keep the phase boundary honest: Phase 0-5 are now closed to their planned acceptance bars, while compatibility and operations work can continue as normal maintenance.
 
 ## Phase Summary
 
 | Plan phase | Status | Notes |
 | --- | --- | --- |
-| Phase 0: architecture skeleton | Mostly done | Monorepo, Go API, Next.js Web, Docker Compose, schema files, unified model, and plugin registry scaffold exist. |
+| Phase 0: architecture skeleton | Done | Monorepo, Go API, Next.js Web, Docker Compose, schema files, unified model, plugin registry, and phase guardrails exist. |
 | Phase 1: core lookup MVP | Done | Domain, IPv4, IPv6, ASN, and CIDR lookup are implemented through the normalizer, RDAP provider, parser, merger, `/api/lookup`, runtime API fixtures, and the basic Web result UI. WHOIS domain lookup, generic WHOIS parsing, raw evidence display, and provider traces are covered. Broader TLD edge compatibility belongs to Phase 3/ongoing maintenance, not the Phase 1 MVP bar. |
-| Phase 2: experience layer | Done | Search history, keyboard shortcuts, theme, i18n, API docs, PWA manifest/service worker, Dynamic OG, share menu, copy URL/raw/query, download JSON, and download OG image are implemented. |
+| Phase 2: experience layer | Done | Search history, keyboard shortcuts, theme, i18n, expanded API/runtime docs, PWA manifest/service worker, Dynamic OG, share menu, copy URL/raw/query, download JSON, and download OG image are implemented. |
 | Phase 3: compatibility enhancement | Done for planned stage | TLD parser registry expansion, high-value rewritten PHP-parser coverage, WHOIS Web fallback framework, stable `.dz`/`.ni`/`.vn` API fallback modules, reserved/unregistered compatibility rules, embedded/mounted WHOIS server maps, manual RDAP/WHOIS server override, ICANN registrar CSV enrichment, and advanced server override UI are in place with tests/fixtures. More ccTLDs can still be added as compatibility maintenance, but they no longer block this phase. |
-| Phase 4: optional enhancement | Partial | EPP, DNS, DNSViz links, ICANN registrar metadata, registrar/NS brand enrichment, and optional local Pricing/Moz datasets exist; password/token auth and fixed-window rate limit exist. Lookup result caching was deliberately removed to preserve WHOIS/RDAP freshness. |
-| Phase 5: productionization | Partial | Multi-arch GHCR release workflow, Docker image deploy path, CI, parser fixture tests, runtime API contract fixtures, reviewable validated data snapshots, scheduled data update workflow, basic trace IDs, structured request logs, admin status, public Web `/status` runtime inspector, Prometheus-style metrics with latency histograms, async observability reporters, Playwright smoke tests, and initial security docs exist. Broader browser/device coverage is still limited. |
+| Phase 4: optional enhancement | Done for planned stage | Fresh-first singleflight, no WHOIS/RDAP result cache, password/token auth, fixed-window rate limit, EPP explanations, DNS/DNSViz enrichment, ICANN registrar enrichment, registrar/NS brand enrichment, isolated optional Pricing source plumbing with Miqingju snapshot support and local fallback, and optional local Moz datasets are implemented as configurable lookup guards or enrichment pipeline steps. External pricing/Moz importers remain optional future integrations, not blockers for this phase. |
+| Phase 5: productionization | Done for planned stage | Multi-arch GHCR release workflow, Docker image deploy path, CI, parser fixture tests, runtime API contract fixtures, reviewable validated data snapshots, scheduled data update workflow, trace IDs, structured request logs, admin status, public Web `/status` runtime inspector, Prometheus-style metrics with latency histograms, async observability reporters, desktop/mobile Playwright smoke tests, failure-state coverage, operations docs, and security docs are in place. |
 
 ## Implemented
 
@@ -41,8 +41,9 @@ This audit compares the current repository with `PLAN.md`. The goal is not to so
 - Web supports theme selection, three locale options, PWA manifest/service worker with static shell assets, Dynamic OG image generation, local plugin renderer panels, keyboard shortcuts, a share/export menu, copy URL/query/raw actions, download JSON, download OG image, shared local search history from home and result pages, API docs, and an Advanced lookup panel for source server overrides and WHOIS referral depth.
 - Domain result pages render DNS enrichment instead of an empty Network panel; IP/ASN/CIDR pages still render Network fields.
 - EPP status enrichment covers the common ICANN/EPP client, server, pending, grace, and redemption states.
+- Optional enrichment now runs through a lookup enrichment pipeline with per-step enablement, support checks, and warning-only failures so EPP, DNS, DNSViz, registrar CSV, brand, Pricing, and Moz do not become hard dependencies of the core lookup path.
 - Optional registrar and nameserver brand enrichment exists with a mounted `data/brands/brand-map.json` override and embedded snapshot derived from Whoice defaults plus `unofficial/next-whois` UI-branding ideas.
-- Optional Pricing and Moz enrichment exists through mounted or embedded local JSON datasets; these modules do not call external APIs during lookup.
+- Optional Pricing enrichment is isolated behind a replaceable pricing source/resolver boundary with a Miqingju public snapshot source and mounted-or-embedded local JSON fallback; the public config remains only `pricing = true/false`. Optional Moz enrichment exists through mounted or embedded local JSON datasets.
 - Next.js UI has search, result page, source mode switcher, local history, docs stub, and raw evidence panels.
 - Compose defaults to prebuilt GHCR images and can be downloaded as a single `docker-compose.yml`; it mounts same-folder `./data`, uses an explicit bridge network, and includes service healthchecks.
 - GitHub Actions workflow exists for `linux/amd64` and `linux/arm64` image publishing.
@@ -52,22 +53,22 @@ This audit compares the current repository with `PLAN.md`. The goal is not to so
 - `pnpm test:data` validates data manifests, hash integrity, parser/readability of data files, embedded snapshot sync, and critical PSL/WHOIS routing coverage.
 - Singleflight result cloning preserves empty collection fields as JSON arrays, preventing schema-valid results from drifting into `null` arrays after coalescing.
 - Plugin registry scaffold exists and `/api/version` reports plugin descriptors.
-- Playwright smoke tests cover hydration, runtime status visibility, result-page in-place lookup, source switching, theme/language controls, null-array response tolerance, and DNSViz panel rendering.
+- `pnpm test:pre5` checks Phase 0-4 guardrails so the architecture skeleton, core lookup, experience layer, compatibility loop, and optional enhancement plugins cannot silently disappear.
+- Playwright smoke tests cover hydration, runtime status visibility, result-page in-place lookup, source switching, theme/language controls, null-array response tolerance, DNSViz panel rendering, actionable lookup failure states, and mobile/touch layout overflow checks.
+- `pnpm test:phase5` checks Phase 5 productionization guardrails so observability, reporters, status/metrics/admin endpoints, data update automation, runtime API fixtures, native multi-arch release workflow, Docker healthchecks, Playwright device coverage, and operations/security docs cannot silently disappear.
 
-## Must Close Before Calling It Plan-Complete
+## Remaining Work Before Calling The Whole Plan Complete
 
-- Add more TLD parsers and WHOIS Web modules as ongoing compatibility maintenance when real samples justify them.
-- Continue polishing richer result workspace interactions beyond the current shortcuts, share/export menu, and local plugin renderer boundary.
-- Expand the runtime status surface with authenticated admin stats when a safe UI auth flow exists.
-- Add external enrichment importers if stable providers are chosen.
-- Broaden Playwright coverage beyond smoke paths, including mobile-specific layout assertions and failure states.
+- Ongoing compatibility maintenance: add more TLD parsers and WHOIS Web modules only when backed by real samples and fixtures.
+- Ongoing production maintenance: harden authenticated admin surfaces once a safe browser auth flow is chosen. `/api/admin/config` is intentionally reserved and does not write config files yet.
+- Ongoing production maintenance: continue release, deployment, rollback, browser, and security hardening as real deployments shake out edge cases.
+- Optional future integrations: add external Pricing/Moz/importer jobs only if stable providers are chosen. Current Phase 4 local dataset enrichers are complete and do not call external APIs during lookup; pricing source swaps should plug into `internal/enrich/pricing` without adding provider-specific public config fields.
 
 ## Current Bar
 
-The current repository now has Phase 1 core lookup MVP, Phase 2 experience layer, and Phase 3 compatibility enhancement completed to their planned stage bars. It is still not acceptable to claim the full `PLAN.md` is implemented because Phases 4 and 5 still have broader optional enhancement and production-hardening work. Future work should move in this order:
+The current repository now has Phase 0 architecture skeleton, Phase 1 core lookup MVP, Phase 2 experience layer, Phase 3 compatibility enhancement, Phase 4 optional enhancement, and Phase 5 productionization completed to their planned stage bars. Future work should move in this order:
 
-1. Add compatibility extensions from `unofficial/whois-domain-lookup` only when backed by real samples and fixtures.
-2. Bring the UI up to the planned modern product level from `unofficial/next-whois` plus Whoice's own result workspace ideas.
-3. Broaden browser/device and failure-state coverage.
-4. Add external enrichment importers if stable providers are chosen.
-5. Expand the authenticated admin UI once a safe browser auth flow is chosen.
+1. Add compatibility extensions from `unofficial/` references only when backed by real samples and fixtures, rewriting the behavior into Whoice's parser/provider architecture instead of copying implementation code.
+2. Expand the authenticated admin UI once a safe browser auth flow is chosen.
+3. Continue production deployment/security documentation and release rollback hardening as deployments mature.
+4. Add external enrichment importers only if stable providers are chosen.

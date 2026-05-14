@@ -4,7 +4,7 @@ import type { GetServerSideProps } from "next";
 import { useRouter } from "next/router";
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { AppControls } from "@/components/AppControls";
-import { analyzeRegistration, appendLookupOptions, getAPIBase, lookup, lookupICP, normalizeLookupInput, type LookupOptions } from "@/lib/api";
+import { analyzeRegistration, appendLookupOptions, enrichLookup, getAPIBase, getCapabilities, lookup, lookupICP, normalizeLookupInput, type LookupOptions } from "@/lib/api";
 import { writeHistory } from "@/lib/history";
 import { useI18n } from "@/lib/i18n";
 import { renderResultPlugins } from "@/lib/resultPlugins";
@@ -41,6 +41,13 @@ type ICPState = {
 };
 
 type AIState = {
+  key: string;
+  loading: boolean;
+  requested: boolean;
+  error?: string;
+};
+
+type EnrichmentState = {
   key: string;
   loading: boolean;
   requested: boolean;
@@ -100,9 +107,10 @@ function lookupParamsFromPath(path: string) {
       rdapServer: params.get("rdap_server") || undefined,
       whoisServer: params.get("whois_server") || undefined,
       whoisFollow: params.get("whois_follow") || undefined,
-      exactDomain: params.get("exact_domain") || undefined,
-      ai: params.get("ai") || undefined,
-    }),
+    exactDomain: params.get("exact_domain") || undefined,
+    ai: params.get("ai") || undefined,
+    fast: params.get("fast") || undefined,
+  }),
   };
 }
 
@@ -242,13 +250,20 @@ function sourceLabel(source?: string) {
 function RawBlock({ title, value }: { title: string; value?: string }) {
   if (!value) return null;
   return (
-    <section className="panel raw-panel">
-      <div className="panel-head">
+    <details className="panel raw-panel">
+      <summary className="panel-summary">
         <h2>{title}</h2>
-      </div>
+        <span>{formatByteCount(value.length)}</span>
+      </summary>
       <pre>{value}</pre>
-    </section>
+    </details>
   );
+}
+
+function formatByteCount(value: number) {
+  if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
+  if (value >= 1024) return `${Math.round(value / 1024)} KB`;
+  return `${value} B`;
 }
 
 function hasNetwork(result: LookupResult) {
@@ -271,15 +286,27 @@ function hasRegistration(result: LookupResult) {
   );
 }
 
-function ActionValue({ value, href, onCopy }: { value?: string; href?: string; onCopy?: (value: string) => void }) {
+function ActionValue({
+  value,
+  href,
+  onCopy,
+  displayValue,
+  className,
+}: {
+  value?: string;
+  href?: string;
+  onCopy?: (value: string) => void;
+  displayValue?: ReactNode;
+  className?: string;
+}) {
   const text = value?.trim();
   if (!text) return null;
   return (
-    <span className="action-value">
+    <span className={className ? `action-value ${className}` : "action-value"} title={displayValue ? text : undefined}>
       {href ? (
-        <a href={href} target="_blank" rel="noreferrer">{text}</a>
+        <a href={href} target="_blank" rel="noreferrer">{displayValue || text}</a>
       ) : (
-        <span>{text}</span>
+        <span>{displayValue || text}</span>
       )}
       {onCopy && (
         <button type="button" className="inline-copy" onClick={() => onCopy(text)} title="Copy" aria-label={`Copy ${text}`}>
@@ -371,7 +398,7 @@ function DNSPanel({ result, onCopy }: { result: LookupResult; onCopy?: (value: s
   const mergedNs = mergeNameserverValues(registryNs, liveNs);
 
   return (
-    <section className="panel">
+    <section className="panel dns-panel">
       <div className="panel-head">
         <h2>{t("dns")}</h2>
         <DNSResolverBadges resolvers={dns?.resolvers} />
@@ -478,7 +505,19 @@ function icpErrorMessage(state: ICPState) {
   return state.error ? `备案查询暂不可用：${state.error}` : "备案查询暂不可用。";
 }
 
-function NSComparison({ registryNs, dnsNs, mismatch, onCopy }: { registryNs?: string[]; dnsNs?: string[]; mismatch?: boolean; onCopy?: (value: string) => void }) {
+function NSComparison({
+  registryNs,
+  dnsNs,
+  mismatch,
+  nameservers,
+  onCopy,
+}: {
+  registryNs?: string[];
+  dnsNs?: string[];
+  mismatch?: boolean;
+  nameservers: LookupResult["nameservers"];
+  onCopy?: (value: string) => void;
+}) {
   const liveNs = dnsNs || [];
   const whoisNs = registryNs || [];
   if (!liveNs.length && !whoisNs.length) return null;
@@ -488,16 +527,19 @@ function NSComparison({ registryNs, dnsNs, mismatch, onCopy }: { registryNs?: st
   return (
     <div className="ns-compare">
       <div className="ns-warning">WHOIS/RDAP NS and live DNS NS differ</div>
-      <details>
-        <summary>Show NS evidence</summary>
+      <details className="ns-evidence">
+        <summary>
+          <span>Show NS evidence</span>
+          <span className="muted">{whoisNs.length} registry / {liveNs.length} live</span>
+        </summary>
         <div className="ns-evidence-grid">
           <div>
-            <strong>WHOIS/RDAP NS</strong>
-            <NSList values={whoisNs} onCopy={onCopy} />
+            <strong>WHOIS/RDAP NS <span>{whoisNs.length}</span></strong>
+            <NSList values={whoisNs} nameservers={nameservers} onCopy={onCopy} grouped />
           </div>
           <div>
-            <strong>Live DNS NS</strong>
-            <NSList values={liveNs} onCopy={onCopy} />
+            <strong>Live DNS NS <span>{liveNs.length}</span></strong>
+            <NSList values={liveNs} nameservers={nameservers} onCopy={onCopy} grouped />
           </div>
         </div>
       </details>
@@ -505,17 +547,73 @@ function NSComparison({ registryNs, dnsNs, mismatch, onCopy }: { registryNs?: st
   );
 }
 
-function NSList({ values, onCopy }: { values: string[]; onCopy?: (value: string) => void }) {
+function NSList({
+  values,
+  nameservers,
+  onCopy,
+  grouped,
+}: {
+  values: string[];
+  nameservers?: LookupResult["nameservers"];
+  onCopy?: (value: string) => void;
+  grouped?: boolean;
+}) {
   if (!values.length) return <span className="muted">none</span>;
+  if (grouped) {
+    return <NameserverGroupedList values={values} nameservers={nameservers} onCopy={onCopy} />;
+  }
   return (
     <span className="dns-record-list">
       {values.map((value) => (
         <span key={value} className="dns-record-item">
           <ActionValue value={value} onCopy={onCopy} />
+          {nameservers ? <NameserverAddresses host={value} nameservers={nameservers} /> : null}
         </span>
       ))}
     </span>
   );
+}
+
+function NameserverGroupedList({ values, nameservers, onCopy }: { values: string[]; nameservers?: LookupResult["nameservers"]; onCopy?: (value: string) => void }) {
+  const groups = groupNameserversBySuffix(values);
+  return (
+    <span className="ns-compact-list">
+      {groups.map((group) => (
+        <span className="ns-group" key={group.suffix}>
+          <span className="ns-group-suffix" title={group.suffix}>{group.suffix}</span>
+          <span className="ns-group-hosts">
+            {group.items.map((item) => (
+              <button type="button" className="ns-host-chip" key={item.host} onClick={() => onCopy?.(item.host)} title={item.host} aria-label={`Copy ${item.host}`}>
+                {item.label}
+              </button>
+            ))}
+          </span>
+          {nameservers && (
+            <span className="ns-group-addresses">
+              {group.items.map((item) => (
+                <NameserverAddresses key={item.host} host={item.host} nameservers={nameservers} />
+              ))}
+            </span>
+          )}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function groupNameserversBySuffix(values: string[]) {
+  const groups = new Map<string, { suffix: string; items: { host: string; label: string }[] }>();
+  for (const value of values) {
+    const host = normalizeNameserverHost(value);
+    if (!host) continue;
+    const labels = host.split(".");
+    const suffix = labels.length >= 3 ? labels.slice(1).join(".") : host;
+    const label = labels.length >= 3 ? labels[0] : host;
+    const group = groups.get(suffix) || { suffix, items: [] };
+    group.items.push({ host, label });
+    groups.set(suffix, group);
+  }
+  return Array.from(groups.values()).sort((a, b) => a.suffix.localeCompare(b.suffix));
 }
 
 function NameserverBlock({
@@ -535,13 +633,14 @@ function NameserverBlock({
 
   if (merged.length === 0) return null;
   if (mismatch) {
-    return <NSComparison registryNs={registryNs} dnsNs={liveNs} mismatch onCopy={onCopy} />;
+    return <NSComparison registryNs={registryNs} dnsNs={liveNs} mismatch nameservers={nameservers} onCopy={onCopy} />;
   }
   return (
-    <div className="mono-list">
+    <div className="nameserver-list">
       {merged.map((host) => (
-        <span key={host}>
+        <span key={host} className="nameserver-item">
           <ActionValue value={formatNameserverLabel(host, nameservers)} onCopy={() => onCopy?.(host)} />
+          <NameserverAddresses host={host} nameservers={nameservers} />
         </span>
       ))}
     </div>
@@ -569,6 +668,19 @@ function normalizeNameserverHost(value: string) {
 function formatNameserverLabel(host: string, nameservers: LookupResult["nameservers"]) {
   const matched = nameservers.find((ns) => normalizeNameserverHost(ns.host) === host);
   return matched?.brand ? `${host} - ${brandLabel(matched.brand)}` : host;
+}
+
+function NameserverAddresses({ host, nameservers }: { host: string; nameservers: LookupResult["nameservers"] }) {
+  const matched = nameservers.find((ns) => normalizeNameserverHost(ns.host) === host);
+  const addresses = Array.isArray(matched?.addresses) ? matched.addresses.filter(Boolean) : [];
+  if (!addresses.length) return null;
+  return (
+    <span className="nameserver-addresses">
+      {addresses.map((address) => (
+        <span className="ns-address-chip" key={address}>IP {address}</span>
+      ))}
+    </span>
+  );
 }
 
 function DNSResolverBadges({ resolvers }: { resolvers?: NonNullable<LookupResult["enrichment"]["dns"]>["resolvers"] }) {
@@ -632,7 +744,7 @@ function DNSAddressGroup({ title, addresses }: { title: string; addresses?: NonN
     <details className="dns-record-group">
       <summary>
         <span>{summary}</span>
-        <span className="muted">{title}</span>
+        {addresses.length > 1 && <span className="muted">{title}</span>}
       </summary>
       <div className="dns-record-list">
         {addresses.map((address) => (
@@ -690,7 +802,7 @@ function DNSValueGroup({ title, values, onCopy }: { title: string; values?: stri
     <details className="dns-record-group">
       <summary>
         <span>{summary}</span>
-        <span className="muted">{title}</span>
+        {values.length > 1 && <span className="muted">{title}</span>}
       </summary>
       <div className="dns-record-list">
         {values.map((value) => (
@@ -790,6 +902,11 @@ function aiRequestKey(result: LookupResult | undefined, nonce: number) {
   return key ? `${nonce}\x1f${key}` : "";
 }
 
+function enrichmentRequestKey(result: LookupResult | undefined, nonce: number) {
+  if (!result?.meta?.pendingEnrichments?.length) return "";
+  return `${nonce}\x1f${result.normalizedQuery}\x1f${result.meta.pendingEnrichments.join(",")}`;
+}
+
 function RegistrationPanel({ result, aiLoading, aiError, onCopy }: { result: LookupResult; aiLoading?: boolean; aiError?: string; onCopy?: (value: string) => void }) {
   const { t } = useI18n();
   const registrant = result.registrant || {};
@@ -802,7 +919,7 @@ function RegistrationPanel({ result, aiLoading, aiError, onCopy }: { result: Loo
         {aiLoading && <span className="source-hint ai-pending">{t("aiAnalyzing")}</span>}
         {!aiLoading && aiError && <span className="source-hint ai-error" title={aiError}>AI error</span>}
         {ai && (
-          <span className={`source-hint ${ai.status === "error" ? "ai-error" : "ai-source"}`} title={[ai.provider, ai.model, ai.error].filter(Boolean).join("\n")}>
+          <span className={`source-hint ${ai.status === "error" ? "ai-error" : "ai-source"}`} title={[ai.provider, ai.model, ai.reason, ai.error].filter(Boolean).join("\n")}>
             AI {ai.status}{ai.cached ? " cached" : ""}
           </span>
         )}
@@ -845,7 +962,7 @@ function RegistrationPanel({ result, aiLoading, aiError, onCopy }: { result: Loo
 function NetworkPanel({ result }: { result: LookupResult }) {
   const { t } = useI18n();
   return (
-    <section className="panel">
+    <section className="panel network-panel">
       <div className="panel-head">
         <h2>{t("network")}</h2>
       </div>
@@ -860,6 +977,65 @@ function NetworkPanel({ result }: { result: LookupResult }) {
           <Row label="Origin AS" value={result.network.originAS} />
           <Row label="Country" value={result.network.country} />
         </dl>
+      )}
+    </section>
+  );
+}
+
+function SummaryPanel({ result, onCopy }: { result: LookupResult; onCopy?: (value: string) => void }) {
+  const { t } = useI18n();
+  return (
+    <section className="panel summary-panel">
+      <div className="panel-head">
+        <h2>{t("summary")}</h2>
+      </div>
+      <dl className="detail-list">
+        <Row label="Domain" value={<ActionValue value={result.domain.name} href={externalDomainURL(result.domain.name)} onCopy={onCopy} />} />
+        <Row label="Unicode" value={<ActionValue value={result.domain.unicodeName} href={externalDomainURL(result.domain.unicodeName)} onCopy={onCopy} />} />
+        <Row
+          label="Registrar"
+          value={
+            result.registrar.name ? (
+              <span className="registration-value">
+                <ActionValue value={result.registrar.name} href={safeExternalURL(result.registrar.url)} />
+                <SourceHint source={result.registrar.source} confidence={result.registrar.confidence} evidence={result.registrar.evidence} />
+              </span>
+            ) : (
+              <span className="status-pill off">Not parsed</span>
+            )
+          }
+        />
+        <Row label="Registrar Brand" value={brandLabel(result.registrar.brand)} />
+        <Row label="IANA ID" value={result.registrar.ianaId} />
+        <Row label="Registrar Country" value={result.registrar.country} />
+        <Row label="Created" value={result.dates.createdAt} />
+        <Row label="Expires" value={result.dates.expiresAt} />
+        <Row label="Updated" value={result.dates.updatedAt} />
+        <Row label="Age days" value={result.dates.ageDays} />
+        <Row label="Remaining days" value={result.dates.remainingDays} />
+        <Row label="DNSSEC" value={result.dnssec.text} />
+      </dl>
+    </section>
+  );
+}
+
+function StatusPanel({ statuses }: { statuses: LookupResult["statuses"] }) {
+  const { t } = useI18n();
+  return (
+    <section className="panel status-panel">
+      <div className="panel-head">
+        <h2>{t("status")}</h2>
+      </div>
+      {statuses.length === 0 ? (
+        <p className="muted">{t("noStatus")}</p>
+      ) : (
+        <div className="chip-list">
+          {statuses.map((status) => (
+            <span key={`${status.code}-${status.source}`} className="chip" title={status.description}>
+              {status.label || status.code}
+            </span>
+          ))}
+        </div>
       )}
     </section>
   );
@@ -942,20 +1118,28 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
   const inflightURLRef = useRef("");
   const icpInflightRef = useRef("");
   const aiInflightRef = useRef("");
+  const enrichmentInflightRef = useRef("");
+  const runtimeConfigRef = useRef(response.config?.loadedAt || "");
   const result = state.response.result;
   const title = result ? `${result.normalizedQuery} | Whoice` : `${state.query || "Lookup"} | Whoice`;
   const statuses = Array.isArray(result?.statuses) ? result.statuses : [];
   const sourceErrors = Array.isArray(result?.source.errors) ? result.source.errors : [];
+  const metaWarnings = Array.isArray(result?.meta.warnings) ? result.meta.warnings : [];
   const [actionState, setActionState] = useState("");
   const [shareMenuOpen, setShareMenuOpen] = useState(false);
   const [icpState, setICPState] = useState<ICPState>({ domain: "", loading: false, requested: false });
   const [aiState, setAIState] = useState<AIState>({ key: "", loading: false, requested: false });
+  const [enrichmentState, setEnrichmentState] = useState<EnrichmentState>({ key: "", loading: false, requested: false });
   const { t } = useI18n();
   const pageURL = useMemo(() => lookupUrl(state.query, state.sourceMode, state.options), [state.options, state.query, state.sourceMode]);
   const absolutePageURL = typeof window === "undefined" ? pageURL : window.location.href;
   const ogImageURL = `/api/og?query=${encodeURIComponent(result?.normalizedQuery || state.query)}`;
   const icpDomain = result?.type === "domain" ? result.domain.registeredDomain || result.domain.name || result.normalizedQuery : "";
   const currentAIKey = aiRequestKey(result, state.nonce);
+  const currentEnrichmentKey = enrichmentRequestKey(result, state.nonce);
+  const detailTools = result ? renderResultPlugins("details", result) : [];
+  const debugTools = result ? renderResultPlugins("debug", result) : [];
+  const hasEvidence = Boolean(result && (debugTools.length || result.raw.whois || result.raw.whoisWeb || result.raw.rdap));
 
   useEffect(() => {
     const propsURL = lookupUrl(query, sourceMode, options);
@@ -999,6 +1183,15 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
   }, [result?.normalizedQuery, result?.raw?.whois, result?.raw?.whoisWeb, result?.raw?.rdap, state.nonce]);
 
   useEffect(() => {
+    const key = enrichmentRequestKey(result, state.nonce);
+    if (!key) {
+      setEnrichmentState({ key: "", loading: false, requested: false });
+      return;
+    }
+    setEnrichmentState((current) => (current.key === key ? current : { key, loading: false, requested: false }));
+  }, [result?.normalizedQuery, result?.meta?.pendingEnrichments?.join(","), state.nonce]);
+
+  useEffect(() => {
     if (!icpAutoQuery || !icpDomain || icpState.requested || icpState.loading) return;
     void runICPLookup(icpDomain);
   }, [icpAutoQuery, icpDomain, icpState.loading, icpState.requested]);
@@ -1011,6 +1204,13 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
   }, [aiState.key, aiState.loading, aiState.requested, result, state.nonce, state.options.ai]);
 
   useEffect(() => {
+    if (!result?.meta?.pendingEnrichments?.length) return;
+    const key = enrichmentRequestKey(result, state.nonce);
+    if (!key || enrichmentState.key !== key || enrichmentState.loading || enrichmentState.requested) return;
+    void runDeferredEnrichment(result, key);
+  }, [enrichmentState.key, enrichmentState.loading, enrichmentState.requested, result, state.nonce]);
+
+  useEffect(() => {
     if (!router.isReady) return;
     const next = lookupParamsFromPath(router.asPath);
     if (!next.query || isLoading) return;
@@ -1019,6 +1219,34 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
       void runLookup(next.query, next.sourceMode, next.options, false);
     }
   }, [router.asPath, router.isReady]);
+
+  useEffect(() => {
+    if (!state.query || isLoading) return;
+    let stopped = false;
+    const checkRuntimeConfig = async () => {
+      try {
+        const { body } = await getCapabilities();
+        const loadedAt = body.config?.loadedAt || "";
+        const current = runtimeConfigRef.current;
+        if (loadedAt) {
+          runtimeConfigRef.current = loadedAt;
+        }
+        if (!stopped && loadedAt && current && loadedAt !== current) {
+          await runLookup(state.query, state.sourceMode, state.options, false);
+        }
+      } catch {
+        // Runtime config polling is best-effort; lookup itself still reports API errors.
+      }
+    };
+    const interval = window.setInterval(() => {
+      void checkRuntimeConfig();
+    }, 2500);
+    void checkRuntimeConfig();
+    return () => {
+      stopped = true;
+      window.clearInterval(interval);
+    };
+  }, [isLoading, state.options, state.query, state.sourceMode]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1071,6 +1299,7 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
     inflightURLRef.current = nextURL;
     setIsLoading(true);
     setAIState({ key: "", loading: false, requested: false });
+    setEnrichmentState({ key: "", loading: false, requested: false });
     try {
       const { status, body } = await lookup(trimmed, requestOptions);
       setState({
@@ -1107,6 +1336,7 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
       handledURLRef.current = nextURL;
       setSearchValue(trimmed);
       setAIState({ key: "", loading: false, requested: false });
+      setEnrichmentState({ key: "", loading: false, requested: false });
       if (updateURL && typeof window !== "undefined") {
         void router.push(nextURL, undefined, { shallow: true, scroll: false });
       }
@@ -1191,6 +1421,49 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
     }
   }
 
+  async function runDeferredEnrichment(target = result, key = enrichmentRequestKey(target, state.nonce)) {
+    if (!target || !key) return;
+    if (enrichmentInflightRef.current === key) return;
+    enrichmentInflightRef.current = key;
+    setEnrichmentState({ key, loading: true, requested: true });
+    try {
+      const { body } = await enrichLookup(target);
+      if (!body.ok || !body.result) {
+        setEnrichmentState({
+          key,
+          loading: false,
+          requested: true,
+          error: body.error?.message || "Enrichment failed",
+        });
+        return;
+      }
+      const nextResult = body.result;
+      setState((current) => {
+        if (enrichmentRequestKey(current.response.result, current.nonce) !== key) return current;
+        return {
+          ...current,
+          response: {
+            ...current.response,
+            result: nextResult,
+            meta: body.meta || nextResult.meta,
+          },
+        };
+      });
+      setEnrichmentState({ key, loading: false, requested: true });
+    } catch (error) {
+      setEnrichmentState({
+        key,
+        loading: false,
+        requested: true,
+        error: error instanceof Error ? error.message : "Enrichment failed",
+      });
+    } finally {
+      if (enrichmentInflightRef.current === key) {
+        enrichmentInflightRef.current = "";
+      }
+    }
+  }
+
   function submitMiniSearch(event: FormEvent) {
     event.preventDefault();
     void runLookup(searchValue);
@@ -1271,13 +1544,9 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
         <meta property="og:image" content={`/api/og?query=${encodeURIComponent(result?.normalizedQuery || state.query)}`} />
         <meta name="twitter:card" content="summary_large_image" />
       </Head>
-      <main className="shell result-shell">
+      <main className="shell result-shell result-workbench-shell">
         <nav className="top-nav">
           <Link href="/" className="brand">Whoice</Link>
-          <form className="mini-search" onSubmit={submitMiniSearch}>
-            <input id="lookup-mini-search" name="query" value={searchValue} onChange={(event) => setSearchValue(event.target.value)} aria-label="Search query" />
-            <button disabled={isLoading} type="submit">{isLoading ? "..." : "Search"}</button>
-          </form>
           <div className="nav-links">
             <Link href="/docs">{t("docs")}</Link>
             <Link href="/status">{t("status")}</Link>
@@ -1285,140 +1554,184 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
           </div>
         </nav>
 
-        {state.query && (
-          <SourceLinks
-            value={state.sourceMode}
-            exactDomain={parseBool(state.options.exactDomain)}
-            forceAI={parseBool(state.options.ai)}
-            onChange={switchSource}
-            onExactDomainChange={switchExactDomain}
-            onForceAIChange={switchForceAI}
-          />
-        )}
-
-        {isLoading && (
-          <section className="panel loading-panel">
-            <p className="eyebrow">Live lookup</p>
-            <h2>{searchValue}</h2>
-          </section>
-        )}
-
-        {!state.response.ok || !result ? (
-          <section className="panel error-panel">
-            <p className="eyebrow">HTTP {state.httpStatus}</p>
-            <h1>{state.response.error?.message || t("failed")}</h1>
-            <p className="muted">{t("sourceHint")}</p>
-          </section>
-        ) : (
-          <>
-            <section className="action-bar" aria-label="Result actions">
-              <div className="share-menu">
-                <button type="button" onClick={() => setShareMenuOpen((open) => !open)}>{t("share")}</button>
-                {shareMenuOpen && (
-                  <div className="share-menu-panel">
-                    <button type="button" onClick={shareResult}>{t("copyUrl")}</button>
-                    <button type="button" onClick={() => copy(result.normalizedQuery, t("copied"))}>{t("copyQuery")}</button>
-                    <button type="button" onClick={downloadOGImage}>{t("downloadImage")}</button>
-                    <a href={ogImageURL} target="_blank" rel="noreferrer">{t("openImage")}</a>
-                  </div>
-                )}
+        <div className="lookup-workbench">
+          <aside className="tool-sidebar" aria-label="Lookup toolbox">
+            <section className="tool-panel tool-panel-search">
+              <div className="tool-panel-head">
+                <p className="eyebrow">Lookup</p>
+                {isLoading && <span className="status-pill">Live</span>}
               </div>
-              <button type="button" onClick={() => copy(rawText(result), t("copied"))}>{t("copyRaw")}</button>
-              <button type="button" onClick={downloadResult}>{t("downloadJson")}</button>
-              {actionState && <span>{actionState}</span>}
+              <form className="mini-search tool-search" onSubmit={submitMiniSearch}>
+                <input id="lookup-mini-search" name="query" value={searchValue} onChange={(event) => setSearchValue(event.target.value)} aria-label="Search query" />
+                <button disabled={isLoading} type="submit">{isLoading ? "..." : "Search"}</button>
+              </form>
+              {state.query && (
+                <SourceLinks
+                  value={state.sourceMode}
+                  exactDomain={parseBool(state.options.exactDomain)}
+                  forceAI={parseBool(state.options.ai)}
+                  onChange={switchSource}
+                  onExactDomainChange={switchExactDomain}
+                  onForceAIChange={switchForceAI}
+                />
+              )}
+            </section>
+
+            {result && (
+              <section className="tool-panel">
+                <div className="tool-panel-head">
+                  <p className="eyebrow">Session</p>
+                  <span className={`status-pill status-dot status-dot-${result.status}`}>{result.status}</span>
+                </div>
+                <div className="tool-facts">
+                  <span><strong>Type</strong>{result.type}</span>
+                  {result.source.primary && <span><strong>Primary</strong>{result.source.primary}</span>}
+                  <span><strong>Elapsed</strong>{result.meta.elapsedMs} ms</span>
+                  <span><strong>Evidence</strong>{rawText(result) ? "available" : "empty"}</span>
+                  {enrichmentState.loading && enrichmentState.key === currentEnrichmentKey && <span><strong>Enrich</strong>{result.meta.pendingEnrichments?.join(", ") || "running"}</span>}
+                  {!enrichmentState.loading && enrichmentState.error && <span><strong>Enrich</strong>{enrichmentState.error}</span>}
+                </div>
+              </section>
+            )}
+
+            {result && (
+              <section className="tool-panel">
+                <div className="tool-panel-head">
+                  <p className="eyebrow">Output</p>
+                  {actionState && <span className="tool-action-state">{actionState}</span>}
+                </div>
+                <section className="action-bar tool-action-bar" aria-label="Result actions">
+                  <div className="share-menu">
+                    <button type="button" onClick={() => setShareMenuOpen((open) => !open)}>{t("share")}</button>
+                    {shareMenuOpen && (
+                      <div className="share-menu-panel">
+                        <button type="button" onClick={shareResult}>{t("copyUrl")}</button>
+                        <button type="button" onClick={() => copy(result.normalizedQuery, t("copied"))}>{t("copyQuery")}</button>
+                        <button type="button" onClick={downloadOGImage}>{t("downloadImage")}</button>
+                        <a href={ogImageURL} target="_blank" rel="noreferrer">{t("openImage")}</a>
+                      </div>
+                    )}
+                  </div>
+                  <button type="button" onClick={() => copy(rawText(result), t("copied"))}>{t("copyRaw")}</button>
+                  <button type="button" onClick={downloadResult}>{t("downloadJson")}</button>
+                </section>
+              </section>
+            )}
+
+            <section className="tool-panel shortcut-panel">
+              <p className="eyebrow">Keys</p>
               <span className="shortcut-hint">
                 <kbd>/</kbd> search <kbd>S</kbd> share <kbd>C</kbd> URL <kbd>R</kbd> raw <kbd>J</kbd> JSON <kbd>O</kbd> image
               </span>
             </section>
-            <StatusStrip result={result} onCopy={(value) => copy(value, t("copied"))} />
-            <div className="result-grid">
-              <section className="panel">
-                <div className="panel-head">
-                  <h2>{t("summary")}</h2>
-                </div>
-                <dl className="detail-list">
-                  <Row label="Domain" value={<ActionValue value={result.domain.name} href={externalDomainURL(result.domain.name)} onCopy={(value) => copy(value, t("copied"))} />} />
-                  <Row label="Unicode" value={<ActionValue value={result.domain.unicodeName} href={externalDomainURL(result.domain.unicodeName)} onCopy={(value) => copy(value, t("copied"))} />} />
-                  <Row
-                    label="Registrar"
-                    value={
-                      result.registrar.name ? (
-                        <span className="registration-value">
-                          <ActionValue value={result.registrar.name} href={safeExternalURL(result.registrar.url)} />
-                          <SourceHint source={result.registrar.source} confidence={result.registrar.confidence} evidence={result.registrar.evidence} />
-                        </span>
-                      ) : (
-                        <span className="status-pill off">Not parsed</span>
-                      )
-                    }
-                  />
-                  <Row label="Registrar Brand" value={brandLabel(result.registrar.brand)} />
-                  <Row label="IANA ID" value={result.registrar.ianaId} />
-                  <Row label="Registrar Country" value={result.registrar.country} />
-                  <Row label="Created" value={result.dates.createdAt} />
-                  <Row label="Expires" value={result.dates.expiresAt} />
-                  <Row label="Updated" value={result.dates.updatedAt} />
-                  <Row label="Age days" value={result.dates.ageDays} />
-                  <Row label="Remaining days" value={result.dates.remainingDays} />
-                  <Row label="DNSSEC" value={result.dnssec.text} />
-                </dl>
-              </section>
+          </aside>
 
-              {result.type === "domain" ? <DNSPanel result={result} onCopy={(value) => copy(value, t("copied"))} /> : <NetworkPanel result={result} />}
-
-              {result.type === "domain" && (
-                <RegistrationPanel
-                  result={result}
-                  aiLoading={aiState.loading && aiState.key === currentAIKey}
-                  aiError={aiState.key === currentAIKey ? aiState.error : undefined}
-                  onCopy={(value) => copy(value, t("copied"))}
-                />
-              )}
-
-              {result.type === "domain" && <ICPPanel domain={icpDomain} state={icpState} onLookup={() => void runICPLookup()} />}
-
-              <section className="panel">
-                <div className="panel-head">
-                  <h2>{t("status")}</h2>
-                </div>
-                {statuses.length === 0 ? (
-                  <p className="muted">{t("noStatus")}</p>
-                ) : (
-                  <div className="chip-list">
-                    {statuses.map((status) => (
-                      <span key={`${status.code}-${status.source}`} className="chip" title={status.description}>
-                        {status.label || status.code}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </section>
-            </div>
-
-            <div className="result-grid">
-              {renderResultPlugins("details", result)}
-            </div>
-
-            {sourceErrors.length > 0 && (
-              <section className="panel warning-panel">
-                <div className="panel-head">
-                  <h2>{t("warnings")}</h2>
-                </div>
-                <ul>
-                  {sourceErrors.map((error) => (
-                    <li key={`${error.source}-${error.error}`}>{error.source}: {error.error}</li>
-                  ))}
-                </ul>
+          <section className="tool-stage" aria-label="Lookup result workspace">
+            {isLoading && (
+              <section className="panel loading-panel">
+                <p className="eyebrow">Live lookup</p>
+                <h2>{searchValue}</h2>
               </section>
             )}
 
-            {renderResultPlugins("debug", result)}
+            {!state.response.ok || !result ? (
+              <section className="panel error-panel">
+                <p className="eyebrow">HTTP {state.httpStatus}</p>
+                <h1>{state.response.error?.message || t("failed")}</h1>
+                <p className="muted">{t("sourceHint")}</p>
+              </section>
+            ) : (
+              <>
+                <StatusStrip result={result} onCopy={(value) => copy(value, t("copied"))} />
+                <div className="result-sections tool-stage-sections">
+                  <section className="tool-zone">
+                    <div className="tool-zone-head">
+                      <span className="tool-zone-index">01</span>
+                      <div>
+                        <h2>Overview</h2>
+                        <p>Identity, registrar, and live DNS context.</p>
+                      </div>
+                    </div>
+                    <div className="result-band result-band-primary">
+                      <SummaryPanel result={result} onCopy={(value) => copy(value, t("copied"))} />
+                      {result.type === "domain" ? <DNSPanel result={result} onCopy={(value) => copy(value, t("copied"))} /> : <NetworkPanel result={result} />}
+                    </div>
+                  </section>
 
-            <RawBlock title={t("rawWhois")} value={result.raw.whois} />
-            <RawBlock title="WHOIS Web" value={result.raw.whoisWeb} />
-            <RawBlock title={t("rawRdap")} value={result.raw.rdap} />
-          </>
-        )}
+                  <section className="tool-zone">
+                    <div className="tool-zone-head">
+                      <span className="tool-zone-index">02</span>
+                      <div>
+                        <h2>Ownership</h2>
+                        <p>Registrant fields, AI assistance, ICP, and domain state.</p>
+                      </div>
+                    </div>
+                    <div className="result-band result-band-secondary">
+                      {result.type === "domain" && (
+                        <RegistrationPanel
+                          result={result}
+                          aiLoading={aiState.loading && aiState.key === currentAIKey}
+                          aiError={aiState.key === currentAIKey ? aiState.error : undefined}
+                          onCopy={(value) => copy(value, t("copied"))}
+                        />
+                      )}
+                      {result.type === "domain" && <ICPPanel domain={icpDomain} state={icpState} onLookup={() => void runICPLookup()} />}
+                      <StatusPanel statuses={statuses} />
+                    </div>
+                  </section>
+
+                  {(detailTools.length > 0 || sourceErrors.length > 0 || metaWarnings.length > 0) && (
+                    <section className="tool-zone">
+                      <div className="tool-zone-head">
+                        <span className="tool-zone-index">03</span>
+                        <div>
+                          <h2>Enrichment</h2>
+                          <p>Plugins and provider-specific diagnostics.</p>
+                        </div>
+                      </div>
+                      <div className="result-grid enrichment-grid">
+                        {detailTools}
+                        {(sourceErrors.length > 0 || metaWarnings.length > 0) && (
+                          <section className="panel warning-panel">
+                            <div className="panel-head">
+                              <h2>{t("warnings")}</h2>
+                            </div>
+                            <ul>
+                              {metaWarnings.map((warning) => (
+                                <li key={warning}>{warning}</li>
+                              ))}
+                              {sourceErrors.map((error) => (
+                                <li key={`${error.source}-${error.error}`}>{error.source}: {error.error}</li>
+                              ))}
+                            </ul>
+                          </section>
+                        )}
+                      </div>
+                    </section>
+                  )}
+
+                  {hasEvidence && (
+                    <section className="tool-zone">
+                      <div className="tool-zone-head">
+                      <span className="tool-zone-index">04</span>
+                      <div>
+                        <h2>Evidence</h2>
+                        <p>Raw responses and request diagnostics for verification.</p>
+                      </div>
+                      </div>
+                      <div className="evidence-stack">
+                        {debugTools}
+                        <RawBlock title={t("rawWhois")} value={result.raw.whois} />
+                        <RawBlock title="WHOIS Web" value={result.raw.whoisWeb} />
+                        <RawBlock title={t("rawRdap")} value={result.raw.rdap} />
+                      </div>
+                    </section>
+                  )}
+                </div>
+              </>
+            )}
+          </section>
+        </div>
       </main>
     </>
   );

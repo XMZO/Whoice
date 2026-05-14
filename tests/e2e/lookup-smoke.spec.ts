@@ -165,3 +165,58 @@ test("source switch, controls, lookup proxy path, and DNSViz panel stay usable",
   const proxiedLookup = await request.get("/api/lookup?query=example.com&rdap=1&whois_follow=0");
   expect(proxiedLookup.ok()).toBeTruthy();
 });
+
+test("lookup failure state is actionable without crashing the workbench", async ({ page }) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await page.route("**/api/lookup?**query=broken.test**", async (route) => {
+    await route.fulfill({
+      status: 502,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: false,
+        error: {
+          code: "upstream_failed",
+          message: "Lookup failed",
+        },
+      }),
+    });
+  });
+
+  await page.goto("/lookup?query=example.com&rdap=1&whois_follow=0");
+  await expect(page.getByRole("heading", { name: "example.com" })).toBeVisible();
+
+  await page.getByLabel("Search query").fill("broken.test");
+  await page.getByRole("button", { name: "Search" }).click();
+
+  await expect(page).toHaveURL(/\/lookup\?query=broken\.test/);
+  await expect(page.getByRole("heading", { name: "Lookup failed" })).toBeVisible();
+  await expect(page.getByText("Switch source mode or check whether the lookup API is running.")).toBeVisible();
+  await expect(page.locator(".tool-sidebar")).toBeVisible();
+  await expect(page.locator(".error-panel")).toBeVisible();
+  expect(pageErrors).toEqual([]);
+});
+
+test("mobile-chrome touch-friendly layout has no horizontal overflow", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile-chrome", "mobile layout is covered by the mobile-chrome project");
+
+  await page.goto("/lookup?query=example.com&rdap=1&whois_follow=0");
+  await expect(page.getByRole("heading", { name: "example.com" })).toBeVisible();
+  await expect(page.getByLabel("Lookup toolbox")).toBeVisible();
+  await expect(page.getByLabel("Lookup result workspace")).toBeVisible();
+
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(overflow).toBeLessThanOrEqual(2);
+
+  const touchTargets = page.locator(".tool-panel button, .source-option, .inline-check");
+  const count = await touchTargets.count();
+  expect(count).toBeGreaterThan(0);
+  for (let index = 0; index < Math.min(count, 8); index += 1) {
+    const box = await touchTargets.nth(index).boundingBox();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(34);
+  }
+
+  await page.getByRole("radio", { name: "WHOIS" }).tap();
+  await expect(page.getByRole("radio", { name: "WHOIS" })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("button", { name: "Copy raw" }).tap();
+});

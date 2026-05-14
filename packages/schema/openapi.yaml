@@ -25,6 +25,8 @@ paths:
                   time:
                     type: string
                     format: date-time
+                  config:
+                    $ref: "#/components/schemas/ConfigStatus"
   /api/version:
     get:
       summary: Version, capabilities, and plugin descriptors
@@ -49,6 +51,8 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/PluginInfo"
+                  config:
+                    $ref: "#/components/schemas/ConfigStatus"
   /api/capabilities:
     get:
       summary: Runtime capability flags
@@ -104,6 +108,49 @@ paths:
                       $ref: "#/components/schemas/PluginInfo"
                   stats:
                     $ref: "#/components/schemas/AdminStats"
+                  config:
+                    $ref: "#/components/schemas/ConfigStatus"
+        "401":
+          description: Authentication required when auth is enabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIResponse"
+  /api/admin/config:
+    get:
+      summary: Reserved Web config editor capability endpoint
+      description: Returns admin-gated capability metadata for a future Web config editor. It intentionally does not expose the config source.
+      responses:
+        "200":
+          description: Config editor capability metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, config, editor]
+                properties:
+                  ok:
+                    type: boolean
+                  config:
+                    $ref: "#/components/schemas/ConfigStatus"
+                  editor:
+                    $ref: "#/components/schemas/ConfigEditorStatus"
+        "401":
+          description: Authentication required when auth is enabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIResponse"
+    patch:
+      summary: Reserved Web config editor write endpoint
+      description: Placeholder for future restricted-controls or source-file editing. Current builds return 501 and never write the config file.
+      responses:
+        "501":
+          description: Config editor is reserved but not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIResponse"
         "401":
           description: Authentication required when auth is enabled
           content:
@@ -301,6 +348,8 @@ components:
           $ref: "#/components/schemas/Capabilities"
         meta:
           $ref: "#/components/schemas/ResultMeta"
+        config:
+          $ref: "#/components/schemas/ConfigStatus"
     APIError:
       type: object
       required: [code, message]
@@ -325,6 +374,54 @@ components:
           $ref: "#/components/schemas/APIError"
         meta:
           $ref: "#/components/schemas/ResultMeta"
+        config:
+          $ref: "#/components/schemas/ConfigStatus"
+    ConfigStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+        path:
+          type: string
+        loadedAt:
+          type: string
+        lastCheckedAt:
+          type: string
+        lastAttemptAt:
+          type: string
+        lastErrorAt:
+          type: string
+        lastError:
+          type: string
+        rolledBack:
+          type: boolean
+        usingLoadedAt:
+          type: string
+    ConfigEditorStatus:
+      type: object
+      required: [status, format, writable, sourceReadable, surfaces, supportedOperations]
+      properties:
+        status:
+          type: string
+        path:
+          type: string
+        format:
+          type: string
+        writable:
+          type: boolean
+        sourceReadable:
+          type: boolean
+        surfaces:
+          type: array
+          items:
+            type: string
+        supportedOperations:
+          type: array
+          items:
+            type: string
+        reason:
+          type: string
     ICPResult:
       type: object
       required: [domain, status, cached]
@@ -562,6 +659,10 @@ components:
       properties:
         host:
           type: string
+        addresses:
+          type: array
+          items:
+            type: string
         brand:
           $ref: "#/components/schemas/Brand"
     DNSSECInfo:
@@ -672,6 +773,29 @@ components:
           type: string
         updatedAt:
           type: string
+        registerOffer:
+          $ref: "#/components/schemas/PricingOffer"
+        renewOffer:
+          $ref: "#/components/schemas/PricingOffer"
+        transferOffer:
+          $ref: "#/components/schemas/PricingOffer"
+    PricingOffer:
+      type: object
+      properties:
+        registrar:
+          type: string
+        website:
+          type: string
+          format: uri
+        logo:
+          type: string
+          format: uri
+        price:
+          type: number
+        currency:
+          type: string
+        priceCny:
+          type: number
     MozInfo:
       type: object
       properties:
@@ -781,6 +905,10 @@ components:
             type: string
         traceId:
           type: string
+        pendingEnrichments:
+          type: array
+          items:
+            type: string
         providers:
           type: array
           items:
@@ -807,6 +935,8 @@ components:
           type: array
           items:
             type: string
+        reason:
+          type: string
         error:
           type: string
     ProviderTrace:
@@ -834,8 +964,16 @@ components:
           type: string
     Capabilities:
       type: object
-      required: [rdap, whois, whoisWeb, customServers, auth, rateLimit, icpAutoQuery, enrichment]
+      required: [api, apiEndpoints, apiIpAllowlist, rdap, whois, whoisWeb, customServers, auth, rateLimit, icpAutoQuery, enrichment]
       properties:
+        api:
+          type: boolean
+        apiEndpoints:
+          type: object
+          additionalProperties:
+            type: boolean
+        apiIpAllowlist:
+          type: boolean
         rdap:
           type: boolean
         whois:

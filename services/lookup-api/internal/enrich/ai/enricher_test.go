@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/xmzo/whoice/services/lookup-api/internal/config"
 	"github.com/xmzo/whoice/services/lookup-api/internal/model"
 )
 
@@ -43,6 +44,18 @@ func (s *sequenceClient) analyze(context.Context, string, string) (Analysis, err
 
 func (s *sequenceClient) provider() string { return "fake" }
 func (s *sequenceClient) model() string    { return "fake-model" }
+
+func TestPromptUsesSharedDefaultWhenEmpty(t *testing.T) {
+	if got := prompt(Options{}); got != config.DefaultAIPrompt {
+		t.Fatal("empty AI prompt should use shared default")
+	}
+	if got := prompt(Options{Prompt: " \t\n "}); got != config.DefaultAIPrompt {
+		t.Fatal("blank AI prompt should use shared default")
+	}
+	if got := prompt(Options{Prompt: "custom"}); got != "custom" {
+		t.Fatalf("custom prompt: %q", got)
+	}
+}
 
 func TestApplyFillsOnlyMissingFields(t *testing.T) {
 	confidence := 0.92

@@ -9,7 +9,8 @@
     "result": { "$ref": "#/$defs/LookupResult" },
     "error": { "$ref": "#/$defs/APIError" },
     "capabilities": { "$ref": "#/$defs/Capabilities" },
-    "meta": { "$ref": "#/$defs/ResultMeta" }
+    "meta": { "$ref": "#/$defs/ResultMeta" },
+    "config": { "$ref": "#/$defs/ConfigStatus" }
   },
   "additionalProperties": false,
   "$defs": {
@@ -33,7 +34,45 @@
         "ok": { "type": "boolean" },
         "result": { "$ref": "#/$defs/ICPResult" },
         "error": { "$ref": "#/$defs/APIError" },
-        "meta": { "$ref": "#/$defs/ResultMeta" }
+        "meta": { "$ref": "#/$defs/ResultMeta" },
+        "config": { "$ref": "#/$defs/ConfigStatus" }
+      },
+      "additionalProperties": false
+    },
+    "ConfigStatus": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": { "type": "string" },
+        "path": { "type": "string" },
+        "loadedAt": { "type": "string" },
+        "lastCheckedAt": { "type": "string" },
+        "lastAttemptAt": { "type": "string" },
+        "lastErrorAt": { "type": "string" },
+        "lastError": { "type": "string" },
+        "rolledBack": { "type": "boolean" },
+        "usingLoadedAt": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "ConfigEditorStatus": {
+      "type": "object",
+      "required": ["status", "format", "writable", "sourceReadable", "surfaces", "supportedOperations"],
+      "properties": {
+        "status": { "type": "string" },
+        "path": { "type": "string" },
+        "format": { "type": "string" },
+        "writable": { "type": "boolean" },
+        "sourceReadable": { "type": "boolean" },
+        "surfaces": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "supportedOperations": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "reason": { "type": "string" }
       },
       "additionalProperties": false
     },
@@ -225,6 +264,10 @@
       "required": ["host"],
       "properties": {
         "host": { "type": "string" },
+        "addresses": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
         "brand": { "$ref": "#/$defs/Brand" }
       },
       "additionalProperties": false
@@ -310,6 +353,10 @@
           "items": { "type": "string" }
         },
         "traceId": { "type": "string" },
+        "pendingEnrichments": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
         "providers": {
           "type": "array",
           "items": { "$ref": "#/$defs/ProviderTrace" }
@@ -332,6 +379,7 @@
           "type": "array",
           "items": { "type": "string" }
         },
+        "reason": { "type": "string" },
         "error": { "type": "string" }
       },
       "additionalProperties": false
@@ -354,8 +402,14 @@
     },
     "Capabilities": {
       "type": "object",
-      "required": ["rdap", "whois", "whoisWeb", "customServers", "auth", "rateLimit", "icpAutoQuery", "enrichment"],
+      "required": ["api", "apiEndpoints", "apiIpAllowlist", "rdap", "whois", "whoisWeb", "customServers", "auth", "rateLimit", "icpAutoQuery", "enrichment"],
       "properties": {
+        "api": { "type": "boolean" },
+        "apiEndpoints": {
+          "type": "object",
+          "additionalProperties": { "type": "boolean" }
+        },
+        "apiIpAllowlist": { "type": "boolean" },
         "rdap": { "type": "boolean" },
         "whois": { "type": "boolean" },
         "whoisWeb": { "type": "boolean" },
@@ -417,13 +471,28 @@
         "register": { "type": "number" },
         "renew": { "type": "number" },
         "transfer": { "type": "number" },
-        "currency": { "type": "string" },
-        "provider": { "type": "string" },
-        "source": { "type": "string" },
-        "updatedAt": { "type": "string" }
+          "currency": { "type": "string" },
+          "provider": { "type": "string" },
+          "source": { "type": "string" },
+          "updatedAt": { "type": "string" },
+          "registerOffer": { "$ref": "#/$defs/PricingOffer" },
+          "renewOffer": { "$ref": "#/$defs/PricingOffer" },
+          "transferOffer": { "$ref": "#/$defs/PricingOffer" }
+        },
+        "additionalProperties": false
       },
-      "additionalProperties": false
-    },
+      "PricingOffer": {
+        "type": "object",
+        "properties": {
+          "registrar": { "type": "string" },
+          "website": { "type": "string", "format": "uri" },
+          "logo": { "type": "string", "format": "uri" },
+          "price": { "type": "number" },
+          "currency": { "type": "string" },
+          "priceCny": { "type": "number" }
+        },
+        "additionalProperties": false
+      },
     "MozInfo": {
       "type": "object",
       "properties": {

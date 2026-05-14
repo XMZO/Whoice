@@ -8,6 +8,7 @@ export type LookupOptions = {
   whoisFollow?: string;
   exactDomain?: string;
   ai?: string;
+  fast?: string;
 };
 
 export function normalizeLookupInput(value: string) {
@@ -28,6 +29,7 @@ export function normalizeLookupOptions(options: LookupOptions = {}): LookupOptio
     whoisFollow: options.whoisFollow?.trim(),
     exactDomain: options.exactDomain,
     ai: options.ai,
+    fast: options.fast,
   };
 }
 
@@ -47,6 +49,7 @@ export function appendLookupOptions(params: URLSearchParams, options: LookupOpti
   if (normalized.whoisFollow) params.set("whois_follow", normalized.whoisFollow);
   if (normalized.exactDomain) params.set("exact_domain", normalized.exactDomain);
   if (normalized.ai) params.set("ai", normalized.ai);
+  if (normalized.fast) params.set("fast", normalized.fast);
   return params;
 }
 
@@ -61,12 +64,32 @@ export async function lookup(query: string, options: LookupOptions = {}) {
   return { status: response.status, body };
 }
 
+export async function getCapabilities() {
+  const base = getAPIBase().replace(/\/$/, "");
+  const response = await fetch(`${base}/api/capabilities`, { headers: { accept: "application/json" }, cache: "no-store" });
+  const body = (await response.json()) as APIResponse;
+  return { status: response.status, body };
+}
+
 export async function analyzeRegistration(result: LookupResult, force = true) {
   const base = getAPIBase().replace(/\/$/, "");
   const response = await fetch(`${base}/api/lookup/ai`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({ result, force }),
+    cache: "no-store",
+  });
+  const body = (await response.json()) as APIResponse;
+  normalizeAPIResponse(body);
+  return { status: response.status, body };
+}
+
+export async function enrichLookup(result: LookupResult) {
+  const base = getAPIBase().replace(/\/$/, "");
+  const response = await fetch(`${base}/api/lookup/enrich`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ result }),
     cache: "no-store",
   });
   const body = (await response.json()) as APIResponse;
@@ -126,6 +149,7 @@ export function normalizeLookupResult(result: LookupResult) {
   result.meta = result.meta || { elapsedMs: 0 };
   result.meta.providers = Array.isArray(result.meta.providers) ? result.meta.providers : [];
   result.meta.warnings = Array.isArray(result.meta.warnings) ? result.meta.warnings : [];
+  result.meta.pendingEnrichments = Array.isArray(result.meta.pendingEnrichments) ? result.meta.pendingEnrichments : [];
   if (result.meta.ai) {
     result.meta.ai.applied = Array.isArray(result.meta.ai.applied) ? result.meta.ai.applied : [];
   }

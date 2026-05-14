@@ -1,6 +1,7 @@
 import type { AppProps } from "next/app";
 import Head from "next/head";
 import { I18nProvider } from "@/lib/i18n";
+import "@/styles/theme.css";
 import "@/styles/globals.css";
 
 export default function App({ Component, pageProps }: AppProps) {

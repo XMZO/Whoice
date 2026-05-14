@@ -6,11 +6,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/xmzo/whoice/services/lookup-api/internal/auth"
@@ -24,10 +26,26 @@ import (
 	"github.com/xmzo/whoice/services/lookup-api/internal/security"
 )
 
-const Version = "v0.01beta"
+const Version = "v0.01"
 const maxAIRequestBytes = 8 << 20
 
+type apiEndpoint string
+
+const (
+	endpointHealth       apiEndpoint = "health"
+	endpointVersion      apiEndpoint = "version"
+	endpointCapabilities apiEndpoint = "capabilities"
+	endpointMetrics      apiEndpoint = "metrics"
+	endpointLookup       apiEndpoint = "lookup"
+	endpointLookupAI     apiEndpoint = "lookup_ai"
+	endpointLookupEnrich apiEndpoint = "lookup_enrich"
+	endpointICP          apiEndpoint = "icp"
+	endpointAdminStatus  apiEndpoint = "admin_status"
+	endpointAdminConfig  apiEndpoint = "admin_config"
+)
+
 type Server struct {
+	mu       sync.RWMutex
 	cfg      config.Config
 	service  *lookup.Service
 	icp      *icp.Client
@@ -38,31 +56,214 @@ type Server struct {
 	stats    *observability.Stats
 	reporter observability.Reporter
 	mux      *http.ServeMux
+	config   model.ConfigStatus
 }
 
 func New(cfg config.Config, service *lookup.Service, plugins []model.PluginInfo, stats *observability.Stats) *Server {
-	limiter, err := ratelimit.New(cfg.RateLimitEnabled, cfg.RateLimitAnon)
+	server, err := newServer(cfg, service, plugins, stats, false)
+	if err == nil {
+		return server
+	}
+	log.Printf("runtime config warning: %v", err)
+	server, _ = newServer(config.Default(), service, plugins, stats, false)
+	return server
+}
+
+func NewStrict(cfg config.Config, service *lookup.Service, plugins []model.PluginInfo, stats *observability.Stats) (*Server, error) {
+	return newServer(cfg, service, plugins, stats, true)
+}
+
+func newServer(cfg config.Config, service *lookup.Service, plugins []model.PluginInfo, stats *observability.Stats, strict bool) (*Server, error) {
+	runtime, err := buildRuntime(cfg, service, plugins, strict)
 	if err != nil {
-		limiter, _ = ratelimit.New(cfg.RateLimitEnabled, "60/min")
+		return nil, err
 	}
+	now := time.Now().UTC()
 	s := &Server{
-		cfg:     cfg,
-		service: service,
-		icp:     icp.NewClient(cfg),
-		plugins: plugins,
-		policy:  security.NewServerPolicy(cfg.AllowPrivateServers),
-		auth:    auth.NewStatic(cfg.AuthMode, cfg.SitePassword, cfg.APITokens),
-		limiter: &limiter,
-		stats:   stats,
-		mux:     http.NewServeMux(),
-	}
-	if reporter, err := observability.NewReporter(cfg.Reporter, cfg.ReporterWebhookURL, cfg.ReporterTimeout); err == nil {
-		s.reporter = reporter
-	} else {
-		log.Printf("observability reporter disabled: %v", err)
+		cfg:      runtime.cfg,
+		service:  runtime.service,
+		icp:      runtime.icp,
+		plugins:  runtime.plugins,
+		policy:   runtime.policy,
+		auth:     runtime.auth,
+		limiter:  runtime.limiter,
+		reporter: runtime.reporter,
+		stats:    stats,
+		mux:      http.NewServeMux(),
+		config:   okConfigStatus(runtime.cfg, now),
 	}
 	s.routes()
-	return s
+	return s, nil
+}
+
+type runtimeState struct {
+	cfg      config.Config
+	service  *lookup.Service
+	icp      *icp.Client
+	plugins  []model.PluginInfo
+	policy   security.ServerPolicy
+	auth     auth.Authenticator
+	limiter  *ratelimit.Limiter
+	reporter observability.Reporter
+}
+
+type serverSnapshot struct {
+	cfg      config.Config
+	service  *lookup.Service
+	icp      *icp.Client
+	plugins  []model.PluginInfo
+	policy   security.ServerPolicy
+	auth     auth.Authenticator
+	limiter  *ratelimit.Limiter
+	reporter observability.Reporter
+	config   model.ConfigStatus
+}
+
+type snapshotContextKey struct{}
+
+func buildRuntime(cfg config.Config, service *lookup.Service, plugins []model.PluginInfo, strict bool) (runtimeState, error) {
+	if strict {
+		if err := cfg.Validate(); err != nil {
+			return runtimeState{}, err
+		}
+	}
+	limiter, err := ratelimit.New(cfg.RateLimitEnabled, cfg.RateLimitAnon)
+	if err != nil {
+		if strict {
+			return runtimeState{}, fmt.Errorf("invalid rate_limit.anon: %w", err)
+		}
+		limiter, _ = ratelimit.New(cfg.RateLimitEnabled, "60/min")
+	}
+	reporter, err := observability.NewReporter(cfg.Reporter, cfg.ReporterWebhookURL, cfg.ReporterTimeout)
+	if err != nil {
+		if strict {
+			return runtimeState{}, fmt.Errorf("invalid observability reporter config: %w", err)
+		}
+		log.Printf("observability reporter disabled: %v", err)
+	}
+	return runtimeState{
+		cfg:      cfg,
+		service:  service,
+		icp:      icp.NewClient(cfg),
+		plugins:  append([]model.PluginInfo(nil), plugins...),
+		policy:   security.NewServerPolicy(cfg.AllowPrivateServers),
+		auth:     auth.NewStatic(cfg.AuthMode, cfg.SitePassword, cfg.APITokens),
+		limiter:  &limiter,
+		reporter: reporter,
+	}, nil
+}
+
+func (s *Server) ApplyRuntime(cfg config.Config, service *lookup.Service, plugins []model.PluginInfo, loadedAt time.Time) error {
+	runtime, err := buildRuntime(cfg, service, plugins, true)
+	if err != nil {
+		return err
+	}
+	if loadedAt.IsZero() {
+		loadedAt = time.Now().UTC()
+	}
+	s.mu.Lock()
+	previousService := s.service
+	defer s.mu.Unlock()
+	s.cfg = runtime.cfg
+	s.service = runtime.service
+	s.icp = runtime.icp
+	s.plugins = runtime.plugins
+	s.policy = runtime.policy
+	s.auth = runtime.auth
+	s.limiter = runtime.limiter
+	s.reporter = runtime.reporter
+	s.config = okConfigStatus(runtime.cfg, loadedAt.UTC())
+	runtime.service.StartBackground(context.Background())
+	if previousService != nil && previousService != runtime.service {
+		previousService.StopBackground()
+	}
+	return nil
+}
+
+func (s *Server) RecordConfigReloadError(path string, attemptedAt time.Time, err error) {
+	if attemptedAt.IsZero() {
+		attemptedAt = time.Now().UTC()
+	}
+	message := ""
+	if err != nil {
+		message = err.Error()
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	status := s.config
+	if status.Path == "" {
+		status.Path = path
+	}
+	status.Status = "error"
+	status.LastCheckedAt = attemptedAt.UTC().Format(time.RFC3339)
+	status.LastAttemptAt = attemptedAt.UTC().Format(time.RFC3339)
+	status.LastErrorAt = attemptedAt.UTC().Format(time.RFC3339)
+	status.LastError = message
+	status.RolledBack = true
+	status.UsingLoadedAt = status.LoadedAt
+	s.config = status
+}
+
+func (s *Server) ConfigStatus() model.ConfigStatus {
+	return s.snapshot().config
+}
+
+func (s *Server) snapshot() serverSnapshot {
+	if s == nil {
+		return serverSnapshot{}
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return serverSnapshot{
+		cfg:      s.cfg,
+		service:  s.service,
+		icp:      s.icp,
+		plugins:  append([]model.PluginInfo(nil), s.plugins...),
+		policy:   s.policy,
+		auth:     s.auth,
+		limiter:  s.limiter,
+		reporter: s.reporter,
+		config:   s.config,
+	}
+}
+
+func (s *Server) snapshotFromRequest(r *http.Request) serverSnapshot {
+	if r != nil {
+		if snap, ok := r.Context().Value(snapshotContextKey{}).(serverSnapshot); ok {
+			return snap
+		}
+	}
+	return s.snapshot()
+}
+
+func okConfigStatus(cfg config.Config, loadedAt time.Time) model.ConfigStatus {
+	if loadedAt.IsZero() {
+		loadedAt = time.Now().UTC()
+	}
+	text := loadedAt.UTC().Format(time.RFC3339)
+	return model.ConfigStatus{
+		Status:        "ok",
+		Path:          cfg.ConfigPath,
+		LoadedAt:      text,
+		LastCheckedAt: text,
+		LastAttemptAt: text,
+	}
+}
+
+func configStatusPtr(status model.ConfigStatus) *model.ConfigStatus {
+	if status.Status != "error" {
+		return nil
+	}
+	copy := status
+	return &copy
+}
+
+func configReloadWarning(status model.ConfigStatus) string {
+	if status.Status != "error" || status.LastError == "" {
+		return ""
+	}
+	loadedAt := firstNonEmpty(status.UsingLoadedAt, status.LoadedAt, "the previous valid runtime")
+	return fmt.Sprintf("Configuration reload failed at %s; using the last valid config loaded at %s: %s", firstNonEmpty(status.LastErrorAt, status.LastAttemptAt, "unknown time"), loadedAt, status.LastError)
 }
 
 func (s *Server) Handler() http.Handler {
@@ -70,51 +271,62 @@ func (s *Server) Handler() http.Handler {
 }
 
 func (s *Server) routes() {
-	s.mux.HandleFunc("GET /api/health", s.handleHealth)
-	s.mux.HandleFunc("GET /api/version", s.handleVersion)
-	s.mux.HandleFunc("GET /api/capabilities", s.handleCapabilities)
-	s.mux.HandleFunc("GET /api/metrics", s.handleMetrics)
-	s.mux.HandleFunc("GET /api/lookup", s.withLookupGuards(s.handleLookup))
-	s.mux.HandleFunc("POST /api/lookup/ai", s.withLookupGuards(s.handleLookupAI))
-	s.mux.HandleFunc("GET /api/icp", s.withLookupGuards(s.handleICP))
-	s.mux.HandleFunc("GET /api/admin/status", s.withAdminGuard(s.handleAdminStatus))
+	s.mux.HandleFunc("GET /api/health", s.withAPIGuard(endpointHealth, s.handleHealth))
+	s.mux.HandleFunc("GET /api/version", s.withAPIGuard(endpointVersion, s.handleVersion))
+	s.mux.HandleFunc("GET /api/capabilities", s.withAPIGuard(endpointCapabilities, s.handleCapabilities))
+	s.mux.HandleFunc("GET /api/metrics", s.withAPIGuard(endpointMetrics, s.handleMetrics))
+	s.mux.HandleFunc("GET /api/lookup", s.withLookupGuards(endpointLookup, s.handleLookup))
+	s.mux.HandleFunc("POST /api/lookup/ai", s.withLookupGuards(endpointLookupAI, s.handleLookupAI))
+	s.mux.HandleFunc("POST /api/lookup/enrich", s.withLookupGuards(endpointLookupEnrich, s.handleLookupEnrich))
+	s.mux.HandleFunc("GET /api/icp", s.withLookupGuards(endpointICP, s.handleICP))
+	s.mux.HandleFunc("GET /api/admin/status", s.withAdminGuard(endpointAdminStatus, s.handleAdminStatus))
+	s.mux.HandleFunc("GET /api/admin/config", s.withAdminGuard(endpointAdminConfig, s.handleAdminConfig))
+	s.mux.HandleFunc("PATCH /api/admin/config", s.withAdminGuard(endpointAdminConfig, s.handleAdminConfigUpdate))
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	snap := s.snapshotFromRequest(r)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":      true,
 		"version": Version,
 		"time":    time.Now().UTC().Format(time.RFC3339),
+		"config":  snap.config,
 	})
 }
 
 func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
+	snap := s.snapshotFromRequest(r)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"version": Version,
 		"data": map[string]string{
 			"schema": "0.1",
 		},
-		"capabilities": s.cfg.Capabilities(),
-		"plugins":      s.plugins,
+		"capabilities": snap.cfg.Capabilities(),
+		"plugins":      snap.plugins,
+		"config":       snap.config,
 	})
 }
 
 func (s *Server) handleCapabilities(w http.ResponseWriter, r *http.Request) {
-	capabilities := s.cfg.Capabilities()
+	snap := s.snapshotFromRequest(r)
+	capabilities := snap.cfg.Capabilities()
 	writeJSON(w, http.StatusOK, model.APIResponse{
 		OK:           true,
 		Capabilities: &capabilities,
+		Config:       &snap.config,
 	})
 }
 
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
-	if !s.cfg.MetricsEnabled {
+	snap := s.snapshotFromRequest(r)
+	if !snap.cfg.MetricsEnabled {
 		writeJSON(w, http.StatusNotFound, model.APIResponse{
 			OK: false,
 			Error: &model.APIError{
 				Code:    "metrics_disabled",
 				Message: "Metrics endpoint is disabled.",
 			},
+			Config: configStatusPtr(snap.config),
 		})
 		return
 	}
@@ -128,16 +340,63 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAdminStatus(w http.ResponseWriter, r *http.Request) {
+	snap := s.snapshotFromRequest(r)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":           true,
 		"version":      Version,
-		"capabilities": s.cfg.Capabilities(),
-		"plugins":      s.plugins,
+		"capabilities": snap.cfg.Capabilities(),
+		"plugins":      snap.plugins,
+		"config":       snap.config,
 		"stats":        s.stats.Snapshot(),
 	})
 }
 
+func (s *Server) handleAdminConfig(w http.ResponseWriter, r *http.Request) {
+	snap := s.snapshotFromRequest(r)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":     true,
+		"config": snap.config,
+		"editor": configEditorStatus(snap),
+	})
+}
+
+func (s *Server) handleAdminConfigUpdate(w http.ResponseWriter, r *http.Request) {
+	snap := s.snapshotFromRequest(r)
+	// Intentionally reserved, not implemented yet. Future Web config editing
+	// should plug in here after adding a dedicated admin permission model,
+	// CSRF protection for browser sessions, source validation/diff preview,
+	// backup + atomic write, and reuse of the hot-reload validator before
+	// syncing changes back to snap.cfg.ConfigPath.
+	writeJSON(w, http.StatusNotImplemented, model.APIResponse{
+		OK: false,
+		Error: &model.APIError{
+			Code:    "config_editor_reserved",
+			Message: "Config editing is reserved for a future Web admin UI and is not enabled in this build.",
+		},
+		Config: configStatusPtr(snap.config),
+	})
+}
+
+func configEditorStatus(snap serverSnapshot) model.ConfigEditorStatus {
+	path := strings.TrimSpace(snap.cfg.ConfigPath)
+	status := model.ConfigEditorStatus{
+		Status:              "reserved",
+		Path:                path,
+		Format:              "toml-or-base64-toml",
+		Writable:            false,
+		SourceReadable:      false,
+		Surfaces:            []string{"restricted-controls", "source-file"},
+		SupportedOperations: []string{"inspect-capabilities"},
+		Reason:              "Reserved for a future Web admin UI. The API does not read or write the config source through HTTP yet.",
+	}
+	if path == "" {
+		status.Reason = "No config file path is active, so Web config editing cannot be enabled."
+	}
+	return status
+}
+
 func (s *Server) handleLookup(w http.ResponseWriter, r *http.Request) {
+	snap := s.snapshotFromRequest(r)
 	traceID := requestTraceID(r)
 	w.Header().Set("X-Trace-ID", traceID)
 	query := normalize.CleanUserInput(firstNonEmpty(r.URL.Query().Get("query"), r.URL.Query().Get("q")))
@@ -157,12 +416,36 @@ func (s *Server) handleLookup(w http.ResponseWriter, r *http.Request) {
 				Code:    "query_required",
 				Message: "Query is required.",
 			},
-			Meta: &model.ResultMeta{TraceID: traceID},
+			Meta:   &model.ResultMeta{TraceID: traceID},
+			Config: configStatusPtr(snap.config),
 		})
 		return
 	}
 
-	opts, err := s.optionsFromRequest(r)
+	if snap.service == nil {
+		if s.stats != nil {
+			s.stats.RecordLookup(false, 0)
+		}
+		s.reportLookup(observability.LookupEvent{
+			TraceID:   traceID,
+			Query:     query,
+			OK:        false,
+			ErrorCode: "service_unavailable",
+			Error:     "Lookup service is not initialized.",
+		})
+		writeJSON(w, http.StatusServiceUnavailable, model.APIResponse{
+			OK: false,
+			Error: &model.APIError{
+				Code:    "service_unavailable",
+				Message: "Lookup service is not initialized.",
+			},
+			Meta:   &model.ResultMeta{TraceID: traceID},
+			Config: configStatusPtr(snap.config),
+		})
+		return
+	}
+
+	opts, err := s.optionsFromRequestWithSnapshot(r, snap)
 	if err != nil {
 		if s.stats != nil {
 			s.stats.RecordLookup(false, 0)
@@ -180,12 +463,13 @@ func (s *Server) handleLookup(w http.ResponseWriter, r *http.Request) {
 				Code:    "option_not_allowed",
 				Message: err.Error(),
 			},
-			Meta: &model.ResultMeta{TraceID: traceID},
+			Meta:   &model.ResultMeta{TraceID: traceID},
+			Config: configStatusPtr(snap.config),
 		})
 		return
 	}
 
-	result, err := s.service.Lookup(r.Context(), query, opts)
+	result, err := snap.service.Lookup(r.Context(), query, opts)
 	if err != nil {
 		if s.stats != nil {
 			s.stats.RecordLookup(false, 0)
@@ -204,7 +488,8 @@ func (s *Server) handleLookup(w http.ResponseWriter, r *http.Request) {
 					Code:    "invalid_query",
 					Message: err.Error(),
 				},
-				Meta: &model.ResultMeta{TraceID: traceID},
+				Meta:   &model.ResultMeta{TraceID: traceID},
+				Config: configStatusPtr(snap.config),
 			})
 			return
 		}
@@ -221,12 +506,16 @@ func (s *Server) handleLookup(w http.ResponseWriter, r *http.Request) {
 				Code:    "lookup_failed",
 				Message: err.Error(),
 			},
-			Meta: &model.ResultMeta{TraceID: traceID},
+			Meta:   &model.ResultMeta{TraceID: traceID},
+			Config: configStatusPtr(snap.config),
 		})
 		return
 	}
 
 	result.Meta.TraceID = traceID
+	if warning := configReloadWarning(snap.config); warning != "" {
+		result.Meta.Warnings = append(result.Meta.Warnings, warning)
+	}
 	meta := result.Meta
 	if s.stats != nil {
 		s.stats.RecordLookup(true, meta.ElapsedMs)
@@ -247,21 +536,24 @@ func (s *Server) handleLookup(w http.ResponseWriter, r *http.Request) {
 		OK:     true,
 		Result: result,
 		Meta:   &meta,
+		Config: configStatusPtr(snap.config),
 	})
 }
 
 func (s *Server) handleLookupAI(w http.ResponseWriter, r *http.Request) {
+	snap := s.snapshotFromRequest(r)
 	traceID := requestTraceID(r)
 	w.Header().Set("X-Trace-ID", traceID)
 	w.Header().Set("Cache-Control", "no-store")
-	if !s.cfg.AIEnabled || s.service == nil {
+	if !snap.cfg.AIEnabled || snap.service == nil {
 		writeJSON(w, http.StatusServiceUnavailable, model.APIResponse{
 			OK: false,
 			Error: &model.APIError{
 				Code:    "ai_disabled",
 				Message: "AI registration analysis is disabled.",
 			},
-			Meta: &model.ResultMeta{TraceID: traceID},
+			Meta:   &model.ResultMeta{TraceID: traceID},
+			Config: configStatusPtr(snap.config),
 		})
 		return
 	}
@@ -278,7 +570,8 @@ func (s *Server) handleLookupAI(w http.ResponseWriter, r *http.Request) {
 				Code:    "invalid_ai_request",
 				Message: "AI request must contain a lookup result.",
 			},
-			Meta: &model.ResultMeta{TraceID: traceID},
+			Meta:   &model.ResultMeta{TraceID: traceID},
+			Config: configStatusPtr(snap.config),
 		})
 		return
 	}
@@ -289,7 +582,8 @@ func (s *Server) handleLookupAI(w http.ResponseWriter, r *http.Request) {
 				Code:    "invalid_ai_request",
 				Message: "AI registration analysis only supports domain lookup results.",
 			},
-			Meta: &model.ResultMeta{TraceID: traceID},
+			Meta:   &model.ResultMeta{TraceID: traceID},
+			Config: configStatusPtr(snap.config),
 		})
 		return
 	}
@@ -298,7 +592,7 @@ func (s *Server) handleLookupAI(w http.ResponseWriter, r *http.Request) {
 	if payload.Force != nil {
 		force = *payload.Force
 	}
-	result, err := s.service.ApplyAI(r.Context(), payload.Result, force)
+	result, err := snap.service.ApplyAI(r.Context(), payload.Result, force)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, model.APIResponse{
 			OK: false,
@@ -306,31 +600,111 @@ func (s *Server) handleLookupAI(w http.ResponseWriter, r *http.Request) {
 				Code:    "ai_lookup_failed",
 				Message: err.Error(),
 			},
-			Meta: &model.ResultMeta{TraceID: traceID},
+			Meta:   &model.ResultMeta{TraceID: traceID},
+			Config: configStatusPtr(snap.config),
 		})
 		return
 	}
 	result.Meta.TraceID = traceID
+	if warning := configReloadWarning(snap.config); warning != "" {
+		result.Meta.Warnings = append(result.Meta.Warnings, warning)
+	}
 	meta := result.Meta
 	writeJSON(w, http.StatusOK, model.APIResponse{
 		OK:     true,
 		Result: result,
 		Meta:   &meta,
+		Config: configStatusPtr(snap.config),
+	})
+}
+
+func (s *Server) handleLookupEnrich(w http.ResponseWriter, r *http.Request) {
+	snap := s.snapshotFromRequest(r)
+	traceID := requestTraceID(r)
+	w.Header().Set("X-Trace-ID", traceID)
+	w.Header().Set("Cache-Control", "no-store")
+	if snap.service == nil {
+		writeJSON(w, http.StatusServiceUnavailable, model.APIResponse{
+			OK: false,
+			Error: &model.APIError{
+				Code:    "service_unavailable",
+				Message: "Lookup service is not initialized.",
+			},
+			Meta:   &model.ResultMeta{TraceID: traceID},
+			Config: configStatusPtr(snap.config),
+		})
+		return
+	}
+
+	var payload struct {
+		Result *model.LookupResult `json:"result"`
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxAIRequestBytes))
+	if err := decoder.Decode(&payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, model.APIResponse{
+			OK: false,
+			Error: &model.APIError{
+				Code:    "invalid_enrichment_request",
+				Message: "Enrichment request must contain a lookup result.",
+			},
+			Meta:   &model.ResultMeta{TraceID: traceID},
+			Config: configStatusPtr(snap.config),
+		})
+		return
+	}
+	if payload.Result == nil {
+		writeJSON(w, http.StatusBadRequest, model.APIResponse{
+			OK: false,
+			Error: &model.APIError{
+				Code:    "invalid_enrichment_request",
+				Message: "Enrichment request must contain a lookup result.",
+			},
+			Meta:   &model.ResultMeta{TraceID: traceID},
+			Config: configStatusPtr(snap.config),
+		})
+		return
+	}
+
+	result, err := snap.service.ApplyDeferred(r.Context(), payload.Result)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, model.APIResponse{
+			OK: false,
+			Error: &model.APIError{
+				Code:    "enrichment_failed",
+				Message: err.Error(),
+			},
+			Meta:   &model.ResultMeta{TraceID: traceID},
+			Config: configStatusPtr(snap.config),
+		})
+		return
+	}
+	result.Meta.TraceID = traceID
+	if warning := configReloadWarning(snap.config); warning != "" {
+		result.Meta.Warnings = append(result.Meta.Warnings, warning)
+	}
+	meta := result.Meta
+	writeJSON(w, http.StatusOK, model.APIResponse{
+		OK:     true,
+		Result: result,
+		Meta:   &meta,
+		Config: configStatusPtr(snap.config),
 	})
 }
 
 func (s *Server) handleICP(w http.ResponseWriter, r *http.Request) {
+	snap := s.snapshotFromRequest(r)
 	traceID := requestTraceID(r)
 	w.Header().Set("X-Trace-ID", traceID)
 	w.Header().Set("Cache-Control", "no-store")
-	if s.icp == nil || !s.icp.Enabled() {
+	if snap.icp == nil || !snap.icp.Enabled() {
 		writeJSON(w, http.StatusServiceUnavailable, model.APIResponse{
 			OK: false,
 			Error: &model.APIError{
 				Code:    "icp_disabled",
 				Message: "ICP lookup is disabled.",
 			},
-			Meta: &model.ResultMeta{TraceID: traceID},
+			Meta:   &model.ResultMeta{TraceID: traceID},
+			Config: configStatusPtr(snap.config),
 		})
 		return
 	}
@@ -342,11 +716,12 @@ func (s *Server) handleICP(w http.ResponseWriter, r *http.Request) {
 				Code:    "query_required",
 				Message: "Domain is required.",
 			},
-			Meta: &model.ResultMeta{TraceID: traceID},
+			Meta:   &model.ResultMeta{TraceID: traceID},
+			Config: configStatusPtr(snap.config),
 		})
 		return
 	}
-	normalized, err := normalize.New(s.cfg.DataDir).Normalize(query)
+	normalized, err := normalize.New(snap.cfg.DataDir).Normalize(query)
 	if err != nil || normalized.Type != model.QueryDomain {
 		writeJSON(w, http.StatusBadRequest, model.APIResponse{
 			OK: false,
@@ -354,12 +729,13 @@ func (s *Server) handleICP(w http.ResponseWriter, r *http.Request) {
 				Code:    "invalid_domain",
 				Message: "ICP lookup only supports domain queries.",
 			},
-			Meta: &model.ResultMeta{TraceID: traceID},
+			Meta:   &model.ResultMeta{TraceID: traceID},
+			Config: configStatusPtr(snap.config),
 		})
 		return
 	}
 
-	result, err := s.icp.Query(r.Context(), normalized.RegisteredDomain)
+	result, err := snap.icp.Query(r.Context(), normalized.RegisteredDomain)
 	status := http.StatusOK
 	response := map[string]any{
 		"ok":     true,
@@ -367,6 +743,9 @@ func (s *Server) handleICP(w http.ResponseWriter, r *http.Request) {
 		"meta": map[string]any{
 			"traceId": traceID,
 		},
+	}
+	if config := configStatusPtr(snap.config); config != nil {
+		response["config"] = config
 	}
 	if err != nil && result.Status == icp.StatusError {
 		status = http.StatusBadGateway
@@ -380,10 +759,11 @@ func (s *Server) handleICP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) reportLookup(event observability.LookupEvent) {
-	if s == nil || s.reporter == nil {
+	snap := s.snapshot()
+	if snap.reporter == nil {
 		return
 	}
-	go s.reporter.ReportLookup(context.Background(), event)
+	go snap.reporter.ReportLookup(context.Background(), event)
 }
 
 func providerTraceViews(traces []model.ProviderTrace) []observability.ProviderTraceView {
@@ -399,13 +779,17 @@ func providerTraceViews(traces []model.ProviderTrace) []observability.ProviderTr
 }
 
 func (s *Server) optionsFromRequest(r *http.Request) (model.LookupOptions, error) {
+	return s.optionsFromRequestWithSnapshot(r, s.snapshot())
+}
+
+func (s *Server) optionsFromRequestWithSnapshot(r *http.Request, snap serverSnapshot) (model.LookupOptions, error) {
 	values := r.URL.Query()
 	rdapSet := values.Has("rdap")
 	whoisSet := values.Has("whois")
 
 	opts := model.LookupOptions{
-		ProviderLimit: s.cfg.ProviderTimeout,
-		LookupLimit:   s.cfg.LookupTimeout,
+		ProviderLimit: snap.cfg.ProviderTimeout,
+		LookupLimit:   snap.cfg.LookupTimeout,
 		WHOISFollow:   -1,
 	}
 
@@ -421,6 +805,10 @@ func (s *Server) optionsFromRequest(r *http.Request) (model.LookupOptions, error
 	opts.WHOISServer = normalize.CleanUserInput(values.Get("whois_server"))
 	opts.ExactDomain = parseBool(firstNonEmpty(values.Get("exact_domain"), values.Get("exact")))
 	opts.ForceAI = parseBool(firstNonEmpty(values.Get("ai"), values.Get("force_ai")))
+	if values.Has("fast") || values.Has("fast_response") {
+		opts.FastResponseSet = true
+		opts.FastResponse = parseBool(firstNonEmpty(values.Get("fast"), values.Get("fast_response")))
+	}
 	if values.Has("whois_follow") {
 		follow, err := strconv.Atoi(values.Get("whois_follow"))
 		if err != nil || follow < 0 || follow > 5 {
@@ -429,17 +817,17 @@ func (s *Server) optionsFromRequest(r *http.Request) (model.LookupOptions, error
 		opts.WHOISFollow = follow
 	}
 
-	if !s.cfg.AllowCustomServers && (opts.RDAPServer != "" || opts.WHOISServer != "") {
+	if !snap.cfg.AllowCustomServers && (opts.RDAPServer != "" || opts.WHOISServer != "") {
 		return opts, errors.New("custom WHOIS/RDAP servers are disabled")
 	}
-	if s.cfg.AllowCustomServers {
+	if snap.cfg.AllowCustomServers {
 		if opts.RDAPServer != "" {
-			if err := s.policy.AllowRDAP(r.Context(), opts.RDAPServer); err != nil {
+			if err := snap.policy.AllowRDAP(r.Context(), opts.RDAPServer); err != nil {
 				return opts, err
 			}
 		}
 		if opts.WHOISServer != "" {
-			if err := s.policy.AllowWHOIS(r.Context(), opts.WHOISServer); err != nil {
+			if err := snap.policy.AllowWHOIS(r.Context(), opts.WHOISServer); err != nil {
 				return opts, err
 			}
 		}
@@ -451,7 +839,7 @@ func (s *Server) optionsFromRequest(r *http.Request) (model.LookupOptions, error
 func (s *Server) withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
@@ -461,10 +849,26 @@ func (s *Server) withCORS(next http.Handler) http.Handler {
 	})
 }
 
-func (s *Server) withLookupGuards(next http.HandlerFunc) http.HandlerFunc {
+func (s *Server) withAPIGuard(endpoint apiEndpoint, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if s.auth != nil {
-			if err := s.auth.Authenticate(r); err != nil {
+		snap := s.snapshot()
+		if err := apiEndpointAllowed(endpoint, r, snap); err != nil {
+			writeAPIAccessError(w, err)
+			return
+		}
+		next(w, r.WithContext(context.WithValue(r.Context(), snapshotContextKey{}, snap)))
+	}
+}
+
+func (s *Server) withLookupGuards(endpoint apiEndpoint, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		snap := s.snapshot()
+		if err := apiEndpointAllowed(endpoint, r, snap); err != nil {
+			writeAPIAccessError(w, err)
+			return
+		}
+		if snap.auth != nil {
+			if err := snap.auth.Authenticate(r); err != nil {
 				w.Header().Set("WWW-Authenticate", "Bearer")
 				writeJSON(w, http.StatusUnauthorized, model.APIResponse{
 					OK: false,
@@ -476,8 +880,8 @@ func (s *Server) withLookupGuards(next http.HandlerFunc) http.HandlerFunc {
 				return
 			}
 		}
-		if s.limiter != nil {
-			decision := s.limiter.Allow(s.rateLimitKey(r), time.Now())
+		if snap.limiter != nil {
+			decision := snap.limiter.Allow(s.rateLimitKeyWithSnapshot(r, snap), time.Now())
 			if decision.ResetAt.After(time.Now()) {
 				w.Header().Set("X-RateLimit-Reset", strconv.FormatInt(decision.ResetAt.Unix(), 10))
 			}
@@ -495,14 +899,19 @@ func (s *Server) withLookupGuards(next http.HandlerFunc) http.HandlerFunc {
 				return
 			}
 		}
-		next(w, r)
+		next(w, r.WithContext(context.WithValue(r.Context(), snapshotContextKey{}, snap)))
 	}
 }
 
-func (s *Server) withAdminGuard(next http.HandlerFunc) http.HandlerFunc {
+func (s *Server) withAdminGuard(endpoint apiEndpoint, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if s.auth != nil {
-			if err := s.auth.Authenticate(r); err != nil {
+		snap := s.snapshot()
+		if err := apiEndpointAllowed(endpoint, r, snap); err != nil {
+			writeAPIAccessError(w, err)
+			return
+		}
+		if snap.auth != nil {
+			if err := snap.auth.Authenticate(r); err != nil {
 				writeJSON(w, http.StatusUnauthorized, model.APIResponse{
 					OK: false,
 					Error: &model.APIError{
@@ -513,8 +922,107 @@ func (s *Server) withAdminGuard(next http.HandlerFunc) http.HandlerFunc {
 				return
 			}
 		}
-		next(w, r)
+		next(w, r.WithContext(context.WithValue(r.Context(), snapshotContextKey{}, snap)))
 	}
+}
+
+type apiAccessError struct {
+	status  int
+	code    string
+	message string
+}
+
+func (e apiAccessError) Error() string {
+	return e.message
+}
+
+func apiEndpointAllowed(endpoint apiEndpoint, r *http.Request, snap serverSnapshot) error {
+	if !snap.cfg.APIEnabled {
+		return apiAccessError{status: http.StatusNotFound, code: "api_disabled", message: "API is disabled."}
+	}
+	if !endpointEnabled(endpoint, snap.cfg) {
+		return apiAccessError{status: http.StatusNotFound, code: "api_endpoint_disabled", message: "This API endpoint is disabled."}
+	}
+	if !clientIPAllowed(r, snap) {
+		return apiAccessError{status: http.StatusForbidden, code: "ip_not_allowed", message: "Client IP is not allowed."}
+	}
+	return nil
+}
+
+func writeAPIAccessError(w http.ResponseWriter, err error) {
+	accessErr, ok := err.(apiAccessError)
+	if !ok {
+		accessErr = apiAccessError{status: http.StatusForbidden, code: "api_forbidden", message: "API access is forbidden."}
+	}
+	writeJSON(w, accessErr.status, model.APIResponse{
+		OK: false,
+		Error: &model.APIError{
+			Code:    accessErr.code,
+			Message: accessErr.message,
+		},
+	})
+}
+
+func endpointEnabled(endpoint apiEndpoint, cfg config.Config) bool {
+	switch endpoint {
+	case endpointHealth:
+		return cfg.APIHealthEnabled
+	case endpointVersion:
+		return cfg.APIVersionEnabled
+	case endpointCapabilities:
+		return cfg.APICapabilitiesEnabled
+	case endpointMetrics:
+		return cfg.APIMetricsEnabled
+	case endpointLookup:
+		return cfg.APILookupEnabled
+	case endpointLookupAI:
+		return cfg.APILookupAIEnabled
+	case endpointLookupEnrich:
+		return cfg.APILookupEnrichEnabled
+	case endpointICP:
+		return cfg.APIICPEnabled
+	case endpointAdminStatus:
+		return cfg.APIAdminEnabled && cfg.APIAdminStatusEnabled
+	case endpointAdminConfig:
+		return cfg.APIAdminEnabled && cfg.APIAdminConfigEnabled
+	default:
+		return false
+	}
+}
+
+func clientIPAllowed(r *http.Request, snap serverSnapshot) bool {
+	allowlist := cleanAllowlist(snap.cfg.APIIPAllowlist)
+	if len(allowlist) == 0 {
+		return true
+	}
+	ip := net.ParseIP(clientIP(r, snap))
+	if ip == nil {
+		return false
+	}
+	for _, entry := range allowlist {
+		if allowed := net.ParseIP(entry); allowed != nil {
+			if allowed.Equal(ip) {
+				return true
+			}
+			continue
+		}
+		_, network, err := net.ParseCIDR(entry)
+		if err == nil && network.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+func cleanAllowlist(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			out = append(out, value)
+		}
+	}
+	return out
 }
 
 func (s *Server) withLogging(next http.Handler) http.Handler {
@@ -600,10 +1108,18 @@ func validTraceID(value string) bool {
 }
 
 func (s *Server) rateLimitKey(r *http.Request) string {
+	return s.rateLimitKeyWithSnapshot(r, s.snapshot())
+}
+
+func (s *Server) rateLimitKeyWithSnapshot(r *http.Request, snap serverSnapshot) string {
 	if token := strings.TrimSpace(r.Header.Get("Authorization")); token != "" {
 		return token
 	}
-	if s.cfg.TrustProxy {
+	return clientIP(r, snap)
+}
+
+func clientIP(r *http.Request, snap serverSnapshot) string {
+	if snap.cfg.TrustProxy {
 		if forwarded := clientIPFromForwardedFor(r.Header.Get("X-Forwarded-For")); forwarded != "" {
 			return forwarded
 		}

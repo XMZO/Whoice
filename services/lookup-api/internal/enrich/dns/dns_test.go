@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -66,6 +67,78 @@ func (fakeOnlyResolver) LookupMX(context.Context, string) ([]*net.MX, error) {
 
 func (fakeOnlyResolver) LookupNS(context.Context, string) ([]*net.NS, error) {
 	return nil, nil
+}
+
+type fakeOnlyNamedResolver struct {
+	label string
+}
+
+func (r fakeOnlyNamedResolver) LookupIPAddr(context.Context, string) ([]net.IPAddr, error) {
+	return []net.IPAddr{{IP: net.ParseIP("198.18.0.42")}}, nil
+}
+
+func (fakeOnlyNamedResolver) LookupCNAME(context.Context, string) (string, error) {
+	return "", nil
+}
+
+func (fakeOnlyNamedResolver) LookupMX(context.Context, string) ([]*net.MX, error) {
+	return nil, nil
+}
+
+func (fakeOnlyNamedResolver) LookupNS(context.Context, string) ([]*net.NS, error) {
+	return nil, nil
+}
+
+func (r fakeOnlyNamedResolver) Label() string {
+	return r.label
+}
+
+type staticMultiResolver []Resolver
+
+func (r staticMultiResolver) Resolvers() []Resolver {
+	return []Resolver(r)
+}
+
+func (r staticMultiResolver) LookupIPAddr(ctx context.Context, host string) ([]net.IPAddr, error) {
+	return r[0].LookupIPAddr(ctx, host)
+}
+
+func (r staticMultiResolver) LookupCNAME(ctx context.Context, host string) (string, error) {
+	return r[0].LookupCNAME(ctx, host)
+}
+
+func (r staticMultiResolver) LookupMX(ctx context.Context, host string) ([]*net.MX, error) {
+	return r[0].LookupMX(ctx, host)
+}
+
+func (r staticMultiResolver) LookupNS(ctx context.Context, host string) ([]*net.NS, error) {
+	return r[0].LookupNS(ctx, host)
+}
+
+type slowEmptyResolver struct{}
+
+func (slowEmptyResolver) LookupIPAddr(ctx context.Context, host string) ([]net.IPAddr, error) {
+	return waitForContext(ctx, host)
+}
+
+func (slowEmptyResolver) LookupCNAME(ctx context.Context, host string) (string, error) {
+	_, err := waitForContext(ctx, host)
+	return "", err
+}
+
+func (slowEmptyResolver) LookupMX(ctx context.Context, host string) ([]*net.MX, error) {
+	_, err := waitForContext(ctx, host)
+	return nil, err
+}
+
+func (slowEmptyResolver) LookupNS(ctx context.Context, host string) ([]*net.NS, error) {
+	_, err := waitForContext(ctx, host)
+	return nil, err
+}
+
+func waitForContext(ctx context.Context, _ string) ([]net.IPAddr, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
 }
 
 func TestApplyWithResolver(t *testing.T) {
@@ -137,6 +210,29 @@ func TestApplyKeepsFakeIPAnswerWhenNoReplacementExists(t *testing.T) {
 	}
 }
 
+func TestApplyAggregatesRepeatedFakeIPWarnings(t *testing.T) {
+	result := &model.LookupResult{
+		NormalizedQuery: "example.com",
+		Type:            model.QueryDomain,
+	}
+	resolver := staticMultiResolver{
+		fakeOnlyNamedResolver{label: "one"},
+		fakeOnlyNamedResolver{label: "two"},
+		fakeOnlyNamedResolver{label: "three"},
+	}
+	ApplyWithResolverOptions(context.Background(), result, Options{FilterFakeIP: true}, resolver)
+
+	if result.Enrichment.DNS == nil {
+		t.Fatal("expected DNS enrichment")
+	}
+	if len(result.Meta.Warnings) != 1 {
+		t.Fatalf("warnings: %+v", result.Meta.Warnings)
+	}
+	if !strings.Contains(result.Meta.Warnings[0], "seen from 3 resolvers") {
+		t.Fatalf("expected aggregated resolver count, got %q", result.Meta.Warnings[0])
+	}
+}
+
 func TestApplyFallsBackToDoHAfterFakeIPFilter(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("type") != "A" {
@@ -181,7 +277,7 @@ func TestLookupDoHIPQueriesEveryDoHResolver(t *testing.T) {
 	http.DefaultClient = first.Client()
 	t.Cleanup(func() { http.DefaultClient = oldClient })
 
-	result := lookupDoHIP(context.Background(), "example.com", []string{first.URL, second.URL})
+	result := lookupDoHIP(context.Background(), "example.com", []string{first.URL, second.URL}, time.Second)
 	if result.Err != nil {
 		t.Fatal(result.Err)
 	}
@@ -193,6 +289,71 @@ func TestLookupDoHIPQueriesEveryDoHResolver(t *testing.T) {
 	}
 	if len(result.Resolvers) != 2 || result.Resolvers[0].Status != "ok" || result.Resolvers[1].Status != "ok" {
 		t.Fatalf("unexpected DoH resolver statuses: %+v", result.Resolvers)
+	}
+}
+
+func TestApplyDoHUsesFreshTimeoutAfterSlowUDP(t *testing.T) {
+	server := newJSONDoHTestServer(t, "172.81.100.83")
+	oldClient := http.DefaultClient
+	http.DefaultClient = server.Client()
+	t.Cleanup(func() { http.DefaultClient = oldClient })
+
+	result := &model.LookupResult{
+		NormalizedQuery: "example.com",
+		Type:            model.QueryDomain,
+	}
+	ApplyWithResolverOptions(context.Background(), result, Options{
+		Timeout:      20 * time.Millisecond,
+		DoHServers:   []string{server.URL},
+		FilterFakeIP: true,
+	}, slowEmptyResolver{})
+
+	if result.Enrichment.DNS == nil {
+		t.Fatal("expected DNS enrichment from DoH after UDP timeout")
+	}
+	if len(result.Enrichment.DNS.A) != 1 || result.Enrichment.DNS.A[0].IP != "172.81.100.83" {
+		t.Fatalf("unexpected A records: %+v", result.Enrichment.DNS.A)
+	}
+	if len(result.Enrichment.DNS.Resolvers) != 2 || result.Enrichment.DNS.Resolvers[1].Status != "ok" {
+		t.Fatalf("unexpected resolver summary: %+v", result.Enrichment.DNS.Resolvers)
+	}
+}
+
+func TestLookupDoHIPIsolatesSlowResolvers(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "slow") {
+			time.Sleep(100 * time.Millisecond)
+			w.WriteHeader(http.StatusGatewayTimeout)
+			return
+		}
+		if r.URL.Query().Get("type") != "A" {
+			w.Header().Set("Content-Type", "application/dns-json")
+			_, _ = w.Write([]byte(`{"Status":0}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/dns-json")
+		_, _ = w.Write([]byte(`{"Status":0,"Answer":[{"type":1,"data":"172.81.100.83"}]}`))
+	}))
+	t.Cleanup(server.Close)
+	oldClient := http.DefaultClient
+	http.DefaultClient = server.Client()
+	t.Cleanup(func() { http.DefaultClient = oldClient })
+
+	result := lookupDoHIP(context.Background(), "example.com", []string{server.URL + "/slow", server.URL + "/dns-query"}, 20*time.Millisecond)
+	if result.Err != nil {
+		t.Fatal(result.Err)
+	}
+	if len(result.A) != 1 || result.A[0].Addr.IP.String() != "172.81.100.83" {
+		t.Fatalf("unexpected DoH answers: %+v", result.A)
+	}
+	if len(result.Resolvers) != 2 {
+		t.Fatalf("unexpected resolver summary: %+v", result.Resolvers)
+	}
+	if result.Resolvers[0].Status != "error" || result.Resolvers[0].Error == "" {
+		t.Fatalf("expected slow resolver error, got %+v", result.Resolvers[0])
+	}
+	if result.Resolvers[1].Status != "ok" {
+		t.Fatalf("expected fast resolver ok, got %+v", result.Resolvers[1])
 	}
 }
 
@@ -260,6 +421,21 @@ func TestQueryDoHMessage(t *testing.T) {
 	}
 	if len(addrs) != 1 || addrs[0].IP.String() != "172.81.100.83" {
 		t.Fatalf("addrs: %+v", addrs)
+	}
+}
+
+func TestDoHBootstrapIPsCoverBuiltInResolvers(t *testing.T) {
+	tests := map[string]string{
+		"cloudflare-dns.com": "1.1.1.1",
+		"dns.google":         "8.8.8.8",
+		"doh.pub":            "1.12.12.12",
+		"dns.alidns.com":     "223.5.5.5",
+	}
+	for host, want := range tests {
+		got := dohBootstrapIPs(host)
+		if len(got) == 0 || got[0] != want {
+			t.Fatalf("%s bootstrap = %#v, want first %s", host, got, want)
+		}
 	}
 }
 

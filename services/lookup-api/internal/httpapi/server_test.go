@@ -21,7 +21,9 @@ import (
 )
 
 func TestOptionsFromRequestPreservesExplicitZeroWhoisFollow(t *testing.T) {
-	server := New(config.Config{WHOISFollowLimit: 2}, nil, nil, nil)
+	cfg := config.Default()
+	cfg.WHOISFollowLimit = 2
+	server := New(cfg, nil, nil, nil)
 	request := httptest.NewRequest("GET", "/api/lookup?query=example.com&whois_follow=0", nil)
 
 	opts, err := server.optionsFromRequest(request)
@@ -34,7 +36,9 @@ func TestOptionsFromRequestPreservesExplicitZeroWhoisFollow(t *testing.T) {
 }
 
 func TestRateLimitKeyTrustsForwardedForWhenConfigured(t *testing.T) {
-	server := New(config.Config{TrustProxy: true}, nil, nil, nil)
+	cfg := config.Default()
+	cfg.TrustProxy = true
+	server := New(cfg, nil, nil, nil)
 	request := httptest.NewRequest("GET", "/api/lookup?query=example.com", nil)
 	request.RemoteAddr = "172.18.0.2:12345"
 	request.Header.Set("X-Forwarded-For", "203.0.113.10, 172.18.0.3")
@@ -45,7 +49,7 @@ func TestRateLimitKeyTrustsForwardedForWhenConfigured(t *testing.T) {
 }
 
 func TestRateLimitKeyIgnoresForwardedForByDefault(t *testing.T) {
-	server := New(config.Config{}, nil, nil, nil)
+	server := New(config.Default(), nil, nil, nil)
 	request := httptest.NewRequest("GET", "/api/lookup?query=example.com", nil)
 	request.RemoteAddr = "172.18.0.2:12345"
 	request.Header.Set("X-Forwarded-For", "203.0.113.10")
@@ -59,7 +63,9 @@ func TestMetricsEndpoint(t *testing.T) {
 	stats := observability.NewStats()
 	stats.RecordLookup(true, 123)
 	stats.RecordProviders([]observability.ProviderTraceView{{Source: "rdap", Status: "ok", ElapsedMs: 45}})
-	server := New(config.Config{MetricsEnabled: true}, nil, nil, stats)
+	cfg := config.Default()
+	cfg.MetricsEnabled = true
+	server := New(cfg, nil, nil, stats)
 	request := httptest.NewRequest(http.MethodGet, "/api/metrics", nil)
 	response := httptest.NewRecorder()
 
@@ -84,7 +90,9 @@ func TestMetricsEndpoint(t *testing.T) {
 }
 
 func TestMetricsEndpointCanBeDisabled(t *testing.T) {
-	server := New(config.Config{}, nil, nil, observability.NewStats())
+	cfg := config.Default()
+	cfg.MetricsEnabled = false
+	server := New(cfg, nil, nil, observability.NewStats())
 	request := httptest.NewRequest(http.MethodGet, "/api/metrics", nil)
 	response := httptest.NewRecorder()
 
@@ -92,6 +100,152 @@ func TestMetricsEndpointCanBeDisabled(t *testing.T) {
 
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("status: got %d want 404", response.Code)
+	}
+}
+
+func TestAdminConfigEditorIsReservedAndDoesNotExposeSource(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "whoice.toml")
+	if err := os.WriteFile(configPath, []byte("secret = \"do-not-leak\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Default()
+	cfg.ConfigPath = configPath
+	cfg.AuthMode = "token"
+	cfg.APITokens = []string{"admin-token"}
+	cfg.MetricsEnabled = true
+	server := New(cfg, nil, nil, observability.NewStats())
+
+	unauthorized := httptest.NewRecorder()
+	server.Handler().ServeHTTP(unauthorized, httptest.NewRequest(http.MethodGet, "/api/admin/config", nil))
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthorized status: got %d want 401", unauthorized.Code)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/api/admin/config", nil)
+	request.Header.Set("Authorization", "Bearer admin-token")
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status: got %d want 200, body=%s", response.Code, response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), "do-not-leak") {
+		t.Fatalf("config source leaked in response: %s", response.Body.String())
+	}
+	var payload struct {
+		OK     bool                     `json:"ok"`
+		Config model.ConfigStatus       `json:"config"`
+		Editor model.ConfigEditorStatus `json:"editor"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if !payload.OK || payload.Editor.Status != "reserved" || payload.Editor.Writable || payload.Editor.SourceReadable {
+		t.Fatalf("unexpected editor payload: %#v", payload)
+	}
+	if payload.Editor.Path != configPath || payload.Editor.Format != "toml-or-base64-toml" {
+		t.Fatalf("editor metadata: %#v", payload.Editor)
+	}
+
+	request = httptest.NewRequest(http.MethodPatch, "/api/admin/config", strings.NewReader(`{"source":"[metrics]\nenabled=false"}`))
+	request.Header.Set("Authorization", "Bearer admin-token")
+	response = httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusNotImplemented {
+		t.Fatalf("patch status: got %d want 501, body=%s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), "config_editor_reserved") {
+		t.Fatalf("patch body: %s", response.Body.String())
+	}
+}
+
+func TestLookupRequiresAuthWhenEnabled(t *testing.T) {
+	cfg := runtimeFixtureConfig(false, true, false)
+	cfg.AuthMode = "password"
+	cfg.SitePassword = "secret"
+	server := New(cfg, nil, nil, observability.NewStats())
+
+	unauthorized := httptest.NewRecorder()
+	server.Handler().ServeHTTP(unauthorized, httptest.NewRequest(http.MethodGet, "/api/lookup?query=example.com", nil))
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthorized status: got %d want 401", unauthorized.Code)
+	}
+
+	authorized := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/lookup?query=example.com", nil)
+	request.Header.Set("X-Whoice-Password", "secret")
+	server.withLookupGuards(endpointLookup, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})(authorized, request)
+	if authorized.Code != http.StatusNoContent {
+		t.Fatalf("authorized guard status: got %d want 204, body=%s", authorized.Code, authorized.Body.String())
+	}
+}
+
+func TestLookupRateLimitGuardBlocksRequests(t *testing.T) {
+	cfg := runtimeFixtureConfig(false, true, false)
+	cfg.RateLimitEnabled = true
+	cfg.RateLimitAnon = "1/min"
+	server := New(cfg, nil, nil, observability.NewStats())
+
+	first := httptest.NewRecorder()
+	handler := server.withLookupGuards(endpointLookup, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	request := httptest.NewRequest(http.MethodGet, "/api/lookup?query=example.com", nil)
+	request.RemoteAddr = "203.0.113.10:12345"
+	handler(first, request)
+
+	second := httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodGet, "/api/lookup?query=example.com", nil)
+	request.RemoteAddr = "203.0.113.10:12345"
+	handler(second, request)
+	if second.Code != http.StatusTooManyRequests {
+		t.Fatalf("second status: got %d want 429, body=%s", second.Code, second.Body.String())
+	}
+	if second.Header().Get("X-RateLimit-Remaining") != "0" {
+		t.Fatalf("missing rate limit remaining header: %#v", second.Header())
+	}
+}
+
+func TestAPIGuardCanDisableEndpoint(t *testing.T) {
+	cfg := runtimeFixtureConfig(false, false, false)
+	cfg.APILookupEnabled = false
+	server := New(cfg, nil, nil, observability.NewStats())
+	request := httptest.NewRequest(http.MethodGet, "/api/lookup?query=example.com", nil)
+	response := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("status: got %d want 404, body=%s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), "api_endpoint_disabled") {
+		t.Fatalf("body: %s", response.Body.String())
+	}
+}
+
+func TestAPIGuardAppliesIPAllowlist(t *testing.T) {
+	cfg := runtimeFixtureConfig(false, false, false)
+	cfg.APIIPAllowlist = []string{"203.0.113.0/24"}
+	server := New(cfg, nil, nil, observability.NewStats())
+	handler := server.withAPIGuard(endpointHealth, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	allowed := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/health", nil)
+	request.RemoteAddr = "203.0.113.44:12345"
+	handler(allowed, request)
+	if allowed.Code != http.StatusNoContent {
+		t.Fatalf("allowed status: got %d body=%s", allowed.Code, allowed.Body.String())
+	}
+
+	blocked := httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodGet, "/api/health", nil)
+	request.RemoteAddr = "198.51.100.10:12345"
+	handler(blocked, request)
+	if blocked.Code != http.StatusForbidden {
+		t.Fatalf("blocked status: got %d want 403, body=%s", blocked.Code, blocked.Body.String())
 	}
 }
 
@@ -180,7 +334,9 @@ func TestLookupReportsInvalidQueryEvent(t *testing.T) {
 }
 
 func TestOptionsFromRequestUsesDefaultWhoisFollowSentinel(t *testing.T) {
-	server := New(config.Config{WHOISFollowLimit: 2}, nil, nil, nil)
+	cfg := config.Default()
+	cfg.WHOISFollowLimit = 2
+	server := New(cfg, nil, nil, nil)
 	request := httptest.NewRequest("GET", "/api/lookup?query=example.com&ai=1", nil)
 
 	opts, err := server.optionsFromRequest(request)
@@ -312,9 +468,54 @@ func TestLookupAIEndpointAppliesAnalysis(t *testing.T) {
 	}
 }
 
+func TestLookupEnrichEndpointAppliesDeferredEnrichment(t *testing.T) {
+	cfg := runtimeFixtureConfig(false, false, false)
+	cfg.EnrichDNS = true
+	cfg.EnrichPricing = false
+	service := lookup.NewService(cfg, nil, parsers.NewRegistry())
+	server := New(cfg, service, nil, observability.NewStats())
+	payload := map[string]any{
+		"result": model.LookupResult{
+			Query:           "example.com",
+			NormalizedQuery: "example.com",
+			Type:            model.QueryDomain,
+			Status:          model.StatusRegistered,
+			Domain:          model.DomainInfo{Name: "example.com"},
+			Meta:            model.ResultMeta{PendingEnrichments: []string{"dns"}},
+		},
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/lookup/enrich", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(response, request.WithContext(context.Background()))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status: got %d want 200, body=%s", response.Code, response.Body.String())
+	}
+	var apiResponse model.APIResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &apiResponse); err != nil {
+		t.Fatal(err)
+	}
+	if apiResponse.Result == nil {
+		t.Fatalf("missing result: %#v", apiResponse)
+	}
+	if apiResponse.Result.Enrichment.DNS == nil {
+		t.Fatalf("expected DNS enrichment, got %#v", apiResponse.Result.Enrichment)
+	}
+	if len(apiResponse.Result.Meta.PendingEnrichments) != 0 {
+		t.Fatalf("pending enrichments: %#v", apiResponse.Result.Meta.PendingEnrichments)
+	}
+}
+
 func TestInvalidQueryReturnsBadRequest(t *testing.T) {
-	service := lookup.NewService(config.Config{}, nil, parsers.NewRegistry())
-	server := New(config.Config{}, service, nil, observability.NewStats())
+	cfg := config.Default()
+	service := lookup.NewService(cfg, nil, parsers.NewRegistry())
+	server := New(cfg, service, nil, observability.NewStats())
 	request := httptest.NewRequest(http.MethodGet, "/api/lookup?query=example_com", nil)
 	response := httptest.NewRecorder()
 
@@ -329,8 +530,11 @@ func TestInvalidQueryReturnsBadRequest(t *testing.T) {
 }
 
 func TestLookupNormalizesSeparatorTyposBeforeIDNA(t *testing.T) {
-	service := lookup.NewService(config.Config{LookupTimeout: 2_000_000_000, ProviderTimeout: 2_000_000_000}, nil, parsers.NewRegistry())
-	server := New(config.Config{}, service, nil, observability.NewStats())
+	cfg := config.Default()
+	cfg.LookupTimeout = 2 * time.Second
+	cfg.ProviderTimeout = 2 * time.Second
+	service := lookup.NewService(cfg, nil, parsers.NewRegistry())
+	server := New(cfg, service, nil, observability.NewStats())
 	request := httptest.NewRequest(http.MethodGet, "/api/lookup?query=example,com", nil)
 	response := httptest.NewRecorder()
 
@@ -345,7 +549,9 @@ func TestLookupNormalizesSeparatorTyposBeforeIDNA(t *testing.T) {
 }
 
 func TestOptionsFromRequestNormalizesServerSeparators(t *testing.T) {
-	server := New(config.Config{AllowCustomServers: false}, nil, nil, nil)
+	cfg := config.Default()
+	cfg.AllowCustomServers = false
+	server := New(cfg, nil, nil, nil)
 	request := httptest.NewRequest("GET", "/api/lookup?query=example.com&rdap_server=https%3A%2F%2Frdap%EF%BC%8Cexample%E3%80%82com&whois_server=whois%2Cexample%EF%BC%8Ecom", nil)
 
 	opts, err := server.optionsFromRequest(request)
@@ -565,20 +771,32 @@ func TestRuntimeLookupResponsesMatchSchemaFixtures(t *testing.T) {
 
 func runtimeFixtureConfig(rdapEnabled, whoisEnabled, whoisWebEnabled bool) config.Config {
 	return config.Config{
-		LookupTimeout:   5 * time.Second,
-		ProviderTimeout: 5 * time.Second,
-		RDAPEnabled:     rdapEnabled,
-		WHOISEnabled:    whoisEnabled,
-		WHOISWebEnabled: whoisWebEnabled,
-		EnrichEPP:       false,
-		EnrichRegistrar: false,
-		EnrichDNS:       false,
-		EnrichDNSViz:    false,
-		EnrichBrands:    false,
-		ICPTimeout:      time.Second,
-		ICPCacheTTL:     time.Hour,
-		ICPPageSize:     10,
-		MetricsEnabled:  true,
+		APIEnabled:             true,
+		APIHealthEnabled:       true,
+		APIVersionEnabled:      true,
+		APICapabilitiesEnabled: true,
+		APIMetricsEnabled:      true,
+		APILookupEnabled:       true,
+		APILookupAIEnabled:     true,
+		APILookupEnrichEnabled: true,
+		APIICPEnabled:          true,
+		APIAdminEnabled:        true,
+		APIAdminStatusEnabled:  true,
+		APIAdminConfigEnabled:  true,
+		LookupTimeout:          5 * time.Second,
+		ProviderTimeout:        5 * time.Second,
+		RDAPEnabled:            rdapEnabled,
+		WHOISEnabled:           whoisEnabled,
+		WHOISWebEnabled:        whoisWebEnabled,
+		EnrichEPP:              false,
+		EnrichRegistrar:        false,
+		EnrichDNS:              false,
+		EnrichDNSViz:           false,
+		EnrichBrands:           false,
+		ICPTimeout:             time.Second,
+		ICPCacheTTL:            time.Hour,
+		ICPPageSize:            10,
+		MetricsEnabled:         true,
 	}
 }
 
