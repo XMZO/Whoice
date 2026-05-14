@@ -1,0 +1,9 @@
+{
+  "generatedAt": "2026-05-12T04:47:44Z",
+  "sources": {
+    "icannAccreditedRegistrars": "https://www.icann.org/en/contracted-parties/accredited-registrars/list-of-accredited-registrars/csvdownload"
+  },
+  "sha256": {
+    "icannAccreditedRegistrars": "0f54992f918236364e6bf8c9ea0e609e56e842971e0c69399e526ca01ee93bbf"
+  }
+}

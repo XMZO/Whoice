@@ -13,6 +13,6 @@ test-results/
 *.exe
 *.test
 bin/
-data/
+/data/
 
 /unofficial

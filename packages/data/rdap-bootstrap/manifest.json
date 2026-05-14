@@ -1,0 +1,15 @@
+{
+  "generatedAt": "2026-05-12T04:47:44Z",
+  "sources": {
+    "dns": "https://data.iana.org/rdap/dns.json",
+    "ipv4": "https://data.iana.org/rdap/ipv4.json",
+    "ipv6": "https://data.iana.org/rdap/ipv6.json",
+    "asn": "https://data.iana.org/rdap/asn.json"
+  },
+  "sha256": {
+    "dns": "5b989c37351c100b70183f5ed5e965bc753edf2d647384dc443a80a93399a623",
+    "ipv4": "f6ad30d1ebbd16fed6121e1eb54ae7db86edbf5e425345a040aa7893b0447d78",
+    "ipv6": "3292eb71787b903f7a6798ff31f7f2239fb61ce346be142a3719ffa26deaf080",
+    "asn": "5b9ca2eb191a7c9c6c2ec5908d9e0cbd6009ac3f33a2a46b9741b2642ba09283"
+  }
+}
