@@ -42,6 +42,7 @@ type ICPState = {
 
 type AIState = {
   key: string;
+  identity?: string;
   loading: boolean;
   requested: boolean;
   error?: string;
@@ -49,8 +50,10 @@ type AIState = {
 
 type EnrichmentState = {
   key: string;
+  identity?: string;
   loading: boolean;
   requested: boolean;
+  names?: string[];
   error?: string;
 };
 
@@ -389,7 +392,7 @@ function safeExternalURL(value?: string) {
   return undefined;
 }
 
-function DNSPanel({ result, onCopy }: { result: LookupResult; onCopy?: (value: string) => void }) {
+function DNSPanel({ result, pending, onCopy }: { result: LookupResult; pending?: boolean; onCopy?: (value: string) => void }) {
   const { t } = useI18n();
   const dns = result.enrichment?.dns;
   const hasRecords = Boolean(dns?.cname || dns?.a?.length || dns?.aaaa?.length || dns?.mx?.length || dns?.ns?.length);
@@ -401,7 +404,9 @@ function DNSPanel({ result, onCopy }: { result: LookupResult; onCopy?: (value: s
     <section className="panel dns-panel">
       <div className="panel-head">
         <h2>{t("dns")}</h2>
-        <DNSResolverBadges resolvers={dns?.resolvers} />
+        <div className="panel-status-slot">
+          {pending && !dns ? <span className="source-hint ai-pending">loading</span> : <DNSResolverBadges resolvers={dns?.resolvers} />}
+        </div>
       </div>
       <dl className="detail-list">
         <Row
@@ -414,7 +419,9 @@ function DNSPanel({ result, onCopy }: { result: LookupResult; onCopy?: (value: s
             )
           }
         />
-        {hasRecords ? (
+        {pending && !dns ? (
+          <DNSPendingRows />
+        ) : hasRecords ? (
           <>
             <Row label="CNAME" value={dns?.cname} />
             <Row label="A" value={dns?.a?.length ? <DNSAddressGroup title="A" addresses={dns.a} /> : undefined} />
@@ -428,6 +435,22 @@ function DNSPanel({ result, onCopy }: { result: LookupResult; onCopy?: (value: s
       </dl>
     </section>
   );
+}
+
+function DNSPendingRows() {
+  return (
+    <>
+      <Row label="Records" value={<span className="muted">DNS records are updating in the background.</span>} />
+      <Row label="A" value={<PendingLine />} />
+      <Row label="AAAA" value={<PendingLine />} />
+      <Row label="MX" value={<PendingLine />} />
+      <Row label="DNS ms" value={<PendingLine compact />} />
+    </>
+  );
+}
+
+function PendingLine({ compact }: { compact?: boolean }) {
+  return <span className={compact ? "pending-line compact" : "pending-line"} aria-hidden="true" />;
 }
 
 function ICPPanel({
@@ -902,9 +925,17 @@ function aiRequestKey(result: LookupResult | undefined, nonce: number) {
   return key ? `${nonce}\x1f${key}` : "";
 }
 
+function aiIdentity(result: LookupResult | undefined, nonce: number) {
+  return result ? `${nonce}\x1f${result.normalizedQuery}` : "";
+}
+
 function enrichmentRequestKey(result: LookupResult | undefined, nonce: number) {
   if (!result?.meta?.pendingEnrichments?.length) return "";
   return `${nonce}\x1f${result.normalizedQuery}\x1f${result.meta.pendingEnrichments.join(",")}`;
+}
+
+function enrichmentIdentity(result: LookupResult | undefined, nonce: number) {
+  return result ? `${nonce}\x1f${result.normalizedQuery}` : "";
 }
 
 function RegistrationPanel({ result, aiLoading, aiError, onCopy }: { result: LookupResult; aiLoading?: boolean; aiError?: string; onCopy?: (value: string) => void }) {
@@ -1135,11 +1166,26 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
   const absolutePageURL = typeof window === "undefined" ? pageURL : window.location.href;
   const ogImageURL = `/api/og?query=${encodeURIComponent(result?.normalizedQuery || state.query)}`;
   const icpDomain = result?.type === "domain" ? result.domain.registeredDomain || result.domain.name || result.normalizedQuery : "";
-  const currentAIKey = aiRequestKey(result, state.nonce);
-  const currentEnrichmentKey = enrichmentRequestKey(result, state.nonce);
-  const detailTools = result ? renderResultPlugins("details", result) : [];
+  const currentAIIdentity = aiIdentity(result, state.nonce);
+  const currentEnrichmentIdentity = enrichmentIdentity(result, state.nonce);
+  const pendingEnrichments = result?.meta?.pendingEnrichments || [];
+  const rememberedEnrichments = enrichmentState.identity === currentEnrichmentIdentity && enrichmentState.requested ? enrichmentState.names || [] : [];
+  const visibleEnrichments = pendingEnrichments.length ? pendingEnrichments : rememberedEnrichments;
+  const pendingDetailEnrichments = visibleEnrichments.filter((name) => name !== "dns");
+  const enrichmentLoading = enrichmentState.loading && enrichmentState.identity === currentEnrichmentIdentity;
+  const enrichmentError = enrichmentState.identity === currentEnrichmentIdentity ? enrichmentState.error : undefined;
+  const detailTools = result ? renderResultPlugins("details", result, { pending: pendingDetailEnrichments, enrichmentLoading, enrichmentError, lockSlots: true }) : [];
   const debugTools = result ? renderResultPlugins("debug", result) : [];
+  const showEnrichmentZone = Boolean(result);
+  const dnsPending = Boolean(result && pendingEnrichments.includes("dns"));
   const hasEvidence = Boolean(result && (debugTools.length || result.raw.whois || result.raw.whoisWeb || result.raw.rdap));
+  const enrichmentStatus = enrichmentLoading
+    ? visibleEnrichments.join(", ") || "running"
+    : enrichmentError
+      ? "error"
+      : visibleEnrichments.length
+        ? "ready"
+        : "idle";
 
   useEffect(() => {
     const propsURL = lookupUrl(query, sourceMode, options);
@@ -1171,24 +1217,32 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
 
   useEffect(() => {
     const key = aiRequestKey(result, state.nonce);
+    const identity = aiIdentity(result, state.nonce);
     if (!key) {
-      setAIState({ key: "", loading: false, requested: false });
+      setAIState({ key: "", identity, loading: false, requested: false });
       return;
     }
     if (result?.meta?.ai) {
-      setAIState({ key, loading: false, requested: true, error: result.meta.ai.status === "error" ? result.meta.ai.error : undefined });
+      setAIState({ key, identity, loading: false, requested: true, error: result.meta.ai.status === "error" ? result.meta.ai.error : undefined });
       return;
     }
-    setAIState((current) => (current.key === key ? current : { key, loading: false, requested: false }));
+    setAIState((current) => (current.key === key ? { ...current, identity } : { key, identity, loading: false, requested: false }));
   }, [result?.normalizedQuery, result?.raw?.whois, result?.raw?.whoisWeb, result?.raw?.rdap, state.nonce]);
 
   useEffect(() => {
     const key = enrichmentRequestKey(result, state.nonce);
+    const identity = enrichmentIdentity(result, state.nonce);
+    const names = result?.meta?.pendingEnrichments || [];
     if (!key) {
-      setEnrichmentState({ key: "", loading: false, requested: false });
+      setEnrichmentState((current) => {
+        if (identity && current.identity === identity && current.requested) {
+          return { ...current, loading: false };
+        }
+        return { key: "", identity, loading: false, requested: false, names: [] };
+      });
       return;
     }
-    setEnrichmentState((current) => (current.key === key ? current : { key, loading: false, requested: false }));
+    setEnrichmentState((current) => (current.key === key ? { ...current, identity, names } : { key, identity, loading: false, requested: false, names }));
   }, [result?.normalizedQuery, result?.meta?.pendingEnrichments?.join(","), state.nonce]);
 
   useEffect(() => {
@@ -1382,12 +1436,14 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
     if (!target || target.type !== "domain" || !key) return;
     if (aiInflightRef.current === key) return;
     aiInflightRef.current = key;
-    setAIState({ key, loading: true, requested: true });
+    const identity = aiIdentity(target, state.nonce);
+    setAIState({ key, identity, loading: true, requested: true });
     try {
       const { body } = await analyzeRegistration(target, true);
       if (!body.ok || !body.result) {
         setAIState({
           key,
+          identity,
           loading: false,
           requested: true,
           error: body.error?.message || "AI registration analysis failed",
@@ -1406,10 +1462,11 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
           },
         };
       });
-      setAIState({ key, loading: false, requested: true });
+      setAIState({ key, identity, loading: false, requested: true });
     } catch (error) {
       setAIState({
         key,
+        identity,
         loading: false,
         requested: true,
         error: error instanceof Error ? error.message : "AI registration analysis failed",
@@ -1425,14 +1482,18 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
     if (!target || !key) return;
     if (enrichmentInflightRef.current === key) return;
     enrichmentInflightRef.current = key;
-    setEnrichmentState({ key, loading: true, requested: true });
+    const identity = enrichmentIdentity(target, state.nonce);
+    const names = target.meta?.pendingEnrichments || [];
+    setEnrichmentState({ key, identity, loading: true, requested: true, names });
     try {
       const { body } = await enrichLookup(target);
       if (!body.ok || !body.result) {
         setEnrichmentState({
           key,
+          identity,
           loading: false,
           requested: true,
+          names,
           error: body.error?.message || "Enrichment failed",
         });
         return;
@@ -1449,12 +1510,14 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
           },
         };
       });
-      setEnrichmentState({ key, loading: false, requested: true });
+      setEnrichmentState({ key, identity, loading: false, requested: true, names });
     } catch (error) {
       setEnrichmentState({
         key,
+        identity,
         loading: false,
         requested: true,
+        names,
         error: error instanceof Error ? error.message : "Enrichment failed",
       });
     } finally {
@@ -1559,7 +1622,9 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
             <section className="tool-panel tool-panel-search">
               <div className="tool-panel-head">
                 <p className="eyebrow">Lookup</p>
-                {isLoading && <span className="status-pill">Live</span>}
+                <span className={`status-pill ${isLoading ? "" : "is-ghost"}`} aria-hidden={!isLoading}>
+                  Live
+                </span>
               </div>
               <form className="mini-search tool-search" onSubmit={submitMiniSearch}>
                 <input id="lookup-mini-search" name="query" value={searchValue} onChange={(event) => setSearchValue(event.target.value)} aria-label="Search query" />
@@ -1588,8 +1653,7 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
                   {result.source.primary && <span><strong>Primary</strong>{result.source.primary}</span>}
                   <span><strong>Elapsed</strong>{result.meta.elapsedMs} ms</span>
                   <span><strong>Evidence</strong>{rawText(result) ? "available" : "empty"}</span>
-                  {enrichmentState.loading && enrichmentState.key === currentEnrichmentKey && <span><strong>Enrich</strong>{result.meta.pendingEnrichments?.join(", ") || "running"}</span>}
-                  {!enrichmentState.loading && enrichmentState.error && <span><strong>Enrich</strong>{enrichmentState.error}</span>}
+                  <span title={enrichmentError}><strong>Enrich</strong>{enrichmentStatus}</span>
                 </div>
               </section>
             )}
@@ -1598,7 +1662,9 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
               <section className="tool-panel">
                 <div className="tool-panel-head">
                   <p className="eyebrow">Output</p>
-                  {actionState && <span className="tool-action-state">{actionState}</span>}
+                  <span className={`tool-action-state ${actionState ? "" : "is-ghost"}`} aria-live="polite">
+                    {actionState || "Ready"}
+                  </span>
                 </div>
                 <section className="action-bar tool-action-bar" aria-label="Result actions">
                   <div className="share-menu">
@@ -1628,7 +1694,7 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
 
           <section className="tool-stage" aria-label="Lookup result workspace">
             {isLoading && (
-              <section className="panel loading-panel">
+              <section className="panel loading-panel floating-loading-panel" aria-live="polite">
                 <p className="eyebrow">Live lookup</p>
                 <h2>{searchValue}</h2>
               </section>
@@ -1652,9 +1718,9 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
                         <p>Identity, registrar, and live DNS context.</p>
                       </div>
                     </div>
-                    <div className="result-band result-band-primary">
+                    <div className="result-band result-band-primary zone-body-overview">
                       <SummaryPanel result={result} onCopy={(value) => copy(value, t("copied"))} />
-                      {result.type === "domain" ? <DNSPanel result={result} onCopy={(value) => copy(value, t("copied"))} /> : <NetworkPanel result={result} />}
+                      {result.type === "domain" ? <DNSPanel result={result} pending={dnsPending} onCopy={(value) => copy(value, t("copied"))} /> : <NetworkPanel result={result} />}
                     </div>
                   </section>
 
@@ -1666,12 +1732,12 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
                         <p>Registrant fields, AI assistance, ICP, and domain state.</p>
                       </div>
                     </div>
-                    <div className="result-band result-band-secondary">
+                    <div className="result-band result-band-secondary zone-body-ownership">
                       {result.type === "domain" && (
                         <RegistrationPanel
                           result={result}
-                          aiLoading={aiState.loading && aiState.key === currentAIKey}
-                          aiError={aiState.key === currentAIKey ? aiState.error : undefined}
+                          aiLoading={aiState.loading && aiState.identity === currentAIIdentity}
+                          aiError={aiState.identity === currentAIIdentity ? aiState.error : undefined}
                           onCopy={(value) => copy(value, t("copied"))}
                         />
                       )}
@@ -1680,7 +1746,7 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
                     </div>
                   </section>
 
-                  {(detailTools.length > 0 || sourceErrors.length > 0 || metaWarnings.length > 0) && (
+                  {showEnrichmentZone && (
                     <section className="tool-zone">
                       <div className="tool-zone-head">
                         <span className="tool-zone-index">03</span>
@@ -1689,44 +1755,48 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
                           <p>Plugins and provider-specific diagnostics.</p>
                         </div>
                       </div>
-                      <div className="result-grid enrichment-grid">
+                      <div className="result-grid enrichment-grid zone-body-enrichment">
                         {detailTools}
-                        {(sourceErrors.length > 0 || metaWarnings.length > 0) && (
-                          <section className="panel warning-panel">
+                        <div className="plugin-shell">
+                          <section className={`panel warning-panel ${(sourceErrors.length > 0 || metaWarnings.length > 0 || enrichmentError) ? "" : "is-empty"}`}>
                             <div className="panel-head">
                               <h2>{t("warnings")}</h2>
                             </div>
-                            <ul>
-                              {metaWarnings.map((warning) => (
-                                <li key={warning}>{warning}</li>
-                              ))}
-                              {sourceErrors.map((error) => (
-                                <li key={`${error.source}-${error.error}`}>{error.source}: {error.error}</li>
-                              ))}
-                            </ul>
+                            {(sourceErrors.length > 0 || metaWarnings.length > 0 || enrichmentError) ? (
+                              <ul>
+                                {enrichmentError && <li>enrichment: {enrichmentError}</li>}
+                                {metaWarnings.map((warning) => (
+                                  <li key={warning}>{warning}</li>
+                                ))}
+                                {sourceErrors.map((error) => (
+                                  <li key={`${error.source}-${error.error}`}>{error.source}: {error.error}</li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="muted">No provider warnings for this lookup.</p>
+                            )}
                           </section>
-                        )}
+                        </div>
                       </div>
                     </section>
                   )}
 
-                  {hasEvidence && (
-                    <section className="tool-zone">
-                      <div className="tool-zone-head">
+                  <section className="tool-zone">
+                    <div className="tool-zone-head">
                       <span className="tool-zone-index">04</span>
                       <div>
                         <h2>Evidence</h2>
                         <p>Raw responses and request diagnostics for verification.</p>
                       </div>
-                      </div>
-                      <div className="evidence-stack">
-                        {debugTools}
-                        <RawBlock title={t("rawWhois")} value={result.raw.whois} />
-                        <RawBlock title="WHOIS Web" value={result.raw.whoisWeb} />
-                        <RawBlock title={t("rawRdap")} value={result.raw.rdap} />
-                      </div>
-                    </section>
-                  )}
+                    </div>
+                    <div className="evidence-stack zone-body-evidence">
+                      {debugTools}
+                      {hasEvidence ? null : <section className="panel evidence-placeholder"><p className="muted">No raw provider evidence for this lookup.</p></section>}
+                      <RawBlock title={t("rawWhois")} value={result.raw.whois} />
+                      <RawBlock title="WHOIS Web" value={result.raw.whoisWeb} />
+                      <RawBlock title={t("rawRdap")} value={result.raw.rdap} />
+                    </div>
+                  </section>
                 </div>
               </>
             )}

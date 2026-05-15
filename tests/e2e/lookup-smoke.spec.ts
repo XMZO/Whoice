@@ -166,6 +166,100 @@ test("source switch, controls, lookup proxy path, and DNSViz panel stay usable",
   expect(proxiedLookup.ok()).toBeTruthy();
 });
 
+test("deferred enrichment updates stay inside stable result slots", async ({ page }) => {
+  await page.goto("/lookup?query=example.com&rdap=1&whois_follow=0");
+  await expect(page.getByRole("heading", { name: "example.com" })).toBeVisible();
+
+  let releaseEnrichment!: () => void;
+  const enrichmentReleased = new Promise<void>((resolve) => {
+    releaseEnrichment = resolve;
+  });
+
+  await page.route("**/api/lookup?**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("query") !== "stable-layout.test") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        result: {
+          query: "stable-layout.test",
+          normalizedQuery: "stable-layout.test",
+          type: "domain",
+          status: "registered",
+          source: { primary: "rdap", used: ["rdap"], errors: [] },
+          domain: { name: "stable-layout.test", suffix: "test", registeredDomain: "stable-layout.test", reserved: false, registered: true },
+          registry: {},
+          registrar: { name: "Fixture Registrar" },
+          dates: {},
+          statuses: [],
+          nameservers: [],
+          dnssec: {},
+          registrant: {},
+          network: {},
+          enrichment: { dnsviz: { url: "https://dnsviz.net/d/stable-layout.test/dnssec/" } },
+          raw: { rdap: "{}" },
+          meta: { elapsedMs: 12, pendingEnrichments: ["dns", "pricing"], providers: [] },
+        },
+      }),
+    });
+  });
+
+  await page.route("**/api/lookup/enrich", async (route) => {
+    const request = route.request();
+    const payload = JSON.parse(request.postData() || "{}");
+    const result = payload.result;
+    await enrichmentReleased;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        result: {
+          ...result,
+          enrichment: {
+            ...(result.enrichment || {}),
+            dns: {
+              a: [{ ip: "93.184.216.34", version: "ipv4", source: "doh", resolver: "dns.google", endpoint: "https://dns.google/resolve" }],
+              ns: ["a.iana-servers.net", "b.iana-servers.net"],
+              registryNs: ["a.iana-servers.net", "b.iana-servers.net"],
+              resolvers: [{ source: "doh", resolver: "dns.google", endpoint: "https://dns.google/resolve", status: "ok" }],
+              elapsedMs: 42,
+            },
+            pricing: {
+              currency: "USD",
+              provider: "test",
+              source: "fixture",
+              registerOffer: { registrar: "Example Registrar", price: 9.99, currency: "USD", website: "https://example.com" },
+              renewOffer: { registrar: "Renew Registrar", price: 12.5, currency: "USD", website: "https://example.net" },
+            },
+          },
+          meta: {
+            ...(result.meta || {}),
+            pendingEnrichments: [],
+          },
+        },
+      }),
+    });
+  });
+
+  await page.getByLabel("Search query").fill("stable-layout.test");
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(page.getByRole("heading", { name: "stable-layout.test" })).toBeVisible();
+  await expect(page.getByText("DNS records are updating in the background.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Evidence" })).toBeVisible();
+
+  const before = await page.locator(".tool-zone", { hasText: "Evidence" }).boundingBox();
+  releaseEnrichment();
+  await expect(page.getByRole("heading", { name: "Pricing" })).toBeVisible();
+  await expect(page.getByText("Example Registrar")).toBeVisible();
+  const after = await page.locator(".tool-zone", { hasText: "Evidence" }).boundingBox();
+
+  expect(Math.abs((after?.y ?? 0) - (before?.y ?? 0))).toBeLessThanOrEqual(8);
+});
+
 test("lookup failure state is actionable without crashing the workbench", async ({ page }) => {
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));

@@ -11,6 +11,13 @@ export type ResultPlugin = {
   render: (result: LookupResult) => ReactNode;
 };
 
+export type ResultPluginRenderOptions = {
+  pending?: string[];
+  enrichmentLoading?: boolean;
+  enrichmentError?: string;
+  lockSlots?: boolean;
+};
+
 function Row({ label, value }: { label: string; value?: ReactNode }) {
   if (value === undefined || value === null || value === "") return null;
   return (
@@ -177,6 +184,44 @@ function MozPanel({ result }: { result: LookupResult }) {
   );
 }
 
+function DeferredPanel({
+  title,
+  name,
+  loading,
+  error,
+}: {
+  title: string;
+  name: string;
+  loading?: boolean;
+  error?: string;
+}) {
+  const message = error
+    ? `${title} data did not update.`
+    : loading
+      ? `${title} is updating in the background.`
+      : `${title} data is not available for this result.`;
+  const stateClass = error ? "is-error" : loading ? "is-loading" : "is-empty";
+  return (
+    <section className={`panel deferred-panel ${stateClass}`} aria-busy={loading ? "true" : undefined}>
+      <div className="panel-head">
+        <h2>{title}</h2>
+        <div className="panel-status-slot">
+          <span className={`source-hint ${error ? "ai-error" : loading ? "ai-pending" : ""}`}>{error ? "error" : loading ? "loading" : "empty"}</span>
+        </div>
+      </div>
+      <p className="muted">{message}</p>
+      {loading && (
+        <div className="metric-grid pending-metric-grid" aria-hidden="true">
+          <span className="pending-metric" />
+          <span className="pending-metric" />
+          <span className="pending-metric" />
+        </div>
+      )}
+      <span className="sr-only">{name} enrichment placeholder</span>
+    </section>
+  );
+}
+
 function Metric({
   label,
   value,
@@ -184,7 +229,7 @@ function Metric({
 }: {
   label: string;
   value?: string | number;
-  hint?: React.ReactNode;
+  hint?: ReactNode;
 }) {
   if (value === undefined || value === null || value === "") return null;
   return (
@@ -281,9 +326,32 @@ export const resultPlugins: ResultPlugin[] = [
   },
 ];
 
-export function renderResultPlugins(slot: ResultPluginSlot, result: LookupResult) {
-  return resultPlugins
+export function renderResultPlugins(slot: ResultPluginSlot, result: LookupResult, options: ResultPluginRenderOptions = {}) {
+  const rendered = resultPlugins
     .filter((plugin) => plugin.slot === slot && plugin.enabled(result))
+    .map((plugin) => ({ id: plugin.id, order: plugin.order, node: plugin.render(result) }));
+
+  if (slot === "details") {
+    const pending = new Set(options.pending || []);
+    const present = new Set(rendered.map((item) => item.id));
+    for (const item of [
+      { id: "epp-status", names: ["epp"], title: "EPP Details", order: 20 },
+      { id: "brands", names: ["brand", "brands"], title: "Brands", order: 30 },
+      { id: "dnsviz", names: ["dnsviz"], title: "DNSViz", order: 40 },
+      { id: "pricing", names: ["pricing"], title: "Pricing", order: 50 },
+      { id: "moz", names: ["moz"], title: "Moz", order: 60 },
+    ]) {
+      const isPending = item.names.some((name) => pending.has(name));
+      if ((!options.lockSlots && !isPending) || present.has(item.id)) continue;
+      rendered.push({
+        id: `${item.id}-pending`,
+        order: item.order,
+        node: <DeferredPanel title={item.title} name={item.names[0]} loading={isPending && options.enrichmentLoading} error={isPending ? options.enrichmentError : undefined} />,
+      });
+    }
+  }
+
+  return rendered
     .sort((a, b) => a.order - b.order)
-    .map((plugin) => <div className="plugin-shell" key={plugin.id}>{plugin.render(result)}</div>);
+    .map((item) => <div className="plugin-shell" key={item.id}>{item.node}</div>);
 }

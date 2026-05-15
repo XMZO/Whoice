@@ -12,12 +12,10 @@ body {
 @keyframes panel-in {
   from {
     opacity: 0;
-    transform: translateY(8px);
   }
 
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 
@@ -411,6 +409,7 @@ input {
   display: grid;
   gap: 18px;
   grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
+  overflow-anchor: none;
 }
 
 .tool-sidebar {
@@ -419,6 +418,7 @@ input {
   gap: 12px;
   max-height: calc(100vh - 96px);
   overflow: auto;
+  overflow-anchor: none;
   padding-right: 2px;
   position: sticky;
   top: 18px;
@@ -442,6 +442,24 @@ input {
   gap: 10px;
   min-width: 0;
   padding: 12px;
+}
+
+@keyframes content-settle {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pending-shimmer {
+  from {
+    background-position: 180% 0;
+  }
+  to {
+    background-position: -80% 0;
+  }
 }
 
 .tool-panel-head {
@@ -486,13 +504,18 @@ input {
   display: flex;
   font-family: var(--mono);
   font-size: 12px;
+  height: 42px;
   justify-content: space-between;
+  line-height: 1.25;
   min-width: 0;
+  overflow: auto;
+  overflow-wrap: anywhere;
   padding: 7px 8px;
 }
 
 .tool-facts strong {
   color: var(--muted);
+  flex: 0 0 auto;
   font-family: var(--sans);
   font-size: 10px;
   margin-right: 8px;
@@ -523,6 +546,15 @@ input {
   color: var(--green);
   font-size: 12px;
   font-weight: 800;
+  min-width: 42px;
+  text-align: right;
+  transition: opacity 0.14s ease;
+}
+
+.status-pill.is-ghost,
+.tool-action-state.is-ghost {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .shortcut-panel {
@@ -533,12 +565,15 @@ input {
   display: grid;
   gap: 16px;
   min-width: 0;
+  overflow-anchor: none;
+  position: relative;
 }
 
 .tool-stage-sections,
 .evidence-stack {
   display: grid;
   gap: 16px;
+  overflow-anchor: none;
 }
 
 .tool-zone {
@@ -546,6 +581,7 @@ input {
   display: grid;
   gap: 10px;
   min-width: 0;
+  scroll-margin-top: 16px;
 }
 
 .tool-zone:nth-child(2) {
@@ -674,6 +710,7 @@ kbd,
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius-panel);
+  min-width: 0;
   padding: 18px;
 }
 
@@ -693,8 +730,10 @@ kbd,
 .panel-head {
   align-items: center;
   display: flex;
+  gap: 10px;
   justify-content: space-between;
   margin-bottom: 14px;
+  min-height: 24px;
 }
 
 .panel-summary {
@@ -744,11 +783,102 @@ details.panel[open] .panel-summary::after {
   margin-bottom: 0;
 }
 
+.result-band-primary > .panel,
+.result-band-secondary > .panel,
+.plugin-shell > .panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.result-band-primary > .panel {
+  height: var(--whoice-slot-overview-height, 252px);
+}
+
+.result-band-secondary > .panel {
+  height: var(--whoice-slot-ownership-height, 204px);
+}
+
+.plugin-shell > .panel {
+  height: var(--whoice-slot-plugin-height, 164px);
+}
+
+.result-band-primary > .panel > :last-child,
+.result-band-secondary > .panel > :last-child,
+.plugin-shell > .panel > :last-child {
+  min-height: 0;
+}
+
+.summary-panel .detail-list,
+.dns-panel .detail-list,
+.network-panel .detail-list,
+.registration-panel .detail-list,
+.status-panel .chip-list,
+.icp-record-list,
+.plugin-list,
+.trace-list,
+.warning-panel ul,
+.deferred-panel .pending-metric-grid {
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.summary-panel .detail-list,
+.dns-panel .detail-list,
+.network-panel .detail-list,
+.registration-panel .detail-list,
+.plugin-list,
+.trace-list {
+  flex: 1 1 auto;
+}
+
+.status-panel .chip-list,
+.icp-record-list,
+.warning-panel ul,
+.deferred-panel .pending-metric-grid {
+  min-height: 0;
+}
+
+.summary-panel .detail-list::-webkit-scrollbar,
+.dns-panel .detail-list::-webkit-scrollbar,
+.network-panel .detail-list::-webkit-scrollbar,
+.registration-panel .detail-list::-webkit-scrollbar,
+.status-panel .chip-list::-webkit-scrollbar,
+.icp-record-list::-webkit-scrollbar,
+.plugin-list::-webkit-scrollbar,
+.trace-list::-webkit-scrollbar,
+.warning-panel ul::-webkit-scrollbar,
+.deferred-panel .pending-metric-grid::-webkit-scrollbar,
+.ns-compact-list::-webkit-scrollbar,
+.raw-panel pre::-webkit-scrollbar,
+.docs-shell pre::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+
+.summary-panel .detail-list::-webkit-scrollbar-thumb,
+.dns-panel .detail-list::-webkit-scrollbar-thumb,
+.network-panel .detail-list::-webkit-scrollbar-thumb,
+.registration-panel .detail-list::-webkit-scrollbar-thumb,
+.status-panel .chip-list::-webkit-scrollbar-thumb,
+.icp-record-list::-webkit-scrollbar-thumb,
+.plugin-list::-webkit-scrollbar-thumb,
+.trace-list::-webkit-scrollbar-thumb,
+.warning-panel ul::-webkit-scrollbar-thumb,
+.deferred-panel .pending-metric-grid::-webkit-scrollbar-thumb,
+.ns-compact-list::-webkit-scrollbar-thumb,
+.raw-panel pre::-webkit-scrollbar-thumb,
+.docs-shell pre::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--muted) 24%, transparent);
+  border-radius: var(--radius-pill);
+}
+
 .summary-panel,
 .dns-panel,
 .network-panel,
 .status-panel,
-.icp-panel {
+.icp-panel,
+.deferred-panel {
   align-self: start;
   padding: 13px;
 }
@@ -770,7 +900,8 @@ details.panel[open] .panel-summary::after {
 .summary-panel .detail-list,
 .dns-panel .detail-list,
 .network-panel .detail-list,
-.registration-panel .detail-list {
+.registration-panel .detail-list,
+.deferred-panel .detail-list {
   gap: 6px;
 }
 
@@ -791,8 +922,60 @@ details.panel[open] .panel-summary::after {
 .icp-panel > .muted,
 .status-panel > .muted,
 .dns-panel .muted,
-.network-panel .muted {
+.network-panel .muted,
+.deferred-panel .muted {
   margin-bottom: 0;
+}
+
+.dns-panel,
+.plugin-shell,
+.warning-panel {
+  animation: content-settle 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.dns-panel {
+  min-height: 0;
+}
+
+.deferred-panel {
+  min-height: 0;
+}
+
+.panel-status-slot {
+  align-items: center;
+  display: inline-flex;
+  justify-content: flex-end;
+  min-height: 24px;
+  min-width: 52px;
+}
+
+.pending-line,
+.pending-metric {
+  background:
+    linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--link) 12%, transparent) 45%, transparent 72%),
+    var(--panel-subtle);
+  background-size: 220% 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  display: inline-block;
+  height: 14px;
+  max-width: 100%;
+  width: min(220px, 78%);
+  animation: pending-shimmer 1.35s linear infinite;
+}
+
+.pending-line.compact {
+  width: 72px;
+}
+
+.pending-metric-grid {
+  margin-top: 12px;
+}
+
+.pending-metric {
+  border-radius: var(--radius-panel);
+  height: 58px;
+  width: 100%;
 }
 
 .status-panel .chip-list {
@@ -890,16 +1073,30 @@ details.panel[open] .panel-summary::after {
   align-items: start;
 }
 
-.result-band > .panel {
-  height: 100%;
-}
-
 .result-band-primary {
+  grid-auto-rows: var(--whoice-slot-overview-height, 252px);
   grid-template-columns: minmax(0, 1.03fr) minmax(0, 0.97fr);
 }
 
 .result-band-secondary {
+  grid-auto-rows: var(--whoice-slot-ownership-height, 204px);
   grid-template-columns: minmax(0, 1.15fr) minmax(240px, 0.75fr) minmax(220px, 0.62fr);
+}
+
+.enrichment-grid {
+  align-items: stretch;
+  grid-auto-rows: var(--whoice-slot-plugin-height, 164px);
+}
+
+.zone-body-overview,
+.zone-body-ownership,
+.zone-body-enrichment,
+.zone-body-evidence {
+  contain: layout paint;
+}
+
+.zone-body-evidence {
+  min-height: var(--whoice-zone-evidence-min, 72px);
 }
 
 .result-band-compact {
@@ -1582,6 +1779,12 @@ details.panel[open] .panel-summary::after {
 }
 
 .plugin-shell {
+  height: var(--whoice-slot-plugin-height, 164px);
+  min-width: 0;
+}
+
+.plugin-shell > .panel {
+  height: 100%;
   min-width: 0;
 }
 
@@ -1790,8 +1993,33 @@ details.panel[open] .panel-summary::after {
   border-color: color-mix(in srgb, var(--amber) 45%, var(--border));
 }
 
+.warning-panel ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.warning-panel.is-empty {
+  border-color: var(--border);
+}
+
+.warning-panel.is-empty .muted,
+.deferred-panel.is-empty .muted {
+  color: color-mix(in srgb, var(--muted) 78%, var(--text));
+}
+
 .loading-panel {
   border-color: color-mix(in srgb, var(--blue) 40%, var(--border));
+}
+
+.floating-loading-panel {
+  animation: content-settle 0.18s ease both;
+  box-shadow: var(--shadow-popover);
+  pointer-events: none;
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  width: min(360px, calc(100% - 20px));
+  z-index: 25;
 }
 
 .loading-panel h2 {
@@ -1824,6 +2052,12 @@ details.panel[open] .panel-summary::after {
 }
 
 @media (max-width: 760px) {
+  :root {
+    --whoice-slot-overview-height: 288px;
+    --whoice-slot-ownership-height: 236px;
+    --whoice-slot-plugin-height: 178px;
+  }
+
   .shell {
     padding: 16px;
   }
@@ -1868,6 +2102,14 @@ details.panel[open] .panel-summary::after {
     width: 100%;
   }
 
+  .floating-loading-panel {
+    left: 12px;
+    position: fixed;
+    right: 12px;
+    top: max(12px, env(safe-area-inset-top));
+    width: auto;
+  }
+
   .tool-zone {
     gap: 8px;
   }
@@ -1892,6 +2134,12 @@ details.panel[open] .panel-summary::after {
   .result-band {
     display: flex;
     flex-direction: column;
+  }
+
+  .result-band-primary,
+  .result-band-secondary,
+  .enrichment-grid {
+    grid-auto-rows: auto;
   }
 
   .status-strip {
