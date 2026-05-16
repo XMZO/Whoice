@@ -827,10 +827,13 @@ details.panel[open] .panel-summary::after {
 .registration-panel .detail-list,
 .status-panel .chip-list,
 .icp-record-list,
+.plugin-scroll,
 .plugin-list,
 .trace-list,
 .warning-panel ul,
 .deferred-panel .pending-metric-grid {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   overflow: auto;
   padding-right: 2px;
 }
@@ -839,6 +842,7 @@ details.panel[open] .panel-summary::after {
 .dns-panel .detail-list,
 .network-panel .detail-list,
 .registration-panel .detail-list,
+.plugin-scroll,
 .plugin-list,
 .trace-list {
   flex: 0 1 auto;
@@ -846,6 +850,7 @@ details.panel[open] .panel-summary::after {
 
 .status-panel .chip-list,
 .icp-record-list,
+.plugin-scroll,
 .warning-panel ul,
 .deferred-panel .pending-metric-grid {
   min-height: 0;
@@ -857,6 +862,7 @@ details.panel[open] .panel-summary::after {
 .registration-panel .detail-list::-webkit-scrollbar,
 .status-panel .chip-list::-webkit-scrollbar,
 .icp-record-list::-webkit-scrollbar,
+.plugin-scroll::-webkit-scrollbar,
 .plugin-list::-webkit-scrollbar,
 .trace-list::-webkit-scrollbar,
 .warning-panel ul::-webkit-scrollbar,
@@ -874,6 +880,7 @@ details.panel[open] .panel-summary::after {
 .registration-panel .detail-list::-webkit-scrollbar-thumb,
 .status-panel .chip-list::-webkit-scrollbar-thumb,
 .icp-record-list::-webkit-scrollbar-thumb,
+.plugin-scroll::-webkit-scrollbar-thumb,
 .plugin-list::-webkit-scrollbar-thumb,
 .trace-list::-webkit-scrollbar-thumb,
 .warning-panel ul::-webkit-scrollbar-thumb,
@@ -1811,6 +1818,12 @@ details.panel[open] .panel-summary::after {
   gap: 10px;
 }
 
+.plugin-scroll {
+  display: grid;
+  gap: 10px;
+  touch-action: pan-y;
+}
+
 .plugin-shell {
   height: var(--whoice-slot-plugin-height, 164px);
   min-width: 0;
@@ -2457,8 +2470,13 @@ details.panel[open] .panel-summary::after {
 
   .dns-record-list,
   .chip-list,
-  .mono-list {
+  .mono-list,
+  .plugin-scroll {
     gap: 5px;
+  }
+
+  .plugin-scroll {
+    max-height: 100%;
   }
 
   .dns-record-item {

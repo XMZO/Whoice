@@ -44,7 +44,7 @@ function EPPStatusPanel({ result }: { result: LookupResult }) {
       <div className="panel-head">
         <h2>EPP Details</h2>
       </div>
-      <div className="plugin-list">
+      <div className="plugin-list plugin-scroll">
         {enriched.map((status) => (
           <div className="plugin-item" key={`${status.code}-${status.source || ""}`}>
             <strong>{status.label || status.code}</strong>
@@ -66,21 +66,23 @@ function BrandPanel({ result }: { result: LookupResult }) {
       <div className="panel-head">
         <h2>Brands</h2>
       </div>
-      <dl className="detail-list">
-        <Row label="Registrar" value={<BrandValue name={registrarBrand?.name} color={registrarBrand?.color} />} />
-        <Row
-          label="Nameservers"
-          value={
-            <span className="brand-stack">
-              {nsBrands.map((ns) => (
-                <span key={ns.host}>
-                  {ns.host} <BrandValue name={ns.brand?.name} color={ns.brand?.color} />
-                </span>
-              ))}
-            </span>
-          }
-        />
-      </dl>
+      <div className="plugin-scroll">
+        <dl className="detail-list">
+          <Row label="Registrar" value={<BrandValue name={registrarBrand?.name} color={registrarBrand?.color} />} />
+          <Row
+            label="Nameservers"
+            value={
+              <span className="brand-stack">
+                {nsBrands.map((ns) => (
+                  <span key={ns.host}>
+                    {ns.host} <BrandValue name={ns.brand?.name} color={ns.brand?.color} />
+                  </span>
+                ))}
+              </span>
+            }
+          />
+        </dl>
+      </div>
     </section>
   );
 }
@@ -104,10 +106,12 @@ function DNSVizPanel({ result }: { result: LookupResult }) {
       <div className="panel-head">
         <h2>DNSViz</h2>
       </div>
-      <p className="muted">External DNSSEC and delegation diagnostics for this domain.</p>
-      <a className="inline-action" href={url} target="_blank" rel="noreferrer">
-        Open DNSViz
-      </a>
+      <div className="plugin-scroll">
+        <p className="muted">External DNSSEC and delegation diagnostics for this domain.</p>
+        <a className="inline-action" href={url} target="_blank" rel="noreferrer">
+          Open DNSViz
+        </a>
+      </div>
     </section>
   );
 }
@@ -124,16 +128,18 @@ function PricingPanel({ result }: { result: LookupResult }) {
       <div className="panel-head">
         <h2>Pricing</h2>
       </div>
-      <div className="metric-grid">
-        <PricingMetric label="Register" offer={register} fallbackCurrency={currency} />
-        <PricingMetric label="Renew" offer={renew} fallbackCurrency={currency} />
-        <PricingMetric label="Transfer" offer={transfer} fallbackCurrency={currency} />
+      <div className="plugin-scroll">
+        <div className="metric-grid">
+          <PricingMetric label="Register" offer={register} fallbackCurrency={currency} />
+          <PricingMetric label="Renew" offer={renew} fallbackCurrency={currency} />
+          <PricingMetric label="Transfer" offer={transfer} fallbackCurrency={currency} />
+        </div>
+        <dl className="detail-list compact-details">
+          <Row label="Provider" value={pricing.provider} />
+          <Row label="Source" value={pricing.source} />
+          <Row label="Updated" value={pricing.updatedAt} />
+        </dl>
       </div>
-      <dl className="detail-list compact-details">
-        <Row label="Provider" value={pricing.provider} />
-        <Row label="Source" value={pricing.source} />
-        <Row label="Updated" value={pricing.updatedAt} />
-      </dl>
     </section>
   );
 }
@@ -171,15 +177,17 @@ function MozPanel({ result }: { result: LookupResult }) {
       <div className="panel-head">
         <h2>Moz</h2>
       </div>
-      <div className="metric-grid">
-        <Metric label="DA" value={moz.domainAuthority} />
-        <Metric label="PA" value={moz.pageAuthority} />
-        <Metric label="Spam" value={moz.spamScore} />
+      <div className="plugin-scroll">
+        <div className="metric-grid">
+          <Metric label="DA" value={moz.domainAuthority} />
+          <Metric label="PA" value={moz.pageAuthority} />
+          <Metric label="Spam" value={moz.spamScore} />
+        </div>
+        <dl className="detail-list compact-details">
+          <Row label="Source" value={moz.source} />
+          <Row label="Updated" value={moz.updatedAt} />
+        </dl>
       </div>
-      <dl className="detail-list compact-details">
-        <Row label="Source" value={moz.source} />
-        <Row label="Updated" value={moz.updatedAt} />
-      </dl>
     </section>
   );
 }
@@ -210,13 +218,15 @@ function DeferredPanel({
         </div>
       </div>
       <p className="muted">{message}</p>
-      {loading && (
-        <div className="metric-grid pending-metric-grid" aria-hidden="true">
-          <span className="pending-metric" />
-          <span className="pending-metric" />
-          <span className="pending-metric" />
-        </div>
-      )}
+      <div className="plugin-scroll">
+        {loading && (
+          <div className="metric-grid pending-metric-grid" aria-hidden="true">
+            <span className="pending-metric" />
+            <span className="pending-metric" />
+            <span className="pending-metric" />
+          </div>
+        )}
+      </div>
       <span className="sr-only">{name} enrichment placeholder</span>
     </section>
   );
@@ -260,7 +270,7 @@ function ProviderTracePanel({ result }: { result: LookupResult }) {
         <h2>Provider Trace</h2>
         <span>{traces.length} providers</span>
       </summary>
-      <div className="trace-list">
+      <div className="trace-list plugin-scroll">
         {traces.map((trace) => (
           <div className={`trace-item trace-${trace.status}`} key={`${trace.source}-${trace.server || trace.error || trace.elapsedMs}`}>
             <div>
