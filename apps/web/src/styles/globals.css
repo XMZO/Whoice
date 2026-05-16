@@ -1111,7 +1111,7 @@ details.panel[open] .panel-summary::after {
 
 .enrichment-grid {
   align-items: stretch;
-  grid-auto-rows: var(--whoice-slot-plugin-height, 164px);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .zone-body-overview,
@@ -1834,6 +1834,14 @@ details.panel[open] .panel-summary::after {
   min-width: 0;
 }
 
+.plugin-shell:has(.deferred-panel.is-empty) {
+  height: var(--whoice-slot-plugin-empty-height, 96px);
+}
+
+.plugin-shell:has(.warning-panel.is-empty) {
+  height: var(--whoice-slot-warning-empty-height, 96px);
+}
+
 .plugin-list.compact {
   gap: 8px;
 }
@@ -2053,6 +2061,20 @@ details.panel[open] .panel-summary::after {
   color: color-mix(in srgb, var(--muted) 78%, var(--text));
 }
 
+.deferred-panel.is-empty {
+  gap: 6px;
+  padding: 9px 10px;
+}
+
+.deferred-panel.is-empty .panel-head {
+  margin-bottom: 0;
+}
+
+.deferred-panel.is-empty > .muted {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .loading-panel {
   border-color: color-mix(in srgb, var(--blue) 40%, var(--border));
 }
@@ -2115,9 +2137,11 @@ details.panel[open] .panel-summary::after {
 
 @media (min-width: 761px) and (max-width: 1120px) {
   :root {
-    --whoice-slot-overview-height: 260px;
-    --whoice-slot-ownership-height: 220px;
-    --whoice-slot-plugin-height: 170px;
+    --whoice-slot-overview-height: 208px;
+    --whoice-slot-ownership-height: 184px;
+    --whoice-slot-plugin-height: 154px;
+    --whoice-slot-plugin-empty-height: 92px;
+    --whoice-slot-warning-empty-height: 92px;
   }
 
   .lookup-workbench {
@@ -2148,13 +2172,15 @@ details.panel[open] .panel-summary::after {
 
 @media (max-width: 760px) {
   :root {
-    --whoice-slot-overview-height: min(420px, 58svh);
+    --whoice-slot-overview-height: clamp(264px, 42svh, 340px);
     --whoice-slot-overview-max-height: none;
-    --whoice-slot-ownership-height: min(460px, 62svh);
+    --whoice-slot-ownership-height: clamp(248px, 39svh, 320px);
     --whoice-slot-ownership-max-height: none;
-    --whoice-slot-plugin-height: 168px;
-    --whoice-card-min-height: 118px;
-    --whoice-dns-list-max-height: 176px;
+    --whoice-slot-plugin-height: 132px;
+    --whoice-slot-plugin-empty-height: 64px;
+    --whoice-slot-warning-empty-height: 64px;
+    --whoice-card-min-height: 96px;
+    --whoice-dns-list-max-height: 148px;
     --whoice-zone-evidence-min: 64px;
   }
 
@@ -2334,10 +2360,6 @@ details.panel[open] .panel-summary::after {
     height: 100%;
     max-height: none;
     min-height: 0;
-  }
-
-  .enrichment-grid {
-    grid-auto-rows: var(--whoice-slot-plugin-height);
   }
 
   .plugin-shell {

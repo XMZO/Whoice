@@ -40,11 +40,13 @@
   --focus-ring: var(--link);
   --raw-bg: #050505;
   --raw-text: #e5e7eb;
-  --whoice-slot-overview-height: 252px;
-  --whoice-slot-overview-max-height: 292px;
-  --whoice-slot-ownership-height: 204px;
-  --whoice-slot-ownership-max-height: 260px;
-  --whoice-slot-plugin-height: 164px;
+  --whoice-slot-overview-height: 216px;
+  --whoice-slot-overview-max-height: 252px;
+  --whoice-slot-ownership-height: 164px;
+  --whoice-slot-ownership-max-height: 232px;
+  --whoice-slot-plugin-height: 150px;
+  --whoice-slot-plugin-empty-height: 88px;
+  --whoice-slot-warning-empty-height: 88px;
   --whoice-card-min-height: 126px;
   --whoice-dns-list-max-height: 204px;
   --whoice-zone-evidence-min: 72px;
