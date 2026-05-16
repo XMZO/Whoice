@@ -2148,9 +2148,9 @@ details.panel[open] .panel-summary::after {
 
 @media (max-width: 760px) {
   :root {
-    --whoice-slot-overview-height: 216px;
+    --whoice-slot-overview-height: min(420px, 58svh);
     --whoice-slot-overview-max-height: none;
-    --whoice-slot-ownership-height: 220px;
+    --whoice-slot-ownership-height: min(460px, 62svh);
     --whoice-slot-ownership-max-height: none;
     --whoice-slot-plugin-height: 168px;
     --whoice-card-min-height: 118px;
@@ -2315,11 +2315,25 @@ details.panel[open] .panel-summary::after {
   }
 
   .result-band-primary {
-    min-height: var(--whoice-slot-overview-height);
+    grid-auto-rows: minmax(0, 1fr);
+    height: var(--whoice-slot-overview-height);
+    min-height: 0;
+    overflow: hidden;
   }
 
   .result-band-secondary {
-    min-height: var(--whoice-slot-ownership-height);
+    grid-auto-rows: minmax(0, 1fr);
+    height: var(--whoice-slot-ownership-height);
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .result-band-primary > .panel,
+  .result-band-secondary > .panel {
+    align-self: stretch;
+    height: 100%;
+    max-height: none;
+    min-height: 0;
   }
 
   .enrichment-grid {
