@@ -425,6 +425,39 @@ func TestQueryDoHMessage(t *testing.T) {
 	}
 }
 
+func TestQueryDoHPrefersDNSMessageForStandardDoHEndpoint(t *testing.T) {
+	var sawDNSMessage bool
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("type") != "" {
+			http.Error(w, "json should not be first", http.StatusBadRequest)
+			return
+		}
+		if r.URL.Query().Get("dns") == "" {
+			http.Error(w, "missing dns query", http.StatusBadRequest)
+			return
+		}
+		sawDNSMessage = true
+		msg := dnsMessageReplyA(t, "example.com.", net.IPv4(172, 81, 100, 83))
+		w.Header().Set("Content-Type", "application/dns-message")
+		_, _ = w.Write(msg)
+	}))
+	t.Cleanup(server.Close)
+	oldClient := http.DefaultClient
+	http.DefaultClient = server.Client()
+	t.Cleanup(func() { http.DefaultClient = oldClient })
+
+	addrs, err := queryDoH(context.Background(), server.URL+"/dns-query", "example.com", "A")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sawDNSMessage {
+		t.Fatal("expected dns-message request")
+	}
+	if len(addrs) != 1 || addrs[0].IP.String() != "172.81.100.83" {
+		t.Fatalf("addrs: %+v", addrs)
+	}
+}
+
 func TestDoHBootstrapIPsCoverBuiltInResolvers(t *testing.T) {
 	tests := map[string]string{
 		"cloudflare-dns.com": "1.1.1.1",

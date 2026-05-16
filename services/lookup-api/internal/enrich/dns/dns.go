@@ -865,10 +865,20 @@ func queryDoH(ctx context.Context, endpoint, host, recordType string) ([]net.IPA
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
 		return nil, fmt.Errorf("invalid DoH endpoint")
 	}
+	if dohPrefersDNSMessage(*parsed) {
+		if addrs, err := queryDoHMessage(ctx, *parsed, host, recordType); err == nil {
+			return addrs, nil
+		}
+		return queryDoHJSON(ctx, *parsed, host, recordType)
+	}
 	if addrs, err := queryDoHJSON(ctx, *parsed, host, recordType); err == nil {
 		return addrs, nil
 	}
 	return queryDoHMessage(ctx, *parsed, host, recordType)
+}
+
+func dohPrefersDNSMessage(parsed url.URL) bool {
+	return strings.HasSuffix(strings.ToLower(strings.TrimRight(parsed.Path, "/")), "/dns-query")
 }
 
 func queryDoHJSON(ctx context.Context, parsed url.URL, host, recordType string) ([]net.IPAddr, error) {

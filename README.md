@@ -75,6 +75,14 @@ docker network rm whoice || true
 docker compose up -d
 ```
 
+After a release, pull the latest manifests before recreating containers:
+
+```sh
+docker compose pull
+docker compose up -d
+curl -fsS http://127.0.0.1:18080/api/version
+```
+
 Optional mounted data layout:
 
 ```text

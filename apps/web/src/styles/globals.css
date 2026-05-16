@@ -2,6 +2,14 @@
   box-sizing: border-box;
 }
 
+html,
+body,
+#__next {
+  min-width: 0;
+  overflow-x: clip;
+  width: 100%;
+}
+
 body {
   background: var(--bg);
   color: var(--text);
@@ -37,7 +45,9 @@ input {
   margin: 0 auto;
   max-width: 1180px;
   min-height: 100vh;
+  min-width: 0;
   padding: 24px;
+  width: 100%;
 }
 
 .home-shell {
@@ -792,11 +802,13 @@ details.panel[open] .panel-summary::after {
 }
 
 .result-band-primary > .panel {
-  height: var(--whoice-slot-overview-height, 252px);
+  max-height: var(--whoice-slot-overview-max-height, 292px);
+  min-height: var(--whoice-card-min-height, 126px);
 }
 
 .result-band-secondary > .panel {
-  height: var(--whoice-slot-ownership-height, 204px);
+  max-height: var(--whoice-slot-ownership-max-height, 260px);
+  min-height: var(--whoice-card-min-height, 126px);
 }
 
 .plugin-shell > .panel {
@@ -829,7 +841,7 @@ details.panel[open] .panel-summary::after {
 .registration-panel .detail-list,
 .plugin-list,
 .trace-list {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
 }
 
 .status-panel .chip-list,
@@ -935,6 +947,10 @@ details.panel[open] .panel-summary::after {
 
 .dns-panel {
   min-height: 0;
+}
+
+.dns-panel .detail-list {
+  max-height: var(--whoice-dns-list-max-height, 204px);
 }
 
 .deferred-panel {
@@ -1071,16 +1087,19 @@ details.panel[open] .panel-summary::after {
 
 .result-band {
   align-items: start;
+  min-width: 0;
 }
 
 .result-band-primary {
-  grid-auto-rows: var(--whoice-slot-overview-height, 252px);
+  align-items: stretch;
   grid-template-columns: minmax(0, 1.03fr) minmax(0, 0.97fr);
+  min-height: var(--whoice-slot-overview-height, 252px);
 }
 
 .result-band-secondary {
-  grid-auto-rows: var(--whoice-slot-ownership-height, 204px);
+  align-items: stretch;
   grid-template-columns: minmax(0, 1.15fr) minmax(240px, 0.75fr) minmax(220px, 0.62fr);
+  min-height: var(--whoice-slot-ownership-height, 204px);
 }
 
 .enrichment-grid {
@@ -1117,6 +1136,7 @@ details.panel[open] .panel-summary::after {
   display: grid;
   gap: 10px;
   grid-template-columns: minmax(120px, 0.35fr) 1fr;
+  min-width: 0;
 }
 
 .detail-row dt {
@@ -1130,6 +1150,7 @@ details.panel[open] .panel-summary::after {
   font-family: var(--mono);
   font-size: 13px;
   margin: 0;
+  min-width: 0;
   overflow-wrap: anywhere;
 }
 
@@ -1174,10 +1195,13 @@ details.panel[open] .panel-summary::after {
   flex-wrap: wrap;
   gap: 5px;
   justify-content: flex-end;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .resolver-group {
   display: inline-flex;
+  min-width: 0;
   position: relative;
 }
 
@@ -1345,6 +1369,8 @@ details.panel[open] .panel-summary::after {
 
 .dns-record-group {
   font-family: var(--mono);
+  max-width: 100%;
+  min-width: 0;
 }
 
 .dns-record-group summary {
@@ -1352,7 +1378,10 @@ details.panel[open] .panel-summary::after {
   cursor: pointer;
   display: inline-flex;
   gap: 8px;
+  max-width: 100%;
   min-height: 26px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .dns-record-list {
@@ -1360,6 +1389,8 @@ details.panel[open] .panel-summary::after {
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 6px;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .dns-record-item {
@@ -1370,7 +1401,9 @@ details.panel[open] .panel-summary::after {
   display: inline-flex;
   flex-wrap: wrap;
   gap: 6px;
+  max-width: 100%;
   min-width: 0;
+  overflow-wrap: anywhere;
   padding: 4px 6px;
 }
 
@@ -2102,14 +2135,21 @@ details.panel[open] .panel-summary::after {
 
 @media (max-width: 760px) {
   :root {
-    --whoice-slot-overview-height: 258px;
-    --whoice-slot-ownership-height: 242px;
+    --whoice-slot-overview-height: 216px;
+    --whoice-slot-overview-max-height: none;
+    --whoice-slot-ownership-height: 220px;
+    --whoice-slot-ownership-max-height: none;
     --whoice-slot-plugin-height: 168px;
+    --whoice-card-min-height: 118px;
+    --whoice-dns-list-max-height: 176px;
     --whoice-zone-evidence-min: 64px;
   }
 
   .shell {
+    max-width: none;
+    min-width: 0;
     padding: 10px;
+    width: 100%;
   }
 
   .top-nav {
@@ -2127,6 +2167,9 @@ details.panel[open] .panel-summary::after {
     display: grid;
     gap: 10px;
     grid-template-columns: minmax(0, 1fr);
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
   }
 
   .tool-sidebar {
@@ -2137,6 +2180,16 @@ details.panel[open] .panel-summary::after {
     padding-right: 0;
     position: static;
     width: 100%;
+  }
+
+  .tool-stage,
+  .tool-zone,
+  .result-sections,
+  .result-band,
+  .panel,
+  .status-strip {
+    max-width: 100%;
+    min-width: 0;
   }
 
   .tool-panel {
@@ -2249,11 +2302,11 @@ details.panel[open] .panel-summary::after {
   }
 
   .result-band-primary {
-    grid-auto-rows: var(--whoice-slot-overview-height);
+    min-height: var(--whoice-slot-overview-height);
   }
 
   .result-band-secondary {
-    grid-auto-rows: var(--whoice-slot-ownership-height);
+    min-height: var(--whoice-slot-ownership-height);
   }
 
   .enrichment-grid {
@@ -2265,11 +2318,12 @@ details.panel[open] .panel-summary::after {
   }
 
   .detail-row {
-    grid-template-columns: minmax(84px, 0.35fr) minmax(0, 1fr);
+    gap: 5px;
+    grid-template-columns: minmax(72px, 0.34fr) minmax(0, 1fr);
   }
 
   .registration-list .detail-row {
-    grid-template-columns: minmax(88px, 0.38fr) minmax(0, 1fr);
+    grid-template-columns: minmax(76px, 0.36fr) minmax(0, 1fr);
   }
 
   .summary-panel .detail-row,
@@ -2409,6 +2463,7 @@ details.panel[open] .panel-summary::after {
 
   .dns-record-item {
     max-width: 100%;
+    min-width: 0;
     padding: 3px 5px;
   }
 
