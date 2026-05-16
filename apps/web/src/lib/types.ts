@@ -13,6 +13,9 @@ export type Brand = {
   name: string;
   slug?: string;
   color?: string;
+  logo?: string;
+  website?: string;
+  aliases?: string[];
 };
 
 export type LookupResult = {

@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
+import { useI18n, type I18nKey } from "./i18n";
 import type { LookupResult, PricingOffer } from "./types";
 
 export type ResultPluginSlot = "details" | "debug";
@@ -16,6 +17,7 @@ export type ResultPluginRenderOptions = {
   enrichmentLoading?: boolean;
   enrichmentError?: string;
   lockSlots?: boolean;
+  translate?: (key: I18nKey) => string;
 };
 
 function Row({ label, value }: { label: string; value?: ReactNode }) {
@@ -37,12 +39,13 @@ function nameserversOf(result: LookupResult) {
 }
 
 function EPPStatusPanel({ result }: { result: LookupResult }) {
+  const { t } = useI18n();
   const enriched = statusesOf(result).filter((status) => status.description || status.category || status.url);
   if (enriched.length === 0) return null;
   return (
     <section className="panel">
       <div className="panel-head">
-        <h2>EPP Details</h2>
+        <h2>{t("eppDetails")}</h2>
       </div>
       <div className="plugin-list plugin-scroll">
         {enriched.map((status) => (
@@ -58,24 +61,25 @@ function EPPStatusPanel({ result }: { result: LookupResult }) {
 }
 
 function BrandPanel({ result }: { result: LookupResult }) {
+  const { t } = useI18n();
   const registrarBrand = result.registrar?.brand;
   const nsBrands = nameserversOf(result).filter((ns) => ns.brand);
   if (!registrarBrand && nsBrands.length === 0) return null;
   return (
     <section className="panel">
       <div className="panel-head">
-        <h2>Brands</h2>
+        <h2>{t("brands")}</h2>
       </div>
       <div className="plugin-scroll">
         <dl className="detail-list">
-          <Row label="Registrar" value={<BrandValue name={registrarBrand?.name} color={registrarBrand?.color} />} />
+          <Row label={t("registrar")} value={<BrandValue brand={registrarBrand} />} />
           <Row
-            label="Nameservers"
+            label={t("nameservers")}
             value={
               <span className="brand-stack">
                 {nsBrands.map((ns) => (
                   <span key={ns.host}>
-                    {ns.host} <BrandValue name={ns.brand?.name} color={ns.brand?.color} />
+                    {ns.host} <BrandValue brand={ns.brand} />
                   </span>
                 ))}
               </span>
@@ -87,18 +91,43 @@ function BrandPanel({ result }: { result: LookupResult }) {
   );
 }
 
-function BrandValue({ name, color }: { name?: string; color?: string }) {
-  if (!name) return null;
-  const style = color ? ({ "--brand-swatch": color } as CSSProperties) : undefined;
-  return (
+function BrandValue({ brand }: { brand?: LookupResult["registrar"]["brand"] }) {
+  if (!brand?.name) return null;
+  const style = brand.color ? ({ "--brand-swatch": brand.color } as CSSProperties) : undefined;
+  const logo = safeImageURL(brand.logo);
+  const body = (
     <span className="brand-value">
-      {color && <span className="brand-swatch" style={style} aria-hidden="true" />}
-      {name}
+      {logo ? <img className="brand-logo" src={logo} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className="brand-swatch" style={style} aria-hidden="true" />}
+      {brand.name}
     </span>
   );
+  const href = safeExternalURL(brand.website);
+  return href ? (
+    <a className="brand-link" href={href} target="_blank" rel="noreferrer">
+      {body}
+    </a>
+  ) : body;
+}
+
+function safeExternalURL(value?: string) {
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    if (url.protocol === "http:" || url.protocol === "https:") return url.toString();
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
+function safeImageURL(value?: string) {
+  if (!value) return undefined;
+  if (value.startsWith("/")) return value;
+  return safeExternalURL(value);
 }
 
 function DNSVizPanel({ result }: { result: LookupResult }) {
+  const { t } = useI18n();
   const url = result.enrichment?.dnsviz?.url;
   if (!url) return null;
   return (
@@ -107,9 +136,10 @@ function DNSVizPanel({ result }: { result: LookupResult }) {
         <h2>DNSViz</h2>
       </div>
       <div className="plugin-scroll">
-        <p className="muted">External DNSSEC and delegation diagnostics for this domain.</p>
+        <p className="muted">{t("dnsvizDescription")}</p>
         <a className="inline-action" href={url} target="_blank" rel="noreferrer">
-          Open DNSViz
+          {t("openDNSViz")}
+          <span className="sr-only">Open DNSViz</span>
         </a>
       </div>
     </section>
@@ -117,6 +147,7 @@ function DNSVizPanel({ result }: { result: LookupResult }) {
 }
 
 function PricingPanel({ result }: { result: LookupResult }) {
+  const { t } = useI18n();
   const pricing = result.enrichment?.pricing;
   if (!pricing) return null;
   const currency = pricing.currency || "USD";
@@ -126,18 +157,18 @@ function PricingPanel({ result }: { result: LookupResult }) {
   return (
     <section className="panel">
       <div className="panel-head">
-        <h2>Pricing</h2>
+        <h2>{t("pricing")}</h2>
       </div>
       <div className="plugin-scroll">
         <div className="metric-grid">
-          <PricingMetric label="Register" offer={register} fallbackCurrency={currency} />
-          <PricingMetric label="Renew" offer={renew} fallbackCurrency={currency} />
-          <PricingMetric label="Transfer" offer={transfer} fallbackCurrency={currency} />
+          <PricingMetric label={t("register")} offer={register} fallbackCurrency={currency} />
+          <PricingMetric label={t("renew")} offer={renew} fallbackCurrency={currency} />
+          <PricingMetric label={t("transfer")} offer={transfer} fallbackCurrency={currency} />
         </div>
         <dl className="detail-list compact-details">
-          <Row label="Provider" value={pricing.provider} />
-          <Row label="Source" value={pricing.source} />
-          <Row label="Updated" value={pricing.updatedAt} />
+          <Row label={t("provider")} value={pricing.provider} />
+          <Row label={t("source")} value={pricing.source} />
+          <Row label={t("updated")} value={pricing.updatedAt} />
         </dl>
       </div>
     </section>
@@ -170,6 +201,7 @@ function PricingMetric({
 }
 
 function MozPanel({ result }: { result: LookupResult }) {
+  const { t } = useI18n();
   const moz = result.enrichment?.moz;
   if (!moz) return null;
   return (
@@ -184,8 +216,8 @@ function MozPanel({ result }: { result: LookupResult }) {
           <Metric label="Spam" value={moz.spamScore} />
         </div>
         <dl className="detail-list compact-details">
-          <Row label="Source" value={moz.source} />
-          <Row label="Updated" value={moz.updatedAt} />
+          <Row label={t("source")} value={moz.source} />
+          <Row label={t("updated")} value={moz.updatedAt} />
         </dl>
       </div>
     </section>
@@ -262,13 +294,14 @@ function formatMoney(value: number | undefined, currency: string) {
 }
 
 function ProviderTracePanel({ result }: { result: LookupResult }) {
+  const { t } = useI18n();
   const traces = Array.isArray(result.meta?.providers) ? result.meta.providers : [];
   if (traces.length === 0) return null;
   return (
     <details className="panel diagnostic-panel">
       <summary className="panel-summary">
-        <h2>Provider Trace</h2>
-        <span>{traces.length} providers</span>
+        <h2>{t("providerTrace")}</h2>
+        <span>{traces.length} {t("providers")}</span>
       </summary>
       <div className="trace-list plugin-scroll">
         {traces.map((trace) => (
@@ -278,11 +311,11 @@ function ProviderTracePanel({ result }: { result: LookupResult }) {
               <span>{trace.status}</span>
             </div>
             <dl>
-              <Row label="Server" value={trace.server} />
-              <Row label="HTTP" value={trace.statusCode} />
-              <Row label="Bytes" value={trace.bytes} />
-              <Row label="Elapsed" value={`${trace.elapsedMs} ms`} />
-              <Row label="Error" value={trace.error} />
+              <Row label={t("server")} value={trace.server} />
+              <Row label={t("http")} value={trace.statusCode} />
+              <Row label={t("bytes")} value={trace.bytes} />
+              <Row label={t("elapsed")} value={`${trace.elapsedMs} ms`} />
+              <Row label={t("error")} value={trace.error} />
             </dl>
           </div>
         ))}
@@ -342,17 +375,19 @@ export function renderResultPlugins(slot: ResultPluginSlot, result: LookupResult
     .map((plugin) => ({ id: plugin.id, order: plugin.order, node: plugin.render(result) }));
 
   if (slot === "details") {
+    const t = options.translate || ((key: I18nKey) => key);
     const pending = new Set(options.pending || []);
     const present = new Set(rendered.map((item) => item.id));
     for (const item of [
-      { id: "epp-status", names: ["epp"], title: "EPP Details", order: 20 },
-      { id: "brands", names: ["brand", "brands"], title: "Brands", order: 30 },
+      { id: "epp-status", names: ["epp"], title: t("eppDetails"), order: 20 },
+      { id: "brands", names: ["brand", "brands"], title: t("brands"), order: 30 },
       { id: "dnsviz", names: ["dnsviz"], title: "DNSViz", order: 40 },
-      { id: "pricing", names: ["pricing"], title: "Pricing", order: 50 },
-      { id: "moz", names: ["moz"], title: "Moz", order: 60 },
+      { id: "pricing", names: ["pricing"], title: t("pricing"), order: 50 },
+      { id: "moz", names: ["moz"], title: "Moz", order: 60, optional: true },
     ]) {
       const isPending = item.names.some((name) => pending.has(name));
-      if ((!options.lockSlots && !isPending) || present.has(item.id)) continue;
+      if (!isPending || present.has(item.id)) continue;
+      if (item.optional && !options.enrichmentLoading) continue;
       rendered.push({
         id: `${item.id}-pending`,
         order: item.order,

@@ -21,6 +21,9 @@ func TestApplyDetectsRegistrarBrand(t *testing.T) {
 	if result.Registrar.Brand == nil || result.Registrar.Brand.Slug != "cloudflare" {
 		t.Fatalf("registrar brand: %#v", result.Registrar.Brand)
 	}
+	if result.Registrar.Brand.Logo == "" || result.Registrar.Brand.Website == "" {
+		t.Fatalf("registrar brand metadata missing: %#v", result.Registrar.Brand)
+	}
 }
 
 func TestApplyDetectsNameserverBrand(t *testing.T) {
@@ -49,7 +52,15 @@ func TestApplyUsesMountedStyleRegistryRules(t *testing.T) {
 	registry, err := brandmap.NewRegistryFromReader(strings.NewReader(`{
   "version": 1,
   "registrars": [
-    { "name": "Example Registrar", "slug": "example-registrar", "patterns": ["example registrar"] }
+    {
+      "name": "Example Registrar",
+      "slug": "example-registrar",
+      "color": "#123456",
+      "logo": "https://example.test/logo.svg",
+      "website": "https://registrar.example",
+      "aliases": ["Example"],
+      "patterns": ["example registrar"]
+    }
   ],
   "nameservers": []
 }`))
@@ -64,6 +75,9 @@ func TestApplyUsesMountedStyleRegistryRules(t *testing.T) {
 
 	if result.Registrar.Brand == nil || result.Registrar.Brand.Slug != "example-registrar" {
 		t.Fatalf("custom brand: %#v", result.Registrar.Brand)
+	}
+	if result.Registrar.Brand.Logo != "https://example.test/logo.svg" || result.Registrar.Brand.Website != "https://registrar.example" {
+		t.Fatalf("custom brand metadata: %#v", result.Registrar.Brand)
 	}
 }
 

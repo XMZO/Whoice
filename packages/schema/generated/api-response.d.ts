@@ -107,6 +107,9 @@ export interface Brand {
   name: string;
   slug?: string;
   color?: string;
+  logo?: string;
+  website?: string;
+  aliases?: string[];
 }
 /**
  * This interface was referenced by `WhoiceAPIResponse`'s JSON-Schema

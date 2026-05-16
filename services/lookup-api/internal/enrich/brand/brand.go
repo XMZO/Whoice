@@ -38,7 +38,15 @@ func matchBrand(rules []brandmap.Rule, values ...string) *model.Brand {
 	for _, item := range rules {
 		for _, pattern := range item.Patterns {
 			if patternMatches(haystack, pattern) {
-				return &model.Brand{Name: item.Name, Slug: item.Slug, Color: item.Color}
+				aliases := append([]string(nil), item.Aliases...)
+				return &model.Brand{
+					Name:    item.Name,
+					Slug:    item.Slug,
+					Color:   item.Color,
+					Logo:    item.Logo,
+					Website: item.Website,
+					Aliases: aliases,
+				}
 			}
 		}
 	}

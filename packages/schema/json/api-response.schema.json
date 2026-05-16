@@ -278,7 +278,13 @@
       "properties": {
         "name": { "type": "string" },
         "slug": { "type": "string" },
-        "color": { "type": "string" }
+        "color": { "type": "string" },
+        "logo": { "type": "string" },
+        "website": { "type": "string" },
+        "aliases": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
       },
       "additionalProperties": false
     },

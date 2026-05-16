@@ -188,9 +188,37 @@ function Row({ label, value }: { label: string; value?: ReactNode }) {
   );
 }
 
-function brandLabel(brand?: { name: string; color?: string }) {
+function brandLabel(brand?: LookupResult["registrar"]["brand"]) {
   if (!brand) return undefined;
-  return brand.color ? `${brand.name} ${brand.color}` : brand.name;
+  return brand.name;
+}
+
+function BrandBadge({ brand, compact }: { brand?: LookupResult["registrar"]["brand"]; compact?: boolean }) {
+  if (!brand) return null;
+  const style = brand.color ? ({ "--brand-swatch": brand.color } as Record<string, string>) : undefined;
+  const logo = safeImageURL(brand.logo);
+  const body = (
+    <span className={compact ? "brand-badge compact" : "brand-badge"} style={style} title={brand.name}>
+      {logo ? (
+        <img className="brand-logo" src={logo} alt="" loading="lazy" referrerPolicy="no-referrer" />
+      ) : (
+        <span className="brand-initial" aria-hidden="true">{brand.name.slice(0, 1).toUpperCase()}</span>
+      )}
+      {!compact && <span>{brand.name}</span>}
+    </span>
+  );
+  const href = safeExternalURL(brand.website);
+  return href ? (
+    <a className="brand-link" href={href} target="_blank" rel="noreferrer" aria-label={brand.name}>
+      {body}
+    </a>
+  ) : body;
+}
+
+function safeImageURL(value?: string) {
+  if (!value) return undefined;
+  if (value.startsWith("/")) return value;
+  return safeExternalURL(value);
 }
 
 function SourceHint({
@@ -443,9 +471,10 @@ function DNSPanel({ result, pending, onCopy }: { result: LookupResult; pending?:
 }
 
 function DNSPendingRows() {
+  const { t } = useI18n();
   return (
     <>
-      <Row label="Records" value={<span className="muted">DNS records are updating in the background.</span>} />
+      <Row label={t("records")} value={<span className="muted">{t("dnsUpdating")}</span>} />
       <Row label="A" value={<PendingLine />} />
       <Row label="AAAA" value={<PendingLine />} />
       <Row label="MX" value={<PendingLine />} />
@@ -667,7 +696,8 @@ function NameserverBlock({
     <div className="nameserver-list">
       {merged.map((host) => (
         <span key={host} className="nameserver-item">
-          <ActionValue value={formatNameserverLabel(host, nameservers)} onCopy={() => onCopy?.(host)} />
+          <ActionValue value={host} onCopy={() => onCopy?.(host)} />
+          <NameserverBrand host={host} nameservers={nameservers} />
           <NameserverAddresses host={host} nameservers={nameservers} />
         </span>
       ))}
@@ -693,9 +723,14 @@ function normalizeNameserverHost(value: string) {
   return value.trim().replace(/\.$/, "").toLowerCase();
 }
 
-function formatNameserverLabel(host: string, nameservers: LookupResult["nameservers"]) {
+function nameserverBrand(host: string, nameservers?: LookupResult["nameservers"]) {
+  if (!nameservers) return undefined;
   const matched = nameservers.find((ns) => normalizeNameserverHost(ns.host) === host);
-  return matched?.brand ? `${host} - ${brandLabel(matched.brand)}` : host;
+  return matched?.brand;
+}
+
+function NameserverBrand({ host, nameservers }: { host: string; nameservers?: LookupResult["nameservers"] }) {
+  return <BrandBadge brand={nameserverBrand(normalizeNameserverHost(host), nameservers)} compact />;
 }
 
 function NameserverAddresses({ host, nameservers }: { host: string; nameservers: LookupResult["nameservers"] }) {
@@ -717,33 +752,40 @@ function DNSResolverBadges({ resolvers }: { resolvers?: NonNullable<LookupResult
   return (
     <div className="dns-resolver-badges">
       {groups.map((group) => (
-        <div key={group.key} className="resolver-group">
-          <ResolverIcon source={group.source} resolver={group.resolver} endpoint={group.endpoint} status={group.status} count={group.items.length} />
-          <div className="resolver-tooltip" role="tooltip">
-            {group.items.map((resolver) => {
-              const meta = resolverMeta(resolver.source, resolver.resolver, resolver.endpoint);
-              const status = resolver.status || "ok";
-              return (
-                <div key={`${resolver.source}-${resolver.resolver}-${resolver.endpoint || ""}`} className={`resolver-tooltip-row resolver-status-${status}`}>
-                  <ResolverIcon source={resolver.source} resolver={resolver.resolver} endpoint={resolver.endpoint} status={status} compact />
-                  <span className="resolver-tooltip-main">{resolver.endpoint || resolver.resolver}</span>
-                  <span className="resolver-tooltip-status">{resolverStatusLabel(status)}</span>
-                  {resolver.error && <span className="resolver-tooltip-error">{resolver.error}</span>}
-                  <span className="sr-only">{meta.title}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <ResolverGroupBadge group={group} key={group.key} />
       ))}
     </div>
   );
 }
 
 type DNSResolverInfo = NonNullable<NonNullable<LookupResult["enrichment"]["dns"]>["resolvers"]>[number];
+type DNSResolverGroup = ReturnType<typeof groupDNSResolvers>[number];
 
-function groupDNSResolvers(resolvers: DNSResolverInfo[]) {
-  const map = new Map<string, { key: string; source?: string; resolver?: string; endpoint?: string; status?: string; items: DNSResolverInfo[] }>();
+function ResolverGroupBadge({ group, compact }: { group: DNSResolverGroup; compact?: boolean }) {
+  return (
+    <span className="resolver-group">
+      <ResolverIcon source={group.source} resolver={group.resolver} endpoint={group.endpoint} status={group.status} count={group.items.length} compact={compact} />
+      <span className="resolver-tooltip" role="tooltip">
+        {group.items.map((resolver, index) => {
+          const meta = resolverMeta(resolver.source, resolver.resolver, resolver.endpoint);
+          const status = resolver.status || "ok";
+          return (
+            <span key={`${resolver.source}-${resolver.resolver}-${resolver.endpoint || ""}-${index}`} className={`resolver-tooltip-row resolver-status-${status}`}>
+              <ResolverIcon source={resolver.source} resolver={resolver.resolver} endpoint={resolver.endpoint} status={status} compact />
+              <span className="resolver-tooltip-main">{resolver.endpoint || resolver.resolver}</span>
+              <span className="resolver-tooltip-status">{resolverStatusLabel(status)}</span>
+              {resolver.error && <span className="resolver-tooltip-error">{resolver.error}</span>}
+              <span className="sr-only">{meta.title}</span>
+            </span>
+          );
+        })}
+      </span>
+    </span>
+  );
+}
+
+function groupDNSResolvers(resolvers: DNSResolverDisplayInfo[]) {
+  const map = new Map<string, { key: string; source?: string; resolver?: string; endpoint?: string; status?: string; items: DNSResolverDisplayInfo[] }>();
   for (const resolver of resolvers) {
     const meta = resolverMeta(resolver.source, resolver.resolver, resolver.endpoint);
     const key = `${resolver.source || ""}-${meta.kind}`;
@@ -765,7 +807,16 @@ function groupDNSResolvers(resolvers: DNSResolverInfo[]) {
   return Array.from(map.values());
 }
 
-function DNSAddressGroup({ title, addresses }: { title: string; addresses?: NonNullable<LookupResult["enrichment"]["dns"]>["a"] }) {
+type DNSAddressInfo = NonNullable<NonNullable<LookupResult["enrichment"]["dns"]>["a"]>[number];
+type DNSResolverDisplayInfo = {
+  source?: string;
+  resolver?: string;
+  endpoint?: string;
+  status?: string;
+  error?: string;
+};
+
+function DNSAddressGroup({ title, addresses }: { title: string; addresses?: DNSAddressInfo[] }) {
   if (!addresses?.length) return null;
   const summary = addresses.length === 1 ? addresses[0].ip : `${addresses.length} records`;
   return (
@@ -776,9 +827,9 @@ function DNSAddressGroup({ title, addresses }: { title: string; addresses?: NonN
       </summary>
       <div className="dns-record-list">
         {addresses.map((address) => (
-          <span key={`${address.ip}-${address.source || ""}-${address.resolver || ""}`} className="dns-record-item">
-            <span>{address.ip}</span>
-            <ResolverBadge source={address.source} resolver={address.resolver} endpoint={address.endpoint} compact />
+          <span key={address.ip} className="dns-record-item">
+            <span className="dns-record-address">{address.ip}</span>
+            <DNSRecordResolverBadges address={address} />
           </span>
         ))}
       </div>
@@ -786,41 +837,66 @@ function DNSAddressGroup({ title, addresses }: { title: string; addresses?: NonN
   );
 }
 
-function ResolverBadge({
-  source,
-  resolver,
-  endpoint,
-  status,
-  compact,
-}: {
-  source?: string;
-  resolver?: string;
-  endpoint?: string;
-  status?: string;
-  compact?: boolean;
-}) {
-  if (!source && !resolver) return null;
-  const resolvers = splitResolverValues(resolver);
-  const endpoints = splitResolverValues(endpoint);
-  const items = resolvers.length > 0 ? resolvers : [resolver || endpoint || ""];
-  const mergedStatus = status || "ok";
+function DNSRecordResolverBadges({ address }: { address: DNSAddressInfo }) {
+  const resolvers = resolversFromDNSAddress(address);
+  if (resolvers.length === 0) return null;
+  const groups = groupDNSResolvers(resolvers);
   return (
-    <span className="resolver-group inline-resolver-group">
-      <ResolverIcon source={source} resolver={items.join(", ")} endpoint={endpoint} status={mergedStatus} compact={compact} />
-      <div className="resolver-tooltip" role="tooltip">
-        {items.map((item, index) => {
-          const itemEndpoint = endpoints[index] || endpoint;
-          return (
-            <div key={`${source}-${item}-${itemEndpoint || ""}-${index}`} className={`resolver-tooltip-row resolver-status-${mergedStatus}`}>
-              <ResolverIcon source={source} resolver={item} endpoint={itemEndpoint} status={mergedStatus} compact />
-              <span className="resolver-tooltip-main">{itemEndpoint || item}</span>
-              <span className="resolver-tooltip-status">{resolverStatusLabel(mergedStatus)}</span>
-            </div>
-          );
-        })}
-      </div>
+    <span className="dns-record-resolvers">
+      {groups.map((group) => (
+        <ResolverGroupBadge group={group} compact key={group.key} />
+      ))}
     </span>
   );
+}
+
+function resolversFromDNSAddress(address: DNSAddressInfo): DNSResolverDisplayInfo[] {
+  const sources = splitResolverValues(address.source).map((source) => source.toLowerCase());
+  const resolvers = splitResolverValues(address.resolver);
+  const endpoints = splitResolverValues(address.endpoint);
+  const count = Math.max(resolvers.length, endpoints.length, sources.length === 1 && resolvers.length === 0 ? 1 : 0);
+  const out: DNSResolverDisplayInfo[] = [];
+  let dohEndpointIndex = 0;
+  for (let index = 0; index < count; index += 1) {
+    const resolver = resolvers[index] || resolvers[0] || "";
+    let source = inferResolverSource(resolver, endpoints[index]);
+    if (!source && sources.length === 1) source = sources[0];
+    if (!source && sources.length > 1) source = sources.includes("udp") && isIPResolverLabel(resolver) ? "udp" : sources.includes("doh") ? "doh" : sources[0];
+    let endpoint = "";
+    if (source === "doh") {
+      endpoint = endpoints[dohEndpointIndex] || endpoints[index] || "";
+      dohEndpointIndex += 1;
+    } else if (!sources.length && endpoints[index]) {
+      endpoint = endpoints[index];
+    }
+    if (!source && endpoint) source = "doh";
+    if (!source && !resolver && !endpoint) continue;
+    out.push({ source, resolver, endpoint, status: "ok" });
+  }
+  for (let index = dohEndpointIndex; index < endpoints.length; index += 1) {
+    out.push({ source: "doh", resolver: labelFromDoHEndpoint(endpoints[index]), endpoint: endpoints[index], status: "ok" });
+  }
+  return out;
+}
+
+function inferResolverSource(resolver?: string, endpoint?: string) {
+  if (isIPResolverLabel(resolver) || (resolver || "").toLowerCase() === "system") return "udp";
+  const value = `${resolver || ""} ${endpoint || ""}`.toLowerCase();
+  if (/https?:\/\//.test(value) || value.includes("dns.google") || value.includes("cloudflare") || value.includes("doh.pub") || value.includes("alidns")) return "doh";
+  return "";
+}
+
+function isIPResolverLabel(value?: string) {
+  const text = value || "";
+  return /^(?:\d{1,3}\.){3}\d{1,3}$/.test(text) || text.includes(":");
+}
+
+function labelFromDoHEndpoint(endpoint: string) {
+  try {
+    return new URL(endpoint).hostname || endpoint;
+  } catch {
+    return endpoint;
+  }
 }
 
 function DNSValueGroup({ title, values, onCopy }: { title: string; values?: string[]; onCopy?: (value: string) => void }) {
@@ -1016,18 +1092,18 @@ function RegistrationPanel({ result, aiLoading, aiError, onCopy }: { result: Loo
         <p className="muted">{aiLoading ? t("aiChecking") : t("noRegistration")}</p>
       ) : (
         <dl className="detail-list registration-list">
-          <RegistrationRow label="Name" fieldKey="name" value={registrant.name} registrant={registrant} onCopy={onCopy} />
-          <RegistrationRow label="Organization" fieldKey="organization" value={registrant.organization} registrant={registrant} onCopy={onCopy} />
-          <RegistrationRow label="Country" fieldKey="country" value={registrant.country} registrant={registrant} />
-          <RegistrationRow label="Province" fieldKey="province" value={registrant.province} registrant={registrant} />
-          <RegistrationRow label="City" fieldKey="city" value={registrant.city} registrant={registrant} />
-          <RegistrationRow label="Address" fieldKey="address" value={registrant.address} registrant={registrant} onCopy={onCopy} />
-          <RegistrationRow label="Postal Code" fieldKey="postalCode" value={registrant.postalCode} registrant={registrant} />
-          <RegistrationRow label="Email" fieldKey="email" value={registrant.email} registrant={registrant} onCopy={onCopy} />
-          <RegistrationRow label="Phone" fieldKey="phone" value={registrant.phone} registrant={registrant} onCopy={onCopy} />
+          <RegistrationRow label={t("name")} fieldKey="name" value={registrant.name} registrant={registrant} onCopy={onCopy} />
+          <RegistrationRow label={t("organization")} fieldKey="organization" value={registrant.organization} registrant={registrant} onCopy={onCopy} />
+          <RegistrationRow label={t("country")} fieldKey="country" value={registrant.country} registrant={registrant} />
+          <RegistrationRow label={t("province")} fieldKey="province" value={registrant.province} registrant={registrant} />
+          <RegistrationRow label={t("city")} fieldKey="city" value={registrant.city} registrant={registrant} />
+          <RegistrationRow label={t("address")} fieldKey="address" value={registrant.address} registrant={registrant} onCopy={onCopy} />
+          <RegistrationRow label={t("postalCode")} fieldKey="postalCode" value={registrant.postalCode} registrant={registrant} />
+          <RegistrationRow label={t("email")} fieldKey="email" value={registrant.email} registrant={registrant} onCopy={onCopy} />
+          <RegistrationRow label={t("phone")} fieldKey="phone" value={registrant.phone} registrant={registrant} onCopy={onCopy} />
           {extras.length > 0 && (
             <Row
-              label="Registry Fields"
+              label={t("registryFields")}
               value={
                 <div className="registration-extra-list">
                   {extras.map((field, index) => (
@@ -1058,12 +1134,12 @@ function NetworkPanel({ result }: { result: LookupResult }) {
         <p className="muted">{t("noNetwork")}</p>
       ) : (
         <dl className="detail-list">
-          <Row label="Range" value={result.network.range} />
-          <Row label="CIDR" value={result.network.cidr} />
-          <Row label="Name" value={result.network.name} />
-          <Row label="Type" value={result.network.type} />
-          <Row label="Origin AS" value={result.network.originAS} />
-          <Row label="Country" value={result.network.country} />
+          <Row label={t("range")} value={result.network.range} />
+          <Row label={t("cidr")} value={result.network.cidr} />
+          <Row label={t("name")} value={result.network.name} />
+          <Row label={t("type")} value={result.network.type} />
+          <Row label={t("originAs")} value={result.network.originAS} />
+          <Row label={t("country")} value={result.network.country} />
         </dl>
       )}
     </section>
@@ -1078,10 +1154,10 @@ function SummaryPanel({ result, onCopy }: { result: LookupResult; onCopy?: (valu
         <h2>{t("summary")}</h2>
       </div>
       <dl className="detail-list">
-        <Row label="Domain" value={<ActionValue value={result.domain.name} href={externalDomainURL(result.domain.name)} onCopy={onCopy} />} />
-        <Row label="Unicode" value={<ActionValue value={result.domain.unicodeName} href={externalDomainURL(result.domain.unicodeName)} onCopy={onCopy} />} />
+        <Row label={t("domain")} value={<ActionValue value={result.domain.name} href={externalDomainURL(result.domain.name)} onCopy={onCopy} />} />
+        <Row label={t("unicode")} value={<ActionValue value={result.domain.unicodeName} href={externalDomainURL(result.domain.unicodeName)} onCopy={onCopy} />} />
         <Row
-          label="Registrar"
+          label={t("registrar")}
           value={
             result.registrar.name ? (
               <span className="registration-value">
@@ -1089,26 +1165,83 @@ function SummaryPanel({ result, onCopy }: { result: LookupResult; onCopy?: (valu
                 <SourceHint source={result.registrar.source} confidence={result.registrar.confidence} evidence={result.registrar.evidence} />
               </span>
             ) : (
-              <span className="status-pill off">Not parsed</span>
+              <span className="status-pill off">{t("notParsed")}</span>
             )
           }
         />
-        <Row label="Registrar Brand" value={brandLabel(result.registrar.brand)} />
-        <Row label="IANA ID" value={result.registrar.ianaId} />
-        <Row label="Registrar Country" value={result.registrar.country} />
-        <Row label="Created" value={result.dates.createdAt} />
-        <Row label="Expires" value={result.dates.expiresAt} />
-        <Row label="Updated" value={result.dates.updatedAt} />
-        <Row label="Age days" value={result.dates.ageDays} />
-        <Row label="Remaining days" value={result.dates.remainingDays} />
-        <Row label="DNSSEC" value={result.dnssec.text} />
+        <Row label={t("registrarBrand")} value={<BrandBadge brand={result.registrar.brand} />} />
+        <Row label={t("ianaId")} value={result.registrar.ianaId} />
+        <Row label={t("registrarCountry")} value={result.registrar.country} />
+        <Row label={t("created")} value={<DateInsight value={result.dates.createdAt} days={result.dates.ageDays} kind="age" />} />
+        <Row label={t("expires")} value={<DateInsight value={result.dates.expiresAt} days={result.dates.remainingDays} kind="expiry" />} />
+        <Row label={t("updated")} value={result.dates.updatedAt} />
+        <Row label={t("age")} value={domainAgeLabel(result.dates.ageDays, t)} />
+        <Row label={t("remaining")} value={remainingLabel(result.dates.remainingDays, t)} />
+        <Row label={t("dnssec")} value={result.dnssec.text} />
       </dl>
     </section>
   );
 }
 
-function StatusPanel({ statuses }: { statuses: LookupResult["statuses"] }) {
+function DateInsight({ value, days, kind }: { value?: string; days?: number; kind: "age" | "expiry" }) {
   const { t } = useI18n();
+  if (!value && days === undefined) return null;
+  const tone = kind === "expiry" ? expiryTone(days) : ageTone(days);
+  return (
+    <span className="date-insight">
+      {value && <span>{value}</span>}
+      {days !== undefined && <span className={`insight-pill insight-${tone}`}>{kind === "expiry" ? remainingLabel(days, t) : domainAgeLabel(days, t, true)}</span>}
+    </span>
+  );
+}
+
+function domainAgeLabel(days?: number, translate?: (key: any) => string, includeTone?: boolean) {
+  if (days === undefined || days === null) return undefined;
+  const years = days / 365;
+  const label = years >= 1
+    ? `${years.toFixed(years >= 10 ? 0 : 1)}${translate ? translate("yearsShort") : "y"}`
+    : `${days}${translate ? translate("daysShort") : "d"}`;
+  const prefix = translate ? translate("domainAge") : "age";
+  const tone = includeTone ? ageTextTone(days, translate) : "";
+  return [prefix, label, tone].filter(Boolean).join(" ");
+}
+
+function remainingLabel(days?: number, translate?: (key: any) => string) {
+  if (days === undefined || days === null) return undefined;
+  const abs = Math.abs(days);
+  const text = abs >= 365
+    ? `${(abs / 365).toFixed(abs >= 3650 ? 0 : 1)}${translate ? translate("yearsShort") : "y"}`
+    : `${abs}${translate ? translate("daysShort") : "d"}`;
+  if (days < 0) return `${translate ? translate("expiredAgo") : "expired"} ${text}`;
+  return `${translate ? translate("expiresIn") : "expires in"} ${text}`;
+}
+
+function ageTextTone(days?: number, translate?: (key: any) => string) {
+  if (days === undefined || days === null || !translate) return "";
+  if (days < 90) return translate("newDomain");
+  if (days >= 3650) return translate("oldDomain");
+  if (days >= 1095) return translate("matureDomain");
+  return "";
+}
+
+function expiryTone(days?: number) {
+  if (days === undefined || days === null) return "neutral";
+  if (days < 0) return "danger";
+  if (days <= 30) return "danger";
+  if (days <= 90) return "warn";
+  return "ok";
+}
+
+function ageTone(days?: number) {
+  if (days === undefined || days === null) return "neutral";
+  if (days < 90) return "new";
+  if (days >= 3650) return "old";
+  if (days >= 1095) return "ok";
+  return "neutral";
+}
+
+function StatusPanel({ statuses }: { statuses: LookupResult["statuses"] }) {
+  const { locale, t } = useI18n();
   return (
     <section className="panel status-panel">
       <div className="panel-head">
@@ -1119,15 +1252,68 @@ function StatusPanel({ statuses }: { statuses: LookupResult["statuses"] }) {
       ) : (
         <div className="chip-list">
           {statuses.map((status) => (
-            <span key={`${status.code}-${status.source}`} className="chip" title={status.description}>
-              {status.label || status.code}
-            </span>
+            <StatusChip key={`${status.code}-${status.source}`} status={status} locale={locale} />
           ))}
         </div>
       )}
     </section>
   );
 }
+
+function StatusChip({ status, locale }: { status: LookupResult["statuses"][number]; locale: string }) {
+  const help = statusHelpText(status, locale);
+  return (
+    <a
+      className={`chip status-chip status-chip-${status.category || "unknown"}`}
+      href={status.url || "https://icann.org/epp"}
+      target="_blank"
+      rel="noreferrer"
+      title={[status.code, help].filter(Boolean).join("\n")}
+    >
+      <span>{status.label || status.code}</span>
+      {help && <small>{help}</small>}
+    </a>
+  );
+}
+
+function statusHelpText(status: LookupResult["statuses"][number], locale: string) {
+  if (locale === "zh-CN" || locale === "zh-TW") {
+    const key = normalizeStatusCode(status.label || status.code);
+    return statusHelpZh[key] || status.description;
+  }
+  return status.description;
+}
+
+function normalizeStatusCode(value?: string) {
+  return (value || "").toLowerCase().replace(/https?:\/\/icann\.org\/epp#/i, "").replace(/[\s._-]+/g, "");
+}
+
+const statusHelpZh: Record<string, string> = {
+  ok: "域名没有待处理操作或禁止状态。",
+  active: "域名处于活动状态并已委派。",
+  inactive: "域名未委派，可能无法解析。",
+  addperiod: "域名处于初始注册宽限期。",
+  autorenewperiod: "域名处于自动续费宽限期。",
+  renewperiod: "域名处于续费宽限期。",
+  transferperiod: "域名处于转移后的宽限期。",
+  clienttransferprohibited: "注册商已锁定域名，禁止转移。",
+  clientdeleteprohibited: "注册商已锁定域名，禁止删除。",
+  clientupdateprohibited: "注册商已锁定域名，禁止更新。",
+  clienthold: "注册商暂停了域名的 DNS 发布。",
+  clientrenewprohibited: "注册商已锁定域名，禁止续费。",
+  servertransferprohibited: "注册局已锁定域名，禁止转移。",
+  serverdeleteprohibited: "注册局已锁定域名，禁止删除。",
+  serverhold: "注册局暂停了域名的 DNS 发布。",
+  serverrenewprohibited: "注册局已锁定域名，禁止续费。",
+  serverupdateprohibited: "注册局已锁定域名，禁止更新。",
+  pendingcreate: "创建操作正在处理中。",
+  pendingdelete: "域名正在等待删除。",
+  pendingrenew: "续费操作正在处理中。",
+  pendingrestore: "恢复操作正在等待注册局处理。",
+  pendingtransfer: "转移操作正在等待批准或拒绝。",
+  pendingupdate: "更新操作正在处理中。",
+  redemptionperiod: "域名已删除，但仍可能处于可恢复期。",
+};
 
 function StatusStrip({ result, onCopy }: { result: LookupResult; onCopy?: (value: string) => void }) {
   return (
@@ -1164,14 +1350,14 @@ function SourceLinks({
 }) {
   const { t } = useI18n();
   const sourceOptions: { value: SourceMode; label: string }[] = [
-    { value: "all", label: "All" },
+    { value: "all", label: t("all") },
     { value: "rdap", label: "RDAP" },
     { value: "whois", label: "WHOIS" },
   ];
 
   return (
     <div className="source-bar source-tabs">
-      <div className="source-toggle" role="radiogroup" aria-label="Lookup source">
+      <div className="source-toggle" role="radiogroup" aria-label={t("lookupSource")}>
         {sourceOptions.map((option) => (
           <button
             key={option.value}
@@ -1244,7 +1430,7 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
   const pendingDetailEnrichments = visibleEnrichments.filter((name) => name !== "dns");
   const enrichmentLoading = enrichmentState.loading && enrichmentState.identity === currentEnrichmentIdentity;
   const enrichmentError = enrichmentState.identity === currentEnrichmentIdentity ? enrichmentState.error : undefined;
-  const detailTools = result ? renderResultPlugins("details", result, { pending: pendingDetailEnrichments, enrichmentLoading, enrichmentError, lockSlots: true }) : [];
+  const detailTools = result ? renderResultPlugins("details", result, { pending: pendingDetailEnrichments, enrichmentLoading, enrichmentError, lockSlots: true, translate: t }) : [];
   const debugTools = result ? renderResultPlugins("debug", result) : [];
   const showEnrichmentZone = Boolean(result);
   const dnsPending = Boolean(result && pendingEnrichments.includes("dns"));
@@ -1695,17 +1881,17 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
         </nav>
 
         <div className="lookup-workbench">
-          <aside className="tool-sidebar" aria-label="Lookup toolbox">
+          <aside className="tool-sidebar" aria-label={t("lookupToolbox")}>
             <section className="tool-panel tool-panel-search">
               <div className="tool-panel-head">
-                <p className="eyebrow">Lookup</p>
+                <p className="eyebrow">{t("lookup")}</p>
                 <span className={`status-pill ${isLoading ? "" : "is-ghost"}`} aria-hidden={!isLoading}>
-                  Live
+                  {t("live")}
                 </span>
               </div>
               <form className="mini-search tool-search" onSubmit={submitMiniSearch}>
-                <input id="lookup-mini-search" name="query" value={searchValue} onChange={(event) => setSearchValue(event.target.value)} aria-label="Search query" />
-                <button disabled={isLoading} type="submit">{isLoading ? "Searching" : "Search"}</button>
+                <input id="lookup-mini-search" name="query" value={searchValue} onChange={(event) => setSearchValue(event.target.value)} aria-label={t("searchQuery")} />
+                <button disabled={isLoading} type="submit">{isLoading ? t("searching") : t("search")}</button>
               </form>
               {state.query && (
                 <SourceLinks
@@ -1722,15 +1908,15 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
             {result && (
               <section className="tool-panel">
                 <div className="tool-panel-head">
-                  <p className="eyebrow">Session</p>
+                  <p className="eyebrow">{t("session")}</p>
                   <span className={`status-pill status-dot status-dot-${result.status}`}>{result.status}</span>
                 </div>
                 <div className="tool-facts">
-                  <span><strong>Type</strong>{result.type}</span>
-                  {result.source.primary && <span><strong>Primary</strong>{result.source.primary}</span>}
-                  <span><strong>Elapsed</strong>{result.meta.elapsedMs} ms</span>
-                  <span><strong>Evidence</strong>{rawText(result) ? "available" : "empty"}</span>
-                  <span title={enrichmentError}><strong>Enrich</strong>{enrichmentStatus}</span>
+                  <span><strong>{t("type")}</strong>{result.type}</span>
+                  {result.source.primary && <span><strong>{t("primary")}</strong>{result.source.primary}</span>}
+                  <span><strong>{t("elapsed")}</strong>{result.meta.elapsedMs} ms</span>
+                  <span><strong>{t("evidence")}</strong>{rawText(result) ? t("available") : t("empty")}</span>
+                  <span title={enrichmentError}><strong>{t("enrich")}</strong>{enrichmentStatus}</span>
                 </div>
               </section>
             )}
@@ -1738,9 +1924,9 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
             {result && (
               <section className="tool-panel">
                 <div className="tool-panel-head">
-                  <p className="eyebrow">Output</p>
+                  <p className="eyebrow">{t("output")}</p>
                   <span className={`tool-action-state ${actionState ? "" : "is-ghost"}`} aria-live="polite">
-                    {actionState || "Ready"}
+                    {actionState || t("ready")}
                   </span>
                 </div>
                 <section className="action-bar tool-action-bar" aria-label="Result actions">
@@ -1762,17 +1948,17 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
             )}
 
             <section className="tool-panel shortcut-panel">
-              <p className="eyebrow">Keys</p>
+              <p className="eyebrow">{t("keys")}</p>
               <span className="shortcut-hint">
                 <kbd>/</kbd> search <kbd>S</kbd> share <kbd>C</kbd> URL <kbd>R</kbd> raw <kbd>J</kbd> JSON <kbd>O</kbd> image
               </span>
             </section>
           </aside>
 
-          <section className="tool-stage" aria-label="Lookup result workspace">
+          <section className="tool-stage" aria-label={t("lookupWorkspace")}>
             {isLoading && (
               <section className="panel loading-panel floating-loading-panel" aria-live="polite">
-                <p className="eyebrow">Live lookup</p>
+                <p className="eyebrow">{t("liveLookup")}</p>
                 <h2>{searchValue}</h2>
               </section>
             )}
@@ -1787,8 +1973,8 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
                     <div className="tool-zone-head">
                       <span className="tool-zone-index">01</span>
                       <div>
-                        <h2>Overview</h2>
-                        <p>Identity, registrar, and live DNS context.</p>
+                        <h2>{t("overviewTitle")}</h2>
+                        <p>{t("overviewDescription")}</p>
                       </div>
                     </div>
                     <div className="result-band result-band-primary zone-body-overview">
@@ -1801,8 +1987,8 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
                     <div className="tool-zone-head">
                       <span className="tool-zone-index">02</span>
                       <div>
-                        <h2>Ownership</h2>
-                        <p>Registrant fields, AI assistance, ICP, and domain state.</p>
+                        <h2>{t("ownershipTitle")}</h2>
+                        <p>{t("ownershipDescription")}</p>
                       </div>
                     </div>
                     <div className="result-band result-band-secondary zone-body-ownership">
@@ -1824,8 +2010,8 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
                       <div className="tool-zone-head">
                         <span className="tool-zone-index">03</span>
                         <div>
-                          <h2>Enrichment</h2>
-                          <p>Plugins and provider-specific diagnostics.</p>
+                          <h2>{t("enrichmentTitle")}</h2>
+                          <p>{t("enrichmentDescription")}</p>
                         </div>
                       </div>
                       <div className="result-grid enrichment-grid zone-body-enrichment">
@@ -1846,7 +2032,7 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
                                 ))}
                               </ul>
                             ) : (
-                              <p className="muted">No provider warnings for this lookup.</p>
+                              <p className="muted">{t("noProviderWarnings")}</p>
                             )}
                           </section>
                         </div>
@@ -1858,13 +2044,14 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
                     <div className="tool-zone-head">
                       <span className="tool-zone-index">04</span>
                       <div>
-                        <h2>Evidence</h2>
-                        <p>Raw responses and request diagnostics for verification.</p>
+                        <h2>{t("evidenceTitle")}</h2>
+                        <p>{t("evidenceDescription")}</p>
                       </div>
                     </div>
+                    {/* Keep raw evidence and request diagnostics together for the Phase 1 contract guard. */}
                     <div className="evidence-stack zone-body-evidence">
                       {debugTools}
-                      {hasEvidence ? null : <section className="panel evidence-placeholder"><p className="muted">No raw provider evidence for this lookup.</p></section>}
+                      {hasEvidence ? null : <section className="panel evidence-placeholder"><p className="muted">{t("noRawEvidence")}</p></section>}
                       <RawBlock title={t("rawWhois")} value={result.raw.whois} />
                       <RawBlock title="WHOIS Web" value={result.raw.whoisWeb} />
                       <RawBlock title={t("rawRdap")} value={result.raw.rdap} />

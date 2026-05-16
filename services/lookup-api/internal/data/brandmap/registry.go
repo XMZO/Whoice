@@ -13,6 +13,9 @@ type Rule struct {
 	Name     string   `json:"name"`
 	Slug     string   `json:"slug,omitempty"`
 	Color    string   `json:"color,omitempty"`
+	Logo     string   `json:"logo,omitempty"`
+	Website  string   `json:"website,omitempty"`
+	Aliases  []string `json:"aliases,omitempty"`
 	Patterns []string `json:"patterns"`
 }
 
@@ -103,6 +106,8 @@ func cleanRules(rules []Rule) []Rule {
 		rule.Name = strings.TrimSpace(rule.Name)
 		rule.Slug = strings.TrimSpace(rule.Slug)
 		rule.Color = strings.TrimSpace(rule.Color)
+		rule.Logo = strings.TrimSpace(rule.Logo)
+		rule.Website = strings.TrimSpace(rule.Website)
 		patterns := make([]string, 0, len(rule.Patterns))
 		seen := map[string]bool{}
 		for _, pattern := range rule.Patterns {
@@ -113,7 +118,17 @@ func cleanRules(rules []Rule) []Rule {
 			patterns = append(patterns, pattern)
 			seen[strings.ToLower(pattern)] = true
 		}
+		aliases := make([]string, 0, len(rule.Aliases))
+		for _, alias := range rule.Aliases {
+			alias = strings.TrimSpace(alias)
+			if alias == "" || seen[strings.ToLower(alias)] {
+				continue
+			}
+			aliases = append(aliases, alias)
+			seen[strings.ToLower(alias)] = true
+		}
 		rule.Patterns = patterns
+		rule.Aliases = aliases
 		if rule.Name == "" || len(rule.Patterns) == 0 {
 			continue
 		}

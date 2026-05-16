@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/netip"
+	"strconv"
 	"strings"
 
 	"github.com/xmzo/whoice/services/lookup-api/internal/model"
@@ -60,13 +61,64 @@ func (RDAPParser) Parse(_ context.Context, raw model.RawResponse, q model.Normal
 	}
 
 	partial.Statuses = parseStatuses(doc)
+	if rdapReserved(doc) {
+		partial.Status = model.StatusReserved
+		partial.Domain.Reserved = true
+		partial.Domain.Registered = false
+		return partial, nil
+	}
 	partial.Nameservers = parseNameservers(doc)
 	partial.Dates = parseEvents(doc)
 	partial.Registrar, partial.Registrant = parseEntities(doc)
+	partial.Registrar.RDAPServer = firstNonEmpty(partial.Registrar.RDAPServer, registrarRDAPServerFromLinks(doc))
 	partial.DNSSEC = parseDNSSEC(doc)
 	partial.Network = parseNetwork(doc, q)
 
 	return partial, nil
+}
+
+func rdapReserved(doc map[string]any) bool {
+	for _, value := range anySlice(doc["variants"]) {
+		variant, ok := value.(map[string]any)
+		if !ok {
+			continue
+		}
+		if contains(stringSlice(variant["relations"]), "RESTRICTED_REGISTRATION") {
+			return true
+		}
+	}
+
+	for _, description := range rdapDescriptions(doc["description"]) {
+		text := strings.ToLower(description)
+		if strings.Contains(text, "has usage restrictions") ||
+			strings.Contains(text, "reserved or restricted") ||
+			strings.Contains(text, "is not available") {
+			return true
+		}
+	}
+
+	return strings.EqualFold(stringField(doc, "error"), "Domain name is reserved or restricted")
+}
+
+func rdapDescriptions(value any) []string {
+	switch typed := value.(type) {
+	case string:
+		if strings.TrimSpace(typed) == "" {
+			return nil
+		}
+		return []string{typed}
+	case []any:
+		var out []string
+		for _, item := range typed {
+			text := strings.TrimSpace(fmt.Sprint(item))
+			if text != "" && text != "<nil>" {
+				out = append(out, text)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
 }
 
 func parseStatuses(doc map[string]any) []model.DomainStatus {
@@ -138,9 +190,9 @@ func parseEvents(doc map[string]any) model.DateInfo {
 		switch action {
 		case "registration":
 			dates.CreatedAt = firstNonEmpty(dates.CreatedAt, date)
-		case "expiration", "registrar expiration", "soft expiration":
+		case "expiration", "registrar expiration", "registrar registration expiration", "soft expiration", "record expires":
 			dates.ExpiresAt = firstNonEmpty(dates.ExpiresAt, date)
-		case "last changed", "last update of rdap database", "last update":
+		case "last changed", "last update of rdap database", "last update", "last updated", "last modified":
 			dates.UpdatedAt = firstNonEmpty(dates.UpdatedAt, date)
 		}
 	}
@@ -164,7 +216,7 @@ func parseEntities(doc map[string]any) (model.RegistrarInfo, model.RegistrantInf
 		roles := stringSlice(entity["roles"])
 		if contains(roles, "registrar") {
 			vcard := vcardMap(entity)
-			registrar.Name = firstNonEmpty(registrar.Name, vcard["fn"], vcard["org"], stringField(entity, "handle"))
+			registrar.Name = firstNonEmpty(registrar.Name, vcard["fn"], vcard["org"], nestedEntityVCardValue(entity, "abuse", "fn", "org"), stringField(entity, "handle"))
 			registrar.URL = firstNonEmpty(registrar.URL, registrarEntityURL(entity, vcard["url"]))
 			for _, publicID := range anySlice(entity["publicIds"]) {
 				item, ok := publicID.(map[string]any)
@@ -193,6 +245,22 @@ func parseEntities(doc map[string]any) (model.RegistrarInfo, model.RegistrantInf
 	}
 
 	return registrar, registrant
+}
+
+func nestedEntityVCardValue(entity map[string]any, role string, keys ...string) string {
+	for _, value := range anySlice(entity["entities"]) {
+		nested, ok := value.(map[string]any)
+		if !ok || !contains(stringSlice(nested["roles"]), role) {
+			continue
+		}
+		vcard := vcardMap(nested)
+		for _, key := range keys {
+			if found := strings.TrimSpace(vcard[strings.ToLower(key)]); found != "" {
+				return found
+			}
+		}
+	}
+	return ""
 }
 
 func distinctRegistrantName(name, organization string) string {
@@ -240,6 +308,25 @@ func registrarEntityLinkURL(entity map[string]any) string {
 	return ""
 }
 
+func registrarRDAPServerFromLinks(doc map[string]any) string {
+	for _, value := range anySlice(doc["links"]) {
+		link, ok := value.(map[string]any)
+		if !ok {
+			continue
+		}
+		if !strings.EqualFold(stringField(link, "rel"), "related") {
+			continue
+		}
+		href := strings.TrimSpace(stringField(link, "href"))
+		if href == "" || !strings.Contains(strings.ToLower(href), "/domain/") {
+			continue
+		}
+		server, _, _ := strings.Cut(href, "/domain/")
+		return strings.TrimRight(server, "/") + "/"
+	}
+	return ""
+}
+
 func rdapLinkLooksLikeAPI(link map[string]any) bool {
 	rel := strings.ToLower(stringField(link, "rel"))
 	mediaType := strings.ToLower(stringField(link, "type"))
@@ -261,6 +348,15 @@ func parseDNSSEC(doc map[string]any) model.DNSSECInfo {
 			text = "signed"
 		}
 		return model.DNSSECInfo{Signed: &signed, Text: text}
+	}
+	if text := strings.TrimSpace(fmt.Sprint(secure["delegationSigned"])); text != "" && text != "<nil>" {
+		if signed, err := strconv.ParseBool(text); err == nil {
+			label := "unsigned"
+			if signed {
+				label = "signed"
+			}
+			return model.DNSSECInfo{Signed: &signed, Text: label}
+		}
 	}
 	return model.DNSSECInfo{}
 }
@@ -321,12 +417,53 @@ func vcardMap(entity map[string]any) map[string]string {
 			continue
 		}
 		key := strings.ToLower(fmt.Sprint(field[0]))
-		value := fmt.Sprint(field[3])
+		if key == "adr" {
+			applyVCardAddress(result, field[3])
+			continue
+		}
+		value := vcardText(field[3])
 		if value != "" && value != "<nil>" {
 			result[key] = value
 		}
 	}
 	return result
+}
+
+func applyVCardAddress(result map[string]string, value any) {
+	parts, ok := value.([]any)
+	if !ok || len(parts) < 7 {
+		return
+	}
+	keys := []string{"post-office-box", "extended-address", "street-address", "locality", "region", "postal-code", "country-name"}
+	for i, key := range keys {
+		text := vcardText(parts[i])
+		if text == "" || result[key] != "" {
+			continue
+		}
+		result[key] = text
+	}
+}
+
+func vcardText(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case []any:
+		var parts []string
+		for _, item := range typed {
+			text := vcardText(item)
+			if text != "" {
+				parts = append(parts, text)
+			}
+		}
+		return strings.Join(parts, " ")
+	default:
+		text := strings.TrimSpace(fmt.Sprint(value))
+		if text == "<nil>" {
+			return ""
+		}
+		return text
+	}
 }
 
 func stringField(doc map[string]any, key string) string {

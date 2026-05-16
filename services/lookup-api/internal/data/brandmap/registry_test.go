@@ -11,7 +11,15 @@ func TestRegistryLoadsRules(t *testing.T) {
 	registry, err := NewRegistryFromReader(strings.NewReader(`{
   "version": 1,
   "registrars": [
-    { "name": "Cloudflare", "slug": "cloudflare", "patterns": ["cloudflare", "Cloudflare"] }
+    {
+      "name": "Cloudflare",
+      "slug": "cloudflare",
+      "color": "#f6821f",
+      "logo": "https://example.test/cloudflare.svg",
+      "website": "https://www.cloudflare.com",
+      "aliases": ["CF"],
+      "patterns": ["cloudflare", "Cloudflare"]
+    }
   ],
   "nameservers": [
     { "name": "Route 53", "slug": "route53", "patterns": [".awsdns-"] }
@@ -26,6 +34,10 @@ func TestRegistryLoadsRules(t *testing.T) {
 	}
 	if got := len(registry.RegistrarRules()[0].Patterns); got != 1 {
 		t.Fatalf("deduped patterns: got %d want 1", got)
+	}
+	rule := registry.RegistrarRules()[0]
+	if rule.Logo == "" || rule.Website == "" || len(rule.Aliases) != 1 {
+		t.Fatalf("brand metadata was not preserved: %#v", rule)
 	}
 }
 

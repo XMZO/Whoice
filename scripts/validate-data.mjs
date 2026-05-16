@@ -75,7 +75,7 @@ async function validatePublicSuffix() {
 }
 
 async function validateJSONData() {
-  await readJSON('packages/data/brands/brand-map.json');
+  await validateBrandMap();
   await readJSON('packages/data/pricing/pricing.json');
   await readJSON('packages/data/enrichment/moz.json');
   const whoisIANA = await readJSON('packages/data/whois-servers/iana.json');
@@ -85,6 +85,41 @@ async function validateJSONData() {
   }
   for (const suffix of ['com', 'net', 'org', 'uk']) {
     assert(Object.hasOwn(whoisIANA, suffix), `WHOIS IANA server map must include ${suffix}`);
+  }
+}
+
+async function validateBrandMap() {
+  const file = 'packages/data/brands/brand-map.json';
+  const data = await readJSON(file);
+  assert(data && typeof data === 'object', `${file} must be a JSON object`);
+  for (const group of ['registrars', 'nameservers']) {
+    const rules = data[group];
+    assert(Array.isArray(rules), `${file} must contain ${group}[]`);
+    assert(rules.length > 0, `${file} ${group}[] must not be empty`);
+    const slugs = new Set();
+    for (const [index, rule] of rules.entries()) {
+      const prefix = `${file} ${group}[${index}]`;
+      assert(nonEmptyString(rule.name), `${prefix}.name must be set`);
+      assert(Array.isArray(rule.patterns) && rule.patterns.some(nonEmptyString), `${prefix}.patterns must contain at least one string`);
+      if (rule.slug !== undefined) {
+        assert(nonEmptyString(rule.slug), `${prefix}.slug must be a non-empty string when present`);
+        const key = `${group}:${rule.slug}`;
+        assert(!slugs.has(key), `${prefix}.slug duplicates ${rule.slug}`);
+        slugs.add(key);
+      }
+      if (rule.color !== undefined) {
+        assert(/^#[0-9a-f]{6}$/i.test(rule.color), `${prefix}.color must be a #rrggbb color`);
+      }
+      if (rule.logo !== undefined) {
+        assert(isHTTPURL(rule.logo) || String(rule.logo).startsWith('/'), `${prefix}.logo must be an http(s) or root-relative URL`);
+      }
+      if (rule.website !== undefined) {
+        assert(isHTTPURL(rule.website), `${prefix}.website must be an http(s) URL`);
+      }
+      if (rule.aliases !== undefined) {
+        assert(Array.isArray(rule.aliases) && rule.aliases.every(nonEmptyString), `${prefix}.aliases must be non-empty strings`);
+      }
+    }
   }
 }
 
@@ -129,6 +164,10 @@ function rdapHasServiceURL(file, needle) {
 function isHTTPURL(value) {
   const text = String(value);
   return text.startsWith('https://') || text.startsWith('http://');
+}
+
+function nonEmptyString(value) {
+  return typeof value === 'string' && value.trim() !== '';
 }
 
 function publicSuffixLines(body) {

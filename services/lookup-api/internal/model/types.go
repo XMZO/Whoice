@@ -111,9 +111,12 @@ type RegistrarInfo struct {
 }
 
 type Brand struct {
-	Name  string `json:"name"`
-	Slug  string `json:"slug,omitempty"`
-	Color string `json:"color,omitempty"`
+	Name    string   `json:"name"`
+	Slug    string   `json:"slug,omitempty"`
+	Color   string   `json:"color,omitempty"`
+	Logo    string   `json:"logo,omitempty"`
+	Website string   `json:"website,omitempty"`
+	Aliases []string `json:"aliases,omitempty"`
 }
 
 type DateInfo struct {

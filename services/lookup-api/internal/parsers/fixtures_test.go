@@ -179,8 +179,73 @@ func TestWHOISRegistrarURLExtraction(t *testing.T) {
 	}
 }
 
+func TestAdditionalTLDReservedPatterns(t *testing.T) {
+	tests := []struct {
+		name   string
+		parser Parser
+		query  model.NormalizedQuery
+		body   string
+		want   model.ResultStatus
+	}{
+		{
+			name:   "qa reserved",
+			parser: QAWHOISParser{},
+			query:  domainQueryFor("reserved.qa", "qa"),
+			body:   "Domain Name: reserved.qa\nThis domain is reserved by QDR.",
+			want:   model.StatusReserved,
+		},
+		{
+			name:   "qa not available reserved",
+			parser: QAWHOISParser{},
+			query:  domainQueryFor("qa.qa", "qa"),
+			body:   "Domain Name: qa.qa\nThis domain is not available.",
+			want:   model.StatusReserved,
+		},
+		{
+			name:   "lu reserved",
+			parser: LUWHOISParser{},
+			query:  domainQueryFor("reserved.lu", "lu"),
+			body:   "domainname: reserved.lu\ndomaintype: reserved\n",
+			want:   model.StatusReserved,
+		},
+		{
+			name:   "am reserved",
+			parser: AMWHOISParser{},
+			query:  domainQueryFor("reserved.am", "am"),
+			body:   "Domain name: reserved.am\nreserved name\n",
+			want:   model.StatusReserved,
+		},
+		{
+			name:   "lt blocked reserved",
+			parser: LTWHOISParser{},
+			query:  domainQueryFor("reserved.lt", "lt"),
+			body:   "domain: reserved.lt\nstatus:\t\t\tblocked\n",
+			want:   model.StatusReserved,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			part, err := tt.parser.Parse(context.Background(), model.RawResponse{
+				Source: model.SourceWHOIS,
+				Query:  tt.query.Query,
+				Body:   tt.body,
+			}, tt.query)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if part.Status != tt.want {
+				t.Fatalf("status: got %q want %q", part.Status, tt.want)
+			}
+			if !part.Domain.Reserved {
+				t.Fatalf("expected reserved domain: %#v", part.Domain)
+			}
+		})
+	}
+}
+
 func TestTLDWHOISParserFixtures(t *testing.T) {
-	registry := NewRegistry(WHOISParser{}, UKWHOISParser{}, JPWHOISParser{}, FRWHOISParser{}, CNWHOISParser{}, BRWHOISParser{}, ITWHOISParser{}, EUWHOISParser{}, BEWHOISParser{}, PLWHOISParser{}, CZWHOISParser{}, HUWHOISParser{}, SKWHOISParser{}, ROWHOISParser{}, DEWHOISParser{}, NLWHOISParser{}, CAWHOISParser{}, AUWHOISParser{}, SEWHOISParser{}, FIWHOISParser{}, KRWHOISParser{}, ATWHOISParser{}, RUWHOISParser{}, EEWHOISParser{}, BGWHOISParser{}, KGWHOISParser{}, TRWHOISParser{}, HKWHOISParser{}, TWWHOISParser{}, SIWHOISParser{}, UAWHOISParser{}, IDWHOISParser{}, KZWHOISParser{})
+	registry := NewRegistry(WHOISParser{}, UKWHOISParser{}, JPWHOISParser{}, FRWHOISParser{}, CNWHOISParser{}, BRWHOISParser{}, ITWHOISParser{}, EUWHOISParser{}, BEWHOISParser{}, PLWHOISParser{}, CZWHOISParser{}, HUWHOISParser{}, SKWHOISParser{}, ROWHOISParser{}, MXWHOISParser{}, PTWHOISParser{}, QAWHOISParser{}, MDWHOISParser{}, LUWHOISParser{}, LVWHOISParser{}, AMWHOISParser{}, AXWHOISParser{}, BDWHOISParser{}, BNWHOISParser{}, GGWHOISParser{}, ILWHOISParser{}, LTWHOISParser{}, MOWHOISParser{}, RSWHOISParser{}, STWHOISParser{}, TNWHOISParser{}, UZWHOISParser{}, DEWHOISParser{}, NLWHOISParser{}, CAWHOISParser{}, AUWHOISParser{}, SEWHOISParser{}, FIWHOISParser{}, KRWHOISParser{}, ATWHOISParser{}, RUWHOISParser{}, EEWHOISParser{}, BGWHOISParser{}, KGWHOISParser{}, TRWHOISParser{}, HKWHOISParser{}, TWWHOISParser{}, SIWHOISParser{}, UAWHOISParser{}, IDWHOISParser{}, KZWHOISParser{})
 	tests := []struct {
 		name   string
 		raw    string
@@ -264,6 +329,120 @@ func TestTLDWHOISParserFixtures(t *testing.T) {
 			raw:    fixturePath("whois", "ro", "registered.raw"),
 			expect: fixturePath("whois", "ro", "registered.expected.json"),
 			query:  domainQueryFor("example.ro", "ro"),
+		},
+		{
+			name:   "mx",
+			raw:    fixturePath("whois", "mx", "registered.raw"),
+			expect: fixturePath("whois", "mx", "registered.expected.json"),
+			query:  domainQueryFor("example.mx", "mx"),
+		},
+		{
+			name:   "pt",
+			raw:    fixturePath("whois", "pt", "registered.raw"),
+			expect: fixturePath("whois", "pt", "registered.expected.json"),
+			query:  domainQueryFor("example.pt", "pt"),
+		},
+		{
+			name:   "qa",
+			raw:    fixturePath("whois", "qa", "registered.raw"),
+			expect: fixturePath("whois", "qa", "registered.expected.json"),
+			query:  domainQueryFor("example.qa", "qa"),
+		},
+		{
+			name:   "md",
+			raw:    fixturePath("whois", "md", "registered.raw"),
+			expect: fixturePath("whois", "md", "registered.expected.json"),
+			query:  domainQueryFor("example.md", "md"),
+		},
+		{
+			name:   "lu",
+			raw:    fixturePath("whois", "lu", "registered.raw"),
+			expect: fixturePath("whois", "lu", "registered.expected.json"),
+			query:  domainQueryFor("example.lu", "lu"),
+		},
+		{
+			name:   "lv",
+			raw:    fixturePath("whois", "lv", "registered.raw"),
+			expect: fixturePath("whois", "lv", "registered.expected.json"),
+			query:  domainQueryFor("example.lv", "lv"),
+		},
+		{
+			name:   "am",
+			raw:    fixturePath("whois", "am", "registered.raw"),
+			expect: fixturePath("whois", "am", "registered.expected.json"),
+			query:  domainQueryFor("example.am", "am"),
+		},
+		{
+			name:   "ax",
+			raw:    fixturePath("whois", "ax", "registered.raw"),
+			expect: fixturePath("whois", "ax", "registered.expected.json"),
+			query:  domainQueryFor("example.ax", "ax"),
+		},
+		{
+			name:   "bd",
+			raw:    fixturePath("whois", "bd", "registered.raw"),
+			expect: fixturePath("whois", "bd", "registered.expected.json"),
+			query:  domainQueryFor("example.bd", "bd"),
+		},
+		{
+			name:   "bn",
+			raw:    fixturePath("whois", "bn", "registered.raw"),
+			expect: fixturePath("whois", "bn", "registered.expected.json"),
+			query:  domainQueryFor("example.bn", "bn"),
+		},
+		{
+			name:   "gg",
+			raw:    fixturePath("whois", "gg", "registered.raw"),
+			expect: fixturePath("whois", "gg", "registered.expected.json"),
+			query:  domainQueryFor("example.gg", "gg"),
+		},
+		{
+			name:   "je",
+			raw:    fixturePath("whois", "je", "registered.raw"),
+			expect: fixturePath("whois", "je", "registered.expected.json"),
+			query:  domainQueryFor("example.je", "je"),
+		},
+		{
+			name:   "il",
+			raw:    fixturePath("whois", "il", "registered.raw"),
+			expect: fixturePath("whois", "il", "registered.expected.json"),
+			query:  domainQueryFor("example.il", "il"),
+		},
+		{
+			name:   "lt",
+			raw:    fixturePath("whois", "lt", "registered.raw"),
+			expect: fixturePath("whois", "lt", "registered.expected.json"),
+			query:  domainQueryFor("example.lt", "lt"),
+		},
+		{
+			name:   "mo",
+			raw:    fixturePath("whois", "mo", "registered.raw"),
+			expect: fixturePath("whois", "mo", "registered.expected.json"),
+			query:  domainQueryFor("example.mo", "mo"),
+		},
+		{
+			name:   "rs",
+			raw:    fixturePath("whois", "rs", "registered.raw"),
+			expect: fixturePath("whois", "rs", "registered.expected.json"),
+			query:  domainQueryFor("example.rs", "rs"),
+		},
+		{
+			name:   "st",
+			raw:    fixturePath("whois", "st", "registered.raw"),
+			expect: fixturePath("whois", "st", "registered.expected.json"),
+			query:  domainQueryFor("example.st", "st"),
+		},
+		{
+			name:   "tn",
+			raw:    fixturePath("whois", "tn", "registered.raw"),
+			expect: fixturePath("whois", "tn", "registered.expected.json"),
+			query:  domainQueryFor("example.tn", "tn"),
+		},
+		{
+			name:   "uz",
+			raw:    fixturePath("whois", "uz", "registered.raw"),
+			expect: fixturePath("whois", "uz", "registered.expected.json"),
+			query:  domainQueryFor("example.uz", "uz"),
 		},
 		{
 			name:   "de",
@@ -545,6 +724,64 @@ func TestRDAPRegistrarURLExtraction(t *testing.T) {
 			if part.Registrar.URL != tt.want {
 				t.Fatalf("registrar url: got %q want %q", part.Registrar.URL, tt.want)
 			}
+		})
+	}
+}
+
+func TestRDAPCompatibilityEdges(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want parserExpected
+	}{
+		{
+			name: "reserved variant",
+			body: `{"objectClassName":"domain","ldhName":"RESERVED.EXAMPLE","variants":[{"relations":["RESTRICTED_REGISTRATION"]}],"description":["This label has usage restrictions"]}`,
+			want: parserExpected{Status: model.StatusReserved},
+		},
+		{
+			name: "string dnssec and extra date actions",
+			body: `{"objectClassName":"domain","ldhName":"EXAMPLE.KG","secureDNS":{"delegationSigned":"true"},"events":[{"eventAction":"registration","eventDate":"2021-01-02T03:04:05Z"},{"eventAction":"record expires","eventDate":"2027-01-02T03:04:05Z"},{"eventAction":"last modified","eventDate":"2026-01-02T03:04:05Z"}]}`,
+			want: parserExpected{
+				Status:    model.StatusRegistered,
+				CreatedAt: "2021-01-02T03:04:05Z",
+				ExpiresAt: "2027-01-02T03:04:05Z",
+				UpdatedAt: "2026-01-02T03:04:05Z",
+				DNSSEC:    "signed",
+			},
+		},
+		{
+			name: "nested registrar abuse entity and address array",
+			body: `{"objectClassName":"domain","ldhName":"EXAMPLE.TLD","entities":[{"roles":["registrar"],"entities":[{"roles":["abuse"],"vcardArray":["vcard",[["fn",{},"text","Nested Registrar"]]]}],"publicIds":[{"type":"IANA Registrar ID","identifier":"9999"}]},{"roles":["registrant"],"vcardArray":["vcard",[["fn",{},"text","Registrant Person"],["org",{},"text","Registrant Org"],["adr",{},"text",["","","123 Test St","Testville","TS","12345","ZZ"]],["email",{},"text","user@example.tld"]]]}],"links":[{"rel":"related","href":"https://rdap.registrar.example/domain/example.tld"}]}`,
+			want: parserExpected{
+				Status:             model.StatusRegistered,
+				RegistrarName:      "Nested Registrar",
+				RegistrarIanaID:    "9999",
+				RegistrantName:     "Registrant Person",
+				RegistrantOrg:      "Registrant Org",
+				RegistrantCountry:  "ZZ",
+				RegistrantProvince: "TS",
+				RegistrantCity:     "Testville",
+				RegistrantAddress:  "123 Test St",
+				RegistrantPostal:   "12345",
+				RegistrantEmail:    "user@example.tld",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			part, err := RDAPParser{}.Parse(context.Background(), model.RawResponse{
+				Source:     model.SourceRDAP,
+				Query:      "example.tld",
+				Body:       tt.body,
+				StatusCode: 200,
+				Server:     "https://rdap.example.test/domain/example.tld",
+			}, domainQueryFor("example.tld", "tld"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertPartial(t, part, tt.want)
 		})
 	}
 }

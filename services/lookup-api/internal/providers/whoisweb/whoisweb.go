@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -17,7 +19,10 @@ import (
 
 const (
 	defaultDZBaseURL = "https://api.nic.dz/v1"
+	defaultLKBaseURL = "https://register.domains.lk"
+	defaultMTBaseURL = "https://www.nic.org.mt"
 	defaultNIBaseURL = "https://apiecommercenic.uni.edu.ni/api/v1"
+	defaultPABaseURL = "https://nic.pa:8080"
 	defaultVNBaseURL = "https://whois.inet.vn"
 )
 
@@ -62,7 +67,10 @@ func DefaultModules() []Module {
 			"py": "https://www.nic.py/consultdompy.php",
 		}),
 		DZModule{BaseURL: defaultDZBaseURL},
+		LKModule{BaseURL: defaultLKBaseURL},
+		MTModule{BaseURL: defaultMTBaseURL},
 		NIModule{BaseURL: defaultNIBaseURL},
+		PAModule{BaseURL: defaultPABaseURL},
 		VNModule{BaseURL: defaultVNBaseURL},
 	}
 }
@@ -224,6 +232,138 @@ func (r dzResponse) toWHOIS() string {
 	return strings.TrimSpace(builder.String())
 }
 
+type LKModule struct {
+	BaseURL string
+}
+
+func (m LKModule) Name() string { return "lk" }
+
+func (m LKModule) Supports(suffix string) bool {
+	return strings.EqualFold(strings.TrimPrefix(suffix, "."), "lk")
+}
+
+func (m LKModule) Lookup(ctx context.Context, client *http.Client, q model.NormalizedQuery) (*ModuleResult, error) {
+	baseURL := strings.TrimRight(m.BaseURL, "/")
+	if baseURL == "" {
+		baseURL = defaultLKBaseURL
+	}
+	endpoint := baseURL + "/proxy/domains/single-search?keyword=" + url.QueryEscape(q.Query)
+	var payload lkResponse
+	statusCode, contentType, err := getJSON(ctx, client, endpoint, &payload)
+	if err != nil {
+		return nil, err
+	}
+	return &ModuleResult{
+		Body:        payload.toWHOIS(q.Query),
+		Endpoint:    endpoint,
+		ContentType: contentType,
+		StatusCode:  statusCode,
+	}, nil
+}
+
+type lkResponse struct {
+	Result struct {
+		DomainAvailability *struct {
+			Message    string `json:"message"`
+			DomainName string `json:"domainName"`
+			DomainInfo *struct {
+				ExpireDate   string `json:"expireDate"`
+				RegisteredTo string `json:"registeredTo"`
+			} `json:"domainInfo"`
+		} `json:"domainAvailability"`
+	} `json:"result"`
+}
+
+func (r lkResponse) toWHOIS(domain string) string {
+	availability := r.Result.DomainAvailability
+	if availability == nil {
+		return ""
+	}
+	message := strings.TrimSpace(availability.Message)
+	if strings.EqualFold(message, "Domain name you searched is restricted") {
+		message = "Domain name is restricted"
+	}
+	var builder strings.Builder
+	writeLine(&builder, "Message", message)
+	writeLine(&builder, "Domain Name", firstNonEmpty(availability.DomainName, domain))
+	if availability.DomainInfo != nil {
+		writeLine(&builder, "Registry Expiry Date", normalizeLKDate(availability.DomainInfo.ExpireDate))
+		writeLine(&builder, "Registrant Name", availability.DomainInfo.RegisteredTo)
+	}
+	return strings.TrimSpace(builder.String())
+}
+
+var lkOrdinalDayPattern = regexp.MustCompile(`\b(\d{1,2})(st|nd|rd|th)\b`)
+
+func normalizeLKDate(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	cleaned := lkOrdinalDayPattern.ReplaceAllString(value, "$1")
+	for _, layout := range []string{"Monday, 2 January, 2006", "2 January, 2006", "2006-01-02"} {
+		parsed, err := time.Parse(layout, cleaned)
+		if err == nil {
+			return parsed.Format("2006-01-02")
+		}
+	}
+	return value
+}
+
+type MTModule struct {
+	BaseURL string
+}
+
+func (m MTModule) Name() string { return "mt" }
+
+func (m MTModule) Supports(suffix string) bool {
+	return strings.EqualFold(strings.TrimPrefix(suffix, "."), "mt")
+}
+
+func (m MTModule) Lookup(ctx context.Context, client *http.Client, q model.NormalizedQuery) (*ModuleResult, error) {
+	baseURL := strings.TrimRight(m.BaseURL, "/")
+	if baseURL == "" {
+		baseURL = defaultMTBaseURL
+	}
+	endpoint := baseURL + "/dotmt/whois/?" + url.QueryEscape(q.Query)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "Whoice/0.1 (+https://github.com/xmzo/whoice)")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024))
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("WHOIS Web HTTP %d", resp.StatusCode)
+	}
+	whois := extractPreText(string(body))
+	return &ModuleResult{
+		Body:        whois,
+		Endpoint:    endpoint,
+		ContentType: resp.Header.Get("Content-Type"),
+		StatusCode:  resp.StatusCode,
+	}, nil
+}
+
+var preBlockPattern = regexp.MustCompile(`(?is)<pre\b[^>]*>(.*?)</pre>`)
+var htmlTagPattern = regexp.MustCompile(`(?is)<[^>]+>`)
+
+func extractPreText(body string) string {
+	matches := preBlockPattern.FindStringSubmatch(body)
+	if len(matches) < 2 {
+		return ""
+	}
+	text := htmlTagPattern.ReplaceAllString(matches[1], "")
+	return strings.TrimSpace(html.UnescapeString(text))
+}
+
 type NIModule struct {
 	BaseURL string
 }
@@ -314,6 +454,98 @@ func (r niResponse) toWHOIS(domain string) string {
 		writeLine(&builder, "Contact Email", strings.Join(emails, ","))
 		writeLine(&builder, "Contact Phone", r.Contacts.Phone)
 		writeLine(&builder, "Contact Cellphone", r.Contacts.Cellular)
+	}
+	return strings.TrimSpace(builder.String())
+}
+
+type PAModule struct {
+	BaseURL string
+}
+
+func (m PAModule) Name() string { return "pa" }
+
+func (m PAModule) Supports(suffix string) bool {
+	return strings.EqualFold(strings.TrimPrefix(suffix, "."), "pa")
+}
+
+func (m PAModule) Lookup(ctx context.Context, client *http.Client, q model.NormalizedQuery) (*ModuleResult, error) {
+	baseURL := strings.TrimRight(m.BaseURL, "/")
+	if baseURL == "" {
+		baseURL = defaultPABaseURL
+	}
+	endpoint := baseURL + "/whois/" + url.PathEscape(q.Query)
+	var payload paResponse
+	statusCode, contentType, err := getJSONAllow404(ctx, client, endpoint, &payload)
+	if err != nil {
+		return nil, err
+	}
+	if statusCode == http.StatusNotFound {
+		return &ModuleResult{
+			Body:        "Domain not found",
+			Endpoint:    endpoint,
+			ContentType: contentType,
+			StatusCode:  statusCode,
+		}, nil
+	}
+	return &ModuleResult{
+		Body:        payload.toWHOIS(q.Query),
+		Endpoint:    endpoint,
+		ContentType: contentType,
+		StatusCode:  statusCode,
+	}, nil
+}
+
+type paResponse struct {
+	Message string `json:"mensaje"`
+	Payload *struct {
+		DomainName     string   `json:"Dominio"`
+		UpdatedDate    string   `json:"fecha_actualizacion"`
+		CreationDate   string   `json:"fecha_creacion"`
+		ExpirationDate string   `json:"fecha_expiracion"`
+		Status         string   `json:"Estatus"`
+		Nameservers    []string `json:"NS"`
+		Holder         *struct {
+			Contact *struct {
+				Name        string `json:"nombre"`
+				Address1    string `json:"direccion1"`
+				Address2    string `json:"direccion2"`
+				City        string `json:"ciudad"`
+				Province    string `json:"estado"`
+				Country     string `json:"ubicacion"`
+				Phone       string `json:"telefono"`
+				OfficePhone string `json:"telefono_oficina"`
+				Email       string `json:"email"`
+			} `json:"contacto"`
+		} `json:"titular"`
+	} `json:"payload"`
+}
+
+func (r paResponse) toWHOIS(domain string) string {
+	if strings.TrimSpace(r.Message) != "" && r.Payload == nil {
+		return strings.TrimSpace(r.Message)
+	}
+	if r.Payload == nil {
+		return ""
+	}
+	payload := r.Payload
+	var builder strings.Builder
+	writeLine(&builder, "Domain Name", firstNonEmpty(payload.DomainName, domain))
+	writeLine(&builder, "Updated Date", payload.UpdatedDate)
+	writeLine(&builder, "Creation Date", payload.CreationDate)
+	writeLine(&builder, "Registry Expiry Date", payload.ExpirationDate)
+	writeLine(&builder, "Domain Status", payload.Status)
+	for _, nameServer := range payload.Nameservers {
+		writeLine(&builder, "Name Server", nameServer)
+	}
+	if payload.Holder != nil && payload.Holder.Contact != nil {
+		contact := payload.Holder.Contact
+		writeLine(&builder, "Registrant Name", contact.Name)
+		writeLine(&builder, "Registrant Street", strings.Join(nonEmptyStrings(contact.Address1, contact.Address2), ", "))
+		writeLine(&builder, "Registrant City", contact.City)
+		writeLine(&builder, "Registrant State/Province", contact.Province)
+		writeLine(&builder, "Registrant Country", contact.Country)
+		writeLine(&builder, "Registrant Phone", strings.Join(nonEmptyStrings(contact.Phone, contact.OfficePhone), ", "))
+		writeLine(&builder, "Registrant Email", contact.Email)
 	}
 	return strings.TrimSpace(builder.String())
 }
@@ -443,6 +675,15 @@ func getJSON(ctx context.Context, client *http.Client, endpoint string, out any)
 	return doJSON(client, req, out)
 }
 
+func getJSONAllow404(ctx context.Context, client *http.Client, endpoint string, out any) (int, string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return 0, "", err
+	}
+	req.Header.Set("User-Agent", "Whoice/0.1 (+https://github.com/xmzo/whoice)")
+	return doJSONWithOptions(client, req, out, true)
+}
+
 func postJSON(ctx context.Context, client *http.Client, endpoint string, payload any, out any) (int, string, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -459,6 +700,10 @@ func postJSON(ctx context.Context, client *http.Client, endpoint string, payload
 }
 
 func doJSON(client *http.Client, req *http.Request, out any) (int, string, error) {
+	return doJSONWithOptions(client, req, out, false)
+}
+
+func doJSONWithOptions(client *http.Client, req *http.Request, out any, allow404 bool) (int, string, error) {
 	resp, err := client.Do(req)
 	if err != nil {
 		return 0, "", err
@@ -467,6 +712,9 @@ func doJSON(client *http.Client, req *http.Request, out any) (int, string, error
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024))
 	if err != nil {
 		return resp.StatusCode, resp.Header.Get("Content-Type"), err
+	}
+	if allow404 && resp.StatusCode == http.StatusNotFound {
+		return resp.StatusCode, resp.Header.Get("Content-Type"), nil
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return resp.StatusCode, resp.Header.Get("Content-Type"), fmt.Errorf("WHOIS Web HTTP %d", resp.StatusCode)
@@ -495,4 +743,14 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func nonEmptyStrings(values ...string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			out = append(out, strings.TrimSpace(value))
+		}
+	}
+	return out
 }

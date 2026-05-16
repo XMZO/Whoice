@@ -65,6 +65,9 @@ const samples = [
           name: "Example Registrar",
           slug: "example-registrar",
           color: "#336699",
+          logo: "https://example.com/favicon.ico",
+          website: "https://example.com",
+          aliases: ["Example"],
         },
       },
       dates: {
