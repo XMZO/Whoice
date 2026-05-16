@@ -47,3 +47,13 @@ services:
 networks:
   whoice:
     name: whoice
+    # Requires Docker daemon IPv6 support. Docker Engine can auto-allocate a ULA
+    # IPv6 subnet for this custom bridge when no subnet is specified.
+    # 需要 Docker daemon 已开启 IPv6。这里不指定自定义 IPv6 段，
+    # 由 Docker Engine 自动为这个自定义 bridge 分配 ULA。
+    # Recreate an existing network after changing this:
+    # 修改后已有网络需要重建：
+    # docker compose down
+    # docker network rm whoice || true
+    # docker compose up -d
+    enable_ipv6: true

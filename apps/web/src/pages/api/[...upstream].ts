@@ -25,6 +25,37 @@ function forwardedFor(req: NextApiRequest) {
   return existing || remote || "";
 }
 
+function wantsJSON(path: string) {
+  return path !== "metrics";
+}
+
+function looksLikeJSON(contentType: string | null) {
+  return Boolean(contentType?.toLowerCase().includes("application/json"));
+}
+
+function looksLikeHTML(text: string) {
+  return /<!doctype html|<html[\s>]/i.test(text);
+}
+
+function sendUpstream(res: NextApiResponse, path: string, status: number, text: string, contentType: string | null) {
+  res.setHeader("Cache-Control", "no-store");
+  if (!wantsJSON(path) || looksLikeJSON(contentType)) {
+    if (contentType) res.setHeader("Content-Type", contentType);
+    res.status(status).send(text);
+    return;
+  }
+  res.status(status || 502).json({
+    ok: false,
+    error: {
+      code: looksLikeHTML(text) ? "html_error_response" : "invalid_json_response",
+      message: looksLikeHTML(text)
+        ? `Upstream API returned an HTML error page instead of JSON (HTTP ${status || 502}).`
+        : `Upstream API returned a non-JSON response (HTTP ${status || 502}).`,
+      details: [text.slice(0, 500)],
+    },
+  });
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const method = req.method || "GET";
   const parts = Array.isArray(req.query.upstream) ? req.query.upstream : [];
@@ -64,12 +95,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // can add restricted controls or source-file editing without reshaping URLs.
     const upstream = await fetch(target, { method, headers, body: reservedConfigEditorWrite || lookupEnrichWrite ? JSON.stringify(req.body || {}) : undefined, cache: "no-store" });
     upstream.headers.forEach((value, key) => {
-      if (!HOP_BY_HOP_HEADERS.has(key.toLowerCase())) {
+      const lower = key.toLowerCase();
+      if (!HOP_BY_HOP_HEADERS.has(lower) && lower !== "content-type" && lower !== "content-length") {
         res.setHeader(key, value);
       }
     });
-    res.setHeader("Cache-Control", "no-store");
-    res.status(upstream.status).send(await upstream.text());
+    const text = await upstream.text();
+    sendUpstream(res, path, upstream.status, text, upstream.headers.get("content-type"));
   } catch (error) {
     res.status(502).json({
       ok: false,

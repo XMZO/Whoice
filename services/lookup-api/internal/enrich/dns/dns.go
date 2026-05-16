@@ -741,6 +741,7 @@ func lookupDoHIP(ctx context.Context, host string, resolvers []string, timeout t
 		timeout = 3 * time.Second
 	}
 	var lastErr error
+	var failedResolvers []string
 	var outA []IPAnswer
 	var outAAAA []IPAnswer
 	infos := make([]model.DNSResolverInfo, 0, len(resolvers))
@@ -768,13 +769,27 @@ func lookupDoHIP(ctx context.Context, host string, resolvers []string, timeout t
 			outAAAA = append(outAAAA, ipAnswersFromDoH(result.AAAA, label, resolver)...)
 		} else {
 			lastErr = result.Err
+			failedResolvers = append(failedResolvers, label+": "+result.Info.Error)
 		}
 		infos = append(infos, result.Info)
 	}
 	if len(outA) > 0 || len(outAAAA) > 0 {
 		return dohLookupResult{A: outA, AAAA: outAAAA, Resolvers: infos}
 	}
+	if len(failedResolvers) > 0 {
+		return dohLookupResult{Resolvers: infos, Err: summarizeDoHErrors(len(resolvers), failedResolvers)}
+	}
 	return dohLookupResult{Resolvers: infos, Err: lastErr}
+}
+
+func summarizeDoHErrors(total int, failures []string) error {
+	if len(failures) == 0 {
+		return errors.New("all configured DoH resolvers returned no records")
+	}
+	if len(failures) == total {
+		return fmt.Errorf("all %d configured DoH resolvers failed; first: %s", total, failures[0])
+	}
+	return fmt.Errorf("%d of %d configured DoH resolvers failed; first: %s", len(failures), total, failures[0])
 }
 
 func lookupDoHResolver(ctx context.Context, host, resolver string, timeout time.Duration, index int) dohResolverResult {
@@ -947,30 +962,102 @@ func dohHTTPClient(parsed url.URL) (*http.Client, func()) {
 	}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
-	dialer := &net.Dialer{Timeout: 5 * time.Second}
+	fallbackDialer := &net.Dialer{Timeout: 5 * time.Second}
+	bootstrapDialer := &net.Dialer{Timeout: dohBootstrapDialTimeout}
 	transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
-		host, dialPort, err := net.SplitHostPort(address)
-		if err != nil || !strings.EqualFold(strings.TrimSuffix(host, "."), strings.TrimSuffix(parsed.Hostname(), ".")) {
-			return dialer.DialContext(ctx, network, address)
-		}
-		if dialPort != "" {
-			port = dialPort
-		}
-		var lastErr error
-		for _, ip := range ips {
-			conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(ip, port))
-			if err == nil {
-				return conn, nil
-			}
-			lastErr = err
-		}
-		if lastErr != nil {
-			return nil, lastErr
-		}
-		return dialer.DialContext(ctx, network, address)
+		return dialDoHAddress(ctx, network, address, parsed.Hostname(), port, ips, bootstrapDialer.DialContext, fallbackDialer.DialContext)
 	}
 	client := &http.Client{Transport: transport}
 	return client, transport.CloseIdleConnections
+}
+
+const dohBootstrapDialTimeout = 600 * time.Millisecond
+
+type dohDialFunc func(context.Context, string, string) (net.Conn, error)
+
+func dialDoHAddress(ctx context.Context, network, address, hostname, defaultPort string, ips []string, bootstrapDial, fallbackDial dohDialFunc) (net.Conn, error) {
+	host, dialPort, err := net.SplitHostPort(address)
+	if err != nil || !sameDNSHostname(host, hostname) || len(ips) == 0 {
+		return fallbackDial(ctx, network, address)
+	}
+	if dialPort == "" {
+		dialPort = defaultPort
+	}
+	if dialPort == "" {
+		dialPort = "443"
+	}
+
+	ipv4, ipv6 := splitBootstrapIPs(ips)
+	var failures []string
+	if conn, ok := dialDoHBootstrapList(ctx, network, dialPort, ipv4, bootstrapDial, &failures); ok {
+		return conn, nil
+	}
+	if conn, err := fallbackDial(ctx, network, address); err == nil {
+		return conn, nil
+	} else {
+		failures = append(failures, "hostname "+address+": "+err.Error())
+	}
+	if conn, ok := dialDoHBootstrapList(ctx, network, dialPort, ipv6, bootstrapDial, &failures); ok {
+		return conn, nil
+	}
+	return nil, fmt.Errorf("DoH bootstrap and hostname fallback failed: %s", strings.Join(failures, "; "))
+}
+
+func dialDoHBootstrapList(ctx context.Context, network, port string, ips []string, dial dohDialFunc, failures *[]string) (net.Conn, bool) {
+	for _, ip := range ips {
+		attemptCtx, cancel := context.WithTimeout(ctx, dohBootstrapAttemptTimeout(ctx))
+		conn, err := dial(attemptCtx, network, net.JoinHostPort(ip, port))
+		cancel()
+		if err == nil {
+			return conn, true
+		}
+		*failures = append(*failures, ip+": "+err.Error())
+		if ctx.Err() != nil {
+			return nil, false
+		}
+	}
+	return nil, false
+}
+
+func dohBootstrapAttemptTimeout(ctx context.Context) time.Duration {
+	timeout := dohBootstrapDialTimeout
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return timeout
+	}
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		return time.Nanosecond
+	}
+	reserved := remaining / 3
+	if reserved > 0 && reserved < timeout {
+		timeout = reserved
+	}
+	if timeout < 50*time.Millisecond && remaining > 50*time.Millisecond {
+		return 50 * time.Millisecond
+	}
+	return timeout
+}
+
+func splitBootstrapIPs(ips []string) ([]string, []string) {
+	var ipv4 []string
+	var ipv6 []string
+	for _, ip := range ips {
+		parsed := net.ParseIP(ip)
+		if parsed == nil {
+			continue
+		}
+		if parsed.To4() != nil {
+			ipv4 = append(ipv4, ip)
+		} else {
+			ipv6 = append(ipv6, ip)
+		}
+	}
+	return ipv4, ipv6
+}
+
+func sameDNSHostname(a, b string) bool {
+	return strings.EqualFold(strings.TrimSuffix(a, "."), strings.TrimSuffix(b, "."))
 }
 
 func dohBootstrapIPs(host string) []string {

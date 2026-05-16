@@ -57,11 +57,16 @@ type EnrichmentState = {
   error?: string;
 };
 
+type ErrorViewModel = {
+  eyebrow: string;
+  title: string;
+  message: string;
+  detail?: string;
+};
+
 async function loadICPAutoQuery() {
   try {
-    const base = getAPIBase().replace(/\/$/, "");
-    const response = await fetch(`${base}/api/capabilities`, { headers: { accept: "application/json" }, cache: "no-store" });
-    const body = (await response.json()) as APIResponse;
+    const { body } = await getCapabilities();
     return Boolean(body.capabilities?.icpAutoQuery);
   } catch {
     return false;
@@ -479,7 +484,7 @@ function ICPPanel({
       {!state.requested ? (
         <p className="muted">手动查询，不影响 WHOIS 结果。</p>
       ) : state.loading ? (
-        <p className="muted">正在查询工信部备案信息...</p>
+        <p className="muted">正在查询工信部备案信息</p>
       ) : unavailable ? (
         <p className="muted">{icpErrorMessage(state)}</p>
       ) : found ? (
@@ -938,6 +943,58 @@ function enrichmentIdentity(result: LookupResult | undefined, nonce: number) {
   return result ? `${nonce}\x1f${result.normalizedQuery}` : "";
 }
 
+function mergeAIResult(current: LookupResult, incoming: LookupResult): LookupResult {
+  return {
+    ...current,
+    registrant: incoming.registrant || current.registrant,
+    registrar: incoming.registrar || current.registrar,
+    enrichment: current.enrichment,
+    meta: {
+      ...current.meta,
+      ai: incoming.meta?.ai || current.meta?.ai,
+    },
+  };
+}
+
+function mergeEnrichmentResult(current: LookupResult, incoming: LookupResult): LookupResult {
+  const incomingMeta = incoming.meta || current.meta;
+  const currentAI = current.meta?.ai;
+  return {
+    ...current,
+    nameservers: Array.isArray(incoming.nameservers) && incoming.nameservers.length ? incoming.nameservers : current.nameservers,
+    enrichment: {
+      ...(current.enrichment || {}),
+      ...(incoming.enrichment || {}),
+    },
+    meta: {
+      ...current.meta,
+      warnings: incomingMeta.warnings ?? current.meta.warnings,
+      providers: incomingMeta.providers ?? current.meta.providers,
+      pendingEnrichments: incomingMeta.pendingEnrichments ?? [],
+      ai: currentAI || incomingMeta.ai,
+    },
+  };
+}
+
+function errorView(response: APIResponse, status: number): ErrorViewModel {
+  const code = response.error?.code || "";
+  const message = response.error?.message || "";
+  if (status === 502 || code === "api_unreachable" || code === "invalid_json_response" || code === "html_error_response") {
+    return {
+      eyebrow: `HTTP ${status || 502}`,
+      title: "Lookup API unavailable",
+      message: "Whoice could not reach the lookup API or received a gateway error page instead of JSON.",
+      detail: message,
+    };
+  }
+  return {
+    eyebrow: status ? `HTTP ${status}` : "Lookup error",
+    title: message || "Lookup failed",
+    message: "Switch source mode or check whether the lookup API is running.",
+    detail: code,
+  };
+}
+
 function RegistrationPanel({ result, aiLoading, aiError, onCopy }: { result: LookupResult; aiLoading?: boolean; aiError?: string; onCopy?: (value: string) => void }) {
   const { t } = useI18n();
   const registrant = result.registrant || {};
@@ -1140,6 +1197,18 @@ function SourceLinks({
   );
 }
 
+function LookupErrorPanel({ response, status }: { response: APIResponse; status: number }) {
+  const view = errorView(response, status);
+  return (
+    <section className="panel error-panel">
+      <p className="eyebrow">{view.eyebrow}</p>
+      <h1>{view.title}</h1>
+      <p className="muted">{view.message}</p>
+      {view.detail && <pre className="error-detail">{view.detail}</pre>}
+    </section>
+  );
+}
+
 export default function LookupPage({ query, response, httpStatus, sourceMode, options, icpAutoQuery }: Props) {
   const router = useRouter();
   const [state, setState] = useState<LookupState>({ query, response, httpStatus, sourceMode, options, nonce: 0 });
@@ -1151,6 +1220,7 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
   const aiInflightRef = useRef("");
   const enrichmentInflightRef = useRef("");
   const runtimeConfigRef = useRef(response.config?.loadedAt || "");
+  const aiArmedRef = useRef(parseBool(options.ai));
   const result = state.response.result;
   const title = result ? `${result.normalizedQuery} | Whoice` : `${state.query || "Lookup"} | Whoice`;
   const statuses = Array.isArray(result?.statuses) ? result.statuses : [];
@@ -1251,10 +1321,12 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
   }, [icpAutoQuery, icpDomain, icpState.loading, icpState.requested]);
 
   useEffect(() => {
+    if (!aiArmedRef.current) return;
     if (!parseBool(state.options.ai) || !result || result.type !== "domain") return;
     const key = aiRequestKey(result, state.nonce);
     if (!key || aiState.key !== key || aiState.requested || aiState.loading) return;
-    void runAIAnalysis(result, key);
+    aiArmedRef.current = false;
+    void runAIAnalysis(result, key, state.nonce);
   }, [aiState.key, aiState.loading, aiState.requested, result, state.nonce, state.options.ai]);
 
   useEffect(() => {
@@ -1286,7 +1358,7 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
           runtimeConfigRef.current = loadedAt;
         }
         if (!stopped && loadedAt && current && loadedAt !== current) {
-          await runLookup(state.query, state.sourceMode, state.options, false);
+          await runLookup(state.query, state.sourceMode, state.options, false, false);
         }
       } catch {
         // Runtime config polling is best-effort; lookup itself still reports API errors.
@@ -1339,7 +1411,7 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [absolutePageURL, result, t]);
 
-  async function runLookup(nextQuery: string, nextSourceMode = state.sourceMode, nextOptions = state.options, updateURL = true) {
+  async function runLookup(nextQuery: string, nextSourceMode = state.sourceMode, nextOptions = state.options, updateURL = true, armAI = true) {
     const trimmed = normalizeLookupInput(nextQuery);
     if (!trimmed || isLoading) return;
     const requestOptions = {
@@ -1351,18 +1423,20 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
     const nextURL = lookupUrl(trimmed, nextSourceMode, serializableOptions);
     if (inflightURLRef.current === nextURL) return;
     inflightURLRef.current = nextURL;
+    aiArmedRef.current = armAI && parseBool(serializableOptions.ai);
     setIsLoading(true);
     setAIState({ key: "", loading: false, requested: false });
     setEnrichmentState({ key: "", loading: false, requested: false });
     try {
       const { status, body } = await lookup(trimmed, requestOptions);
+      const nextNonce = Date.now();
       setState({
         query: trimmed,
         response: body,
         httpStatus: status,
         sourceMode: nextSourceMode,
         options: serializableOptions,
-        nonce: Date.now(),
+        nonce: nextNonce,
       });
       handledURLRef.current = nextURL;
       setSearchValue(trimmed);
@@ -1373,6 +1447,7 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
         void router.push(nextURL, undefined, { shallow: true, scroll: false });
       }
     } catch (error) {
+      aiArmedRef.current = false;
       setState({
         query: trimmed,
         httpStatus: 502,
@@ -1432,11 +1507,11 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
     }
   }
 
-  async function runAIAnalysis(target = result, key = aiRequestKey(target, state.nonce)) {
+  async function runAIAnalysis(target = result, key = aiRequestKey(target, state.nonce), nonce = state.nonce) {
     if (!target || target.type !== "domain" || !key) return;
     if (aiInflightRef.current === key) return;
     aiInflightRef.current = key;
-    const identity = aiIdentity(target, state.nonce);
+    const identity = aiIdentity(target, nonce);
     setAIState({ key, identity, loading: true, requested: true });
     try {
       const { body } = await analyzeRegistration(target, true);
@@ -1453,11 +1528,12 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
       const nextResult = body.result;
       setState((current) => {
         if (aiRequestKey(current.response.result, current.nonce) !== key) return current;
+        if (!current.response.result) return current;
         return {
           ...current,
           response: {
             ...current.response,
-            result: nextResult,
+            result: mergeAIResult(current.response.result, nextResult),
             meta: body.meta || nextResult.meta,
           },
         };
@@ -1501,11 +1577,12 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
       const nextResult = body.result;
       setState((current) => {
         if (enrichmentRequestKey(current.response.result, current.nonce) !== key) return current;
+        if (!current.response.result) return current;
         return {
           ...current,
           response: {
             ...current.response,
-            result: nextResult,
+            result: mergeEnrichmentResult(current.response.result, nextResult),
             meta: body.meta || nextResult.meta,
           },
         };
@@ -1551,27 +1628,27 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
       ai: enabled ? "1" : undefined,
     });
     const nextURL = lookupUrl(state.query, state.sourceMode, nextOptions);
+    aiArmedRef.current = false;
     setState((current) => ({ ...current, options: nextOptions }));
     handledURLRef.current = nextURL;
     if (typeof window !== "undefined") {
       void router.push(nextURL, undefined, { shallow: true, scroll: false });
     }
-    if (enabled && result?.type === "domain") {
-      const key = aiRequestKey(result, state.nonce);
-      setAIState({ key, loading: false, requested: false });
-      void runAIAnalysis(result, key);
-    }
   }
 
   async function copy(value: string, label: string) {
     if (!value || typeof navigator === "undefined" || !navigator.clipboard) return;
-    await navigator.clipboard.writeText(value);
-    setActionState(label);
+    try {
+      await navigator.clipboard.writeText(value);
+      setActionState(label);
+    } catch {
+      setActionState("Copy blocked");
+    }
     window.setTimeout(() => setActionState(""), 1400);
   }
 
   async function shareResult() {
-    await copy(absolutePageURL, t("copied"));
+    void copy(absolutePageURL, t("copied"));
   }
 
   function downloadResult() {
@@ -1628,7 +1705,7 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
               </div>
               <form className="mini-search tool-search" onSubmit={submitMiniSearch}>
                 <input id="lookup-mini-search" name="query" value={searchValue} onChange={(event) => setSearchValue(event.target.value)} aria-label="Search query" />
-                <button disabled={isLoading} type="submit">{isLoading ? "..." : "Search"}</button>
+                <button disabled={isLoading} type="submit">{isLoading ? "Searching" : "Search"}</button>
               </form>
               {state.query && (
                 <SourceLinks
@@ -1701,11 +1778,7 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
             )}
 
             {!state.response.ok || !result ? (
-              <section className="panel error-panel">
-                <p className="eyebrow">HTTP {state.httpStatus}</p>
-                <h1>{state.response.error?.message || t("failed")}</h1>
-                <p className="muted">{t("sourceHint")}</p>
-              </section>
+              <LookupErrorPanel response={state.response} status={state.httpStatus} />
             ) : (
               <>
                 <StatusStrip result={result} onCopy={(value) => copy(value, t("copied"))} />

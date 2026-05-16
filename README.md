@@ -65,6 +65,16 @@ docker compose -f deploy/compose/docker-compose.yml -f deploy/compose/docker-com
 
 The compose stack uses an explicit `whoice` bridge network and container healthchecks. The web container calls the API over the internal network, and the browser uses the web app's same-origin API proxy for in-place searches and status inspection. The generated config enables `trust_proxy = true` so optional rate limits can use the forwarded client IP. Lookup results are not cached, so WHOIS/RDAP responses stay live; only slow-changing, validated data snapshots such as RDAP bootstrap, PSL, WHOIS server maps, ICANN registrar metadata, ICP results, and optional AI analysis are reused.
 
+Docker containers do not automatically inherit host IPv6 routing. Docker daemon `"ipv6": true` and `fixed-cidr-v6` prepare Docker IPv6 support, and the compose file enables IPv6 on the `whoice` custom bridge without pinning a custom IPv6 subnet, letting Docker Engine auto-allocate one. If an older `whoice` network already exists from before IPv6 was enabled, recreate it first. DoH can still query both A and AAAA records over IPv4 HTTPS; disabling IPv6 UDP sampling only removes the direct IPv6 UDP resolver probes.
+
+After Docker daemon IPv6 is enabled and Docker is restarted, recreate the compose network:
+
+```sh
+docker compose down
+docker network rm whoice || true
+docker compose up -d
+```
+
 Optional mounted data layout:
 
 ```text
@@ -214,6 +224,19 @@ dnsviz_enabled = true
 ```
 
 The default DNS resolver pool samples Cloudflare IPv4/IPv6, Google IPv4/IPv6, ByteDance/Volcengine IPv4 public DNS, and configured DoH endpoints on every DNS enrichment run. This exposes geo/ISP split DNS differences instead of stopping at the first successful resolver. DoH uses Cloudflare, Google, Tencent `doh.pub`, and AliDNS; each A/AAAA answer records which resolver saw it. Set any resolver list to `none` to disable it, or replace the comma-separated list with your own resolvers. Fake-IP answers in `198.18.0.0/15` are hidden only when a non-reserved replacement exists; otherwise they are kept with a warning.
+
+For Docker hosts where container IPv6 is not enabled, this is the recommended DNS override:
+
+```toml
+[dns]
+ipv6_resolvers = []
+doh_resolvers = [
+  "https://cloudflare-dns.com/dns-query",
+  "https://dns.google/resolve",
+  "https://doh.pub/dns-query",
+  "https://dns.alidns.com/dns-query",
+]
+```
 
 AI-assisted registration parsing:
 

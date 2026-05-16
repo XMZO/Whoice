@@ -1,7 +1,7 @@
 {
   "name": "whoice",
   "private": true,
-  "version": "0.0.2-alpha",
+  "version": "0.0.2-beta",
   "scripts": {
     "dev:api": "go run ./services/lookup-api/cmd/whoice-api",
     "dev:web": "pnpm --dir apps/web dev",
@@ -19,6 +19,11 @@
     "test": "pnpm test:api && pnpm test:web && pnpm test:schema && pnpm test:data && pnpm test:pre5 && pnpm test:phase5"
   },
   "packageManager": "pnpm@10.30.3",
+  "pnpm": {
+    "overrides": {
+      "postcss": "8.5.10"
+    }
+  },
   "devDependencies": {
     "@playwright/test": "^1.59.1",
     "ajv": "^8.20.0",

@@ -161,7 +161,7 @@ function InfoCard({ label, value, panel, border, muted }: { label: string; value
       }}
     >
       <span style={{ color: muted, fontSize: 18, textTransform: "uppercase" }}>{label}</span>
-      <span style={{ fontSize: 26, fontWeight: 800, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{value}</span>
+      <span style={{ fontSize: 24, fontWeight: 800, overflow: "hidden", lineHeight: 1.2, wordBreak: "break-word" }}>{value}</span>
     </div>
   );
 }

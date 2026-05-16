@@ -23,6 +23,33 @@ function forwardedFor(req: NextApiRequest) {
   return existing || remote || "";
 }
 
+function looksLikeJSON(contentType: string | null) {
+  return Boolean(contentType?.toLowerCase().includes("application/json"));
+}
+
+function looksLikeHTML(text: string) {
+  return /<!doctype html|<html[\s>]/i.test(text);
+}
+
+function sendUpstreamJSON(res: NextApiResponse, status: number, text: string, contentType: string | null) {
+  res.setHeader("Cache-Control", "no-store");
+  if (looksLikeJSON(contentType)) {
+    res.setHeader("Content-Type", contentType || "application/json");
+    res.status(status).send(text);
+    return;
+  }
+  res.status(status || 502).json({
+    ok: false,
+    error: {
+      code: looksLikeHTML(text) ? "html_error_response" : "invalid_json_response",
+      message: looksLikeHTML(text)
+        ? `Lookup API returned an HTML error page instead of JSON (HTTP ${status || 502}).`
+        : `Lookup API returned a non-JSON response (HTTP ${status || 502}).`,
+      details: [text.slice(0, 500)],
+    },
+  });
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
@@ -46,12 +73,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const upstream = await fetch(target, { headers, cache: "no-store" });
     upstream.headers.forEach((value, key) => {
-      if (!HOP_BY_HOP_HEADERS.has(key.toLowerCase())) {
+      const lower = key.toLowerCase();
+      if (!HOP_BY_HOP_HEADERS.has(lower) && lower !== "content-type" && lower !== "content-length") {
         res.setHeader(key, value);
       }
     });
-    res.setHeader("Cache-Control", "no-store");
-    res.status(upstream.status).send(await upstream.text());
+    const text = await upstream.text();
+    sendUpstreamJSON(res, upstream.status, text, upstream.headers.get("content-type"));
   } catch (error) {
     res.status(502).json({
       ok: false,

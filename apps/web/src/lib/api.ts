@@ -53,13 +53,46 @@ export function appendLookupOptions(params: URLSearchParams, options: LookupOpti
   return params;
 }
 
+function looksLikeHTML(text: string) {
+  return /<!doctype html|<html[\s>]/i.test(text);
+}
+
+async function readAPIResponse(response: Response, context: string): Promise<APIResponse> {
+  const text = await response.text();
+  const status = response.status || 502;
+  if (!text.trim()) {
+    return {
+      ok: false,
+      error: {
+        code: "empty_response",
+        message: `${context} returned an empty response (HTTP ${status}).`,
+      },
+    };
+  }
+  try {
+    return JSON.parse(text) as APIResponse;
+  } catch {
+    const html = looksLikeHTML(text);
+    return {
+      ok: false,
+      error: {
+        code: html ? "html_error_response" : "invalid_json_response",
+        message: html
+          ? `${context} returned an HTML error page instead of JSON (HTTP ${status}).`
+          : `${context} returned a non-JSON response (HTTP ${status}).`,
+        details: [text.slice(0, 500)],
+      },
+    };
+  }
+}
+
 export async function lookup(query: string, options: LookupOptions = {}) {
   const params = new URLSearchParams({ query: normalizeLookupInput(query) });
   appendLookupOptions(params, options);
 
   const base = getAPIBase().replace(/\/$/, "");
   const response = await fetch(`${base}/api/lookup?${params.toString()}`, { cache: "no-store" });
-  const body = (await response.json()) as APIResponse;
+  const body = await readAPIResponse(response, "Lookup API");
   normalizeAPIResponse(body);
   return { status: response.status, body };
 }
@@ -67,7 +100,7 @@ export async function lookup(query: string, options: LookupOptions = {}) {
 export async function getCapabilities() {
   const base = getAPIBase().replace(/\/$/, "");
   const response = await fetch(`${base}/api/capabilities`, { headers: { accept: "application/json" }, cache: "no-store" });
-  const body = (await response.json()) as APIResponse;
+  const body = await readAPIResponse(response, "Capabilities API");
   return { status: response.status, body };
 }
 
@@ -79,7 +112,7 @@ export async function analyzeRegistration(result: LookupResult, force = true) {
     body: JSON.stringify({ result, force }),
     cache: "no-store",
   });
-  const body = (await response.json()) as APIResponse;
+  const body = await readAPIResponse(response, "AI lookup API");
   normalizeAPIResponse(body);
   return { status: response.status, body };
 }
@@ -92,7 +125,7 @@ export async function enrichLookup(result: LookupResult) {
     body: JSON.stringify({ result }),
     cache: "no-store",
   });
-  const body = (await response.json()) as APIResponse;
+  const body = await readAPIResponse(response, "Enrichment API");
   normalizeAPIResponse(body);
   return { status: response.status, body };
 }
@@ -106,12 +139,12 @@ export async function lookupICP(domain: string) {
   try {
     body = JSON.parse(text) as ICPResponse;
   } catch {
-    const looksLikeHTML = /<!doctype html|<html[\s>]/i.test(text);
+    const html = looksLikeHTML(text);
     body = {
       ok: false,
       error: {
         code: response.status === 404 ? "icp_route_missing" : "icp_invalid_response",
-        message: looksLikeHTML
+        message: html
           ? `ICP endpoint returned an HTML error page (HTTP ${response.status}). Restart the Web dev server after route changes.`
           : text.slice(0, 300) || `ICP lookup failed with HTTP ${response.status}`,
       },

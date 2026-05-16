@@ -129,9 +129,15 @@ timeout = "3s"
 ipv4_resolvers = ["1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4", "180.184.1.1", "180.184.2.2"]
 # Built-in IPv6 resolvers include Cloudflare and Google.
 # 内置 IPv6 解析器包含 Cloudflare 和 Google。
+# Docker containers do not automatically inherit host IPv6. The compose network enables IPv6,
+# but an older existing whoice network must be recreated after Docker daemon IPv6 is enabled.
+# Docker 容器不会自动继承宿主机 IPv6。compose 网络已启用 IPv6，
+# 但如果 whoice 网络是旧的，需要在 Docker daemon 开启 IPv6 后删除并重建。
 ipv6_resolvers = ["2606:4700:4700::1111", "2606:4700:4700::1001", "2001:4860:4860::8888", "2001:4860:4860::8844"]
 # DoH resolvers are sampled as well. Tencent and AliDNS are kept after CF/Google for China-friendly fallback.
 # DoH 也会逐个采样。腾讯/阿里放在 CF/Google 后面，方便国内网络 fallback。
+# DoH can query both A and AAAA records over IPv4 HTTPS, so it still works when IPv6 UDP sampling is disabled.
+# DoH 可以通过 IPv4 HTTPS 查询 A 和 AAAA，所以禁用 IPv6 UDP 采样也不影响查 AAAA。
 doh_resolvers = [
   "https://cloudflare-dns.com/dns-query",
   "https://dns.google/resolve",

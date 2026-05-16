@@ -271,6 +271,8 @@ func TestDefaultTemplateDocumentsOperationalSettings(t *testing.T) {
 		"lookup_enrich is the background follow-up route",
 		"allow_custom_servers",
 		"fast_response = true",
+		"Docker containers do not automatically inherit host IPv6",
+		"DoH can query both A and AAAA records over IPv4 HTTPS",
 		"Cache only structured AI analysis",
 		"Skip AI for suffixes",
 		"Setting prompt = \"\" is also valid",

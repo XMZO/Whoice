@@ -108,14 +108,14 @@ export default function DocsPage() {
     "status": "registered",
     "source": { "primary": "rdap", "used": ["rdap", "whois"] },
     "domain": { "registeredDomain": "example.com", "registered": true },
-    "raw": { "rdap": "...", "whois": "..." },
+    "raw": { "rdap": "{ escaped RDAP payload }", "whois": "raw WHOIS payload" },
     "meta": {
       "elapsedMs": 123,
       "warnings": [],
-      "traceId": "..."
+      "traceId": "trace-id"
     }
   },
-  "meta": { "traceId": "..." }
+  "meta": { "traceId": "trace-id" }
 }`}</CodeBlock>
           <dl className="detail-list">
             <Row label="result.source.errors" value="Per-provider errors; useful when RDAP succeeds but WHOIS fails, or the reverse" />

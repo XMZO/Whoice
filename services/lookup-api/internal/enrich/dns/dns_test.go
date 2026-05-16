@@ -3,6 +3,7 @@ package dns
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -439,6 +440,62 @@ func TestDoHBootstrapIPsCoverBuiltInResolvers(t *testing.T) {
 	}
 }
 
+func TestDialDoHAddressFallsBackToHostnameBeforeIPv6Bootstrap(t *testing.T) {
+	var attempts []string
+	conn := &fakeNetConn{}
+	bootstrapDial := func(_ context.Context, _ string, address string) (net.Conn, error) {
+		attempts = append(attempts, "bootstrap:"+address)
+		return nil, errors.New("blocked")
+	}
+	fallbackDial := func(_ context.Context, _ string, address string) (net.Conn, error) {
+		attempts = append(attempts, "fallback:"+address)
+		return conn, nil
+	}
+
+	got, err := dialDoHAddress(context.Background(), "tcp", "dns.example:443", "dns.example", "443", []string{"192.0.2.1", "2001:db8::1"}, bootstrapDial, fallbackDial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != conn {
+		t.Fatal("expected fallback connection")
+	}
+	want := []string{
+		"bootstrap:192.0.2.1:443",
+		"fallback:dns.example:443",
+	}
+	assertStringSlice(t, attempts, want)
+}
+
+func TestDialDoHAddressCanStillUseIPv6BootstrapAfterHostnameFallback(t *testing.T) {
+	var attempts []string
+	conn := &fakeNetConn{}
+	bootstrapDial := func(_ context.Context, _ string, address string) (net.Conn, error) {
+		attempts = append(attempts, "bootstrap:"+address)
+		if strings.HasPrefix(address, "[2001:db8::1]") {
+			return conn, nil
+		}
+		return nil, errors.New("blocked")
+	}
+	fallbackDial := func(_ context.Context, _ string, address string) (net.Conn, error) {
+		attempts = append(attempts, "fallback:"+address)
+		return nil, errors.New("hostname blocked")
+	}
+
+	got, err := dialDoHAddress(context.Background(), "tcp", "dns.example:443", "dns.example", "443", []string{"192.0.2.1", "2001:db8::1"}, bootstrapDial, fallbackDial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != conn {
+		t.Fatal("expected IPv6 bootstrap connection")
+	}
+	want := []string{
+		"bootstrap:192.0.2.1:443",
+		"fallback:dns.example:443",
+		"bootstrap:[2001:db8::1]:443",
+	}
+	assertStringSlice(t, attempts, want)
+}
+
 func newJSONDoHTestServer(t *testing.T, ip string) *httptest.Server {
 	t.Helper()
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -523,6 +580,62 @@ func startTestDNSServer(t *testing.T, reply func([]byte) []byte) string {
 		}
 	}()
 	return conn.LocalAddr().String()
+}
+
+type fakeNetConn struct{}
+
+func (fakeNetConn) Read([]byte) (int, error) {
+	return 0, errors.New("not implemented")
+}
+
+func (fakeNetConn) Write([]byte) (int, error) {
+	return 0, errors.New("not implemented")
+}
+
+func (fakeNetConn) Close() error {
+	return nil
+}
+
+func (fakeNetConn) LocalAddr() net.Addr {
+	return fakeAddr("local")
+}
+
+func (fakeNetConn) RemoteAddr() net.Addr {
+	return fakeAddr("remote")
+}
+
+func (fakeNetConn) SetDeadline(time.Time) error {
+	return nil
+}
+
+func (fakeNetConn) SetReadDeadline(time.Time) error {
+	return nil
+}
+
+func (fakeNetConn) SetWriteDeadline(time.Time) error {
+	return nil
+}
+
+type fakeAddr string
+
+func (a fakeAddr) Network() string {
+	return string(a)
+}
+
+func (a fakeAddr) String() string {
+	return string(a)
+}
+
+func assertStringSlice(t *testing.T, got, want []string) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("got %#v want %#v", got, want)
+	}
+	for index := range want {
+		if got[index] != want[index] {
+			t.Fatalf("got %#v want %#v", got, want)
+		}
+	}
 }
 
 func dnsReplyServfail(query []byte) []byte {
