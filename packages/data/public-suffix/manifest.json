@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-05-11T12:48:43Z",
+  "generatedAt": "2026-05-18T07:08:40Z",
   "sources": {
     "publicSuffixList": "https://publicsuffix.org/list/public_suffix_list.dat"
   },
   "sha256": {
-    "publicSuffixList": "a00855bbf027ca86cead1cf0bafc0b9b1ae904dda97f3e24b0062aa2e6e289e2"
+    "publicSuffixList": "6f7f7d9e8c68447f1c74095a12574b7fee46b0cd759c518a659aee0615d8e118"
   }
 }
