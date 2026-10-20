@@ -134,9 +134,18 @@ export function DomainMetrics({ result }: { result: LookupResult }) {
   const remaining = dates.remainingDays;
   const remainingValue = remaining === undefined || remaining === null ? t("notProvided") : remaining < 0 ? tf("expiredDays", { n: Math.abs(remaining) }) : tf("durDays", { n: remaining });
   const updated = sinceLabel(dates.updatedAt, tf, t);
+  const registrarSite = registrar.name ? safeExternalURL(registrar.url || registrar.brand?.website) : "";
+  const registrarValue = registrarSite ? (
+    <a className="metric-link" href={registrarSite} target="_blank" rel="noopener noreferrer" title={registrarSite}>
+      {registrar.name}
+      <ExternalIcon size={13} className="metric-link-icon" />
+    </a>
+  ) : (
+    registrar.name || t("noRegistrar")
+  );
   return (
     <div className="metric-grid summary-panel">
-      <Metric icon={<BuildingIcon />} label={t("registrar")} value={registrar.name || t("noRegistrar")} sub={registrarSub || undefined} />
+      <Metric icon={<BuildingIcon />} label={t("registrar")} value={registrarValue} sub={registrarSub || undefined} />
       <Metric icon={<CalendarIcon />} label={t("registrationAge")} value={ageValue} badge={ageBadge} sub={<span className="mono">{formatTimestamp(dates.createdAt)}</span>} />
       <Metric icon={<ClockIcon />} label={t("remainingValidity")} value={remainingValue} tone={expiryTone(remaining)} sub={<span className="mono">{formatTimestamp(dates.expiresAt)}</span>} />
       <Metric icon={<RefreshIcon />} label={t("lastUpdated")} value={updated || t("notProvided")} sub={<span className="mono">{formatTimestamp(dates.updatedAt)}</span>} />

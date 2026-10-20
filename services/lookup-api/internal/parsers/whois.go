@@ -27,6 +27,10 @@ var unregisteredPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\bdomain unknown\b`),
 	regexp.MustCompile(`(?i)\bobject_not_found\b`),
 	regexp.MustCompile(`(?i)\bis available for registration\b`),
+	// puntoGAL and other CORE/Nominet-run registries:
+	// "The queried object does not exist: no matching objects found".
+	regexp.MustCompile(`(?i)\bqueried object does not exist\b`),
+	regexp.MustCompile(`(?i)\bno matching objects? found\b`),
 }
 
 var reservedPatterns = []*regexp.Regexp{

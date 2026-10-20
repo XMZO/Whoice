@@ -956,6 +956,27 @@ button.src-tag {
   min-width: 0;
 }
 
+.metric-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.metric-link:hover {
+  color: var(--link);
+  text-decoration: none;
+}
+
+.metric-link-icon {
+  color: var(--faint);
+  margin-left: 5px;
+  opacity: 0.5;
+  vertical-align: -1px;
+}
+
+.metric-link:hover .metric-link-icon {
+  opacity: 1;
+}
+
 .hero-domain-link {
   align-items: center;
   color: inherit;

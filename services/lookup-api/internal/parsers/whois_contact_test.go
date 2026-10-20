@@ -32,3 +32,14 @@ func TestContactPhoneDropsPlaceholders(t *testing.T) {
 		}
 	}
 }
+
+func TestWHOISQueriedObjectDoesNotExistIsUnregistered(t *testing.T) {
+	raw := model.RawResponse{Source: model.SourceWHOIS, Server: "whois.nic.gal", Query: "lolicon.gal", Body: "The queried object does not exist: no matching objects found\n>>> Last update of Whois database: 2026-10-20T11:21:36.485Z <<<\n"}
+	part, err := (WHOISParser{}).Parse(context.Background(), raw, model.NormalizedQuery{Type: model.QueryDomain, Query: "lolicon.gal"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if part.Status != model.StatusUnregistered {
+		t.Fatalf("status: %q", part.Status)
+	}
+}
