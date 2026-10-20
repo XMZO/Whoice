@@ -755,18 +755,24 @@ test("admin panel signs in, saves a setting, and fits one screen", async ({ page
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
 
+  // playwright.config.ts sets WHOICE_PROVIDER_TIMEOUT, so that field is read-only in the panel.
   await page.getByRole("button", { name: "Lookup", exact: true }).click();
-  const providerTimeout = page.getByLabel("Per-source timeout");
-  const original = await providerTimeout.inputValue();
-  await providerTimeout.fill("9s");
+  await expect(page.getByLabel("Per-source timeout")).toBeDisabled();
+  await expect(page.getByText("Set by WHOICE_PROVIDER_TIMEOUT")).toBeVisible();
+
+  await page.getByRole("button", { name: "DNS", exact: true }).click();
+  const dnsTimeout = page.getByLabel("Timeout", { exact: true });
+  const original = await dnsTimeout.inputValue();
+  const next = original === "4s" ? "5s" : "4s";
+  await dnsTimeout.fill(next);
   await expect(page.getByText("1 unsaved")).toBeVisible();
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByText("Saved and applied")).toBeVisible();
 
   await page.reload();
-  await page.getByRole("button", { name: "Lookup", exact: true }).click();
-  await expect(page.getByLabel("Per-source timeout")).toHaveValue("9s");
-  await page.getByLabel("Per-source timeout").fill(original);
+  await page.getByRole("button", { name: "DNS", exact: true }).click();
+  await expect(page.getByLabel("Timeout", { exact: true })).toHaveValue(next);
+  await page.getByLabel("Timeout", { exact: true }).fill(original);
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByText("Saved and applied")).toBeVisible();
 
