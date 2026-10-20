@@ -2,6 +2,7 @@ package rdap
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
@@ -27,10 +28,35 @@ func New(dataDir ...string) *Provider {
 	}
 	return &Provider{
 		client: &http.Client{
-			Timeout: 12 * time.Second,
+			Timeout:   12 * time.Second,
+			Transport: newTransport(),
 		},
 		resolver: rdapbootstrap.NewDefaultResolver(dir),
 	}
+}
+
+// legacyRSASuites are AES suites with RSA key exchange (no forward secrecy).
+// RC4 and 3DES stay disabled.
+var legacyRSASuites = []uint16{
+	tls.TLS_RSA_WITH_AES_128_GCM_SHA256,
+	tls.TLS_RSA_WITH_AES_256_GCM_SHA384,
+	tls.TLS_RSA_WITH_AES_128_CBC_SHA,
+	tls.TLS_RSA_WITH_AES_256_CBC_SHA,
+}
+
+// newTransport accepts TLS 1.2 RSA key exchange suites, which Go no longer
+// offers by default. Some registries still serve RDAP with nothing else
+// (rdap.nic.cat only negotiates AES128-SHA). RDAP data is public and
+// read-only, and certificates are still verified.
+func newTransport() *http.Transport {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	suites := make([]uint16, 0, len(tls.CipherSuites())+len(legacyRSASuites))
+	for _, suite := range tls.CipherSuites() {
+		suites = append(suites, suite.ID)
+	}
+	suites = append(suites, legacyRSASuites...)
+	transport.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12, CipherSuites: suites}
+	return transport
 }
 
 func (p *Provider) Name() model.SourceName {

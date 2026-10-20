@@ -2,7 +2,9 @@ package rdap
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -142,5 +144,21 @@ func TestEndpointForTreatsBootstrapErrorAsSkip(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "RDAP bootstrap lookup failed") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestTransportOffersRSAKeyExchangeSuites(t *testing.T) {
+	// rdap.nic.cat negotiates only TLS_RSA_WITH_AES_128_CBC_SHA.
+	transport := newTransport()
+	if !slices.Contains(transport.TLSClientConfig.CipherSuites, tls.TLS_RSA_WITH_AES_128_CBC_SHA) {
+		t.Fatal("RSA key exchange suites must be offered")
+	}
+	for _, suite := range tls.InsecureCipherSuites() {
+		if (strings.Contains(suite.Name, "RC4") || strings.Contains(suite.Name, "3DES")) && slices.Contains(transport.TLSClientConfig.CipherSuites, suite.ID) {
+			t.Fatalf("insecure suite offered: %s", suite.Name)
+		}
+	}
+	if transport.TLSClientConfig.InsecureSkipVerify {
+		t.Fatal("certificates must be verified")
 	}
 }
