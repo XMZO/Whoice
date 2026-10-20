@@ -320,6 +320,34 @@ func TestApplyDoHUsesFreshTimeoutAfterSlowUDP(t *testing.T) {
 	}
 }
 
+// The pipeline wraps the DNS step in a deadline equal to dns.timeout. A slow UDP
+// resolver must not use up that budget before DoH gets a chance to answer.
+func TestApplyDoHAnswersWithinPipelineDeadlineDespiteSlowUDP(t *testing.T) {
+	server := newJSONDoHTestServer(t, "172.81.100.83")
+	oldClient := http.DefaultClient
+	http.DefaultClient = server.Client()
+	t.Cleanup(func() { http.DefaultClient = oldClient })
+
+	timeout := 200 * time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	result := &model.LookupResult{NormalizedQuery: "example.com", Type: model.QueryDomain}
+	ApplyWithResolverOptions(ctx, result, Options{
+		Timeout:      timeout,
+		DoHServers:   []string{server.URL},
+		FilterFakeIP: true,
+	}, slowEmptyResolver{})
+
+	if result.Enrichment.DNS == nil || len(result.Enrichment.DNS.A) != 1 {
+		t.Fatalf("expected the DoH answer within the pipeline deadline, got %+v; warnings %v", result.Enrichment.DNS, result.Meta.Warnings)
+	}
+	for _, warning := range result.Meta.Warnings {
+		if strings.Contains(warning, "DoH fallback failed") {
+			t.Fatalf("DoH should not fail: %s", warning)
+		}
+	}
+}
+
 func TestLookupDoHIPIsolatesSlowResolvers(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "slow") {

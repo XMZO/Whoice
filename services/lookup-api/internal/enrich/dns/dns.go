@@ -107,17 +107,23 @@ func ApplyWithResolverOptions(ctx context.Context, result *model.LookupResult, o
 	recorder := dnsResolverRecorder{}
 	resolvers := resolversForSampling(resolver)
 
+	// UDP sampling and DoH run concurrently under one budget. Running them one after
+	// the other let a slow UDP resolver use up the whole dns.timeout, so DoH always
+	// started with an expired deadline.
+	lookupCtx, cancelLookup := context.WithTimeout(ctx, opts.Timeout)
+	defer cancelLookup()
+	dohDone := make(chan dohLookupResult, 1)
+	go func() {
+		dohDone <- lookupDoHIP(lookupCtx, host, opts.DoHServers, opts.Timeout)
+	}()
+
 	var heldFakeAddrs heldFakeIPAddrs
-	udpCtx, cancelUDP := context.WithTimeout(ctx, opts.Timeout)
-	for _, sample := range sampleResolvers(udpCtx, host, resolvers) {
+	for _, sample := range sampleResolvers(lookupCtx, host, resolvers) {
 		recorder.recordResolverSample(sample)
 		mergeResolverSample(info, &heldFakeAddrs, sample, opts.FilterFakeIP)
 	}
-	cancelUDP()
 
-	dohCtx, cancelDoH := context.WithTimeout(ctx, opts.Timeout)
-	dohResult := lookupDoHIP(dohCtx, host, opts.DoHServers, opts.Timeout)
-	cancelDoH()
+	dohResult := <-dohDone
 	if dohResult.Err == nil {
 		heldFakeAddrs.merge(appendIPAddrs(info, dohResult.A, opts.FilterFakeIP))
 		heldFakeAddrs.merge(appendIPAddrs(info, dohResult.AAAA, opts.FilterFakeIP))
