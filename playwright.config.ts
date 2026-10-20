@@ -25,6 +25,7 @@ export default defineConfig({
         WHOICE_PROVIDER_TIMEOUT: "8s",
         WHOICE_WHOIS_FOLLOW_LIMIT: "0",
         WHOICE_METRICS_ENABLED: "true",
+        WHOICE_ADMIN_PASSWORD: "e2e-admin-password",
       },
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,

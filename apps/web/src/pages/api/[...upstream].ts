@@ -1,7 +1,23 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getServerAPIBase } from "@/lib/serverApi";
 
-const ALLOWED_PATHS = new Set(["health", "version", "capabilities", "metrics", "icp", "lookup/enrich", "admin/config"]);
+// Same-origin routes the browser may reach, with the methods each accepts.
+const ROUTES: Record<string, string[]> = {
+  health: ["GET"],
+  version: ["GET"],
+  capabilities: ["GET"],
+  metrics: ["GET"],
+  icp: ["GET"],
+  "lookup/enrich": ["POST"],
+  "admin/session": ["GET"],
+  "admin/login": ["POST"],
+  "admin/logout": ["POST"],
+  "admin/password": ["POST"],
+  "admin/status": ["GET"],
+  "admin/config": ["GET", "PATCH"],
+};
+
+const FORWARDED_HEADERS = ["authorization", "cookie", "x-api-key", "x-whoice-password", "x-whoice-admin", "x-request-id"];
 
 const HOP_BY_HOP_HEADERS = new Set([
   "connection",
@@ -60,19 +76,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const method = req.method || "GET";
   const parts = Array.isArray(req.query.upstream) ? req.query.upstream : [];
   const path = parts.join("/");
-  const reservedConfigEditorWrite = path === "admin/config" && method === "PATCH";
-  const lookupEnrichWrite = path === "lookup/enrich" && method === "POST";
+  const methods = ROUTES[path];
 
-  if (method !== "GET" && !reservedConfigEditorWrite && !lookupEnrichWrite) {
-    res.setHeader("Allow", path === "admin/config" ? "GET, PATCH" : path === "lookup/enrich" ? "POST" : "GET");
-    res.status(405).json({ ok: false, error: { code: "method_not_allowed", message: "Method is not allowed." } });
-    return;
-  }
-
-  if (!ALLOWED_PATHS.has(path)) {
+  if (!methods) {
     res.status(404).json({ ok: false, error: { code: "not_found", message: "API endpoint is not proxied by the web app." } });
     return;
   }
+
+  if (!methods.includes(method)) {
+    res.setHeader("Allow", methods.join(", "));
+    res.status(405).json({ ok: false, error: { code: "method_not_allowed", message: "Method is not allowed." } });
+    return;
+  }
+  const hasBody = method !== "GET";
 
   const target = new URL(`/api/${path}`, getServerAPIBase().replace(/\/$/, "") + "/");
   const query = req.url?.split("?")[1] || "";
@@ -80,26 +96,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     const headers: Record<string, string> = { accept: path === "metrics" ? "text/plain" : "application/json" };
-    for (const name of ["authorization", "cookie", "x-api-key", "x-whoice-password", "x-request-id"]) {
+    for (const name of FORWARDED_HEADERS) {
       const value = firstHeader(req.headers[name]);
       if (value) headers[name] = value;
     }
     const contentType = firstHeader(req.headers["content-type"]);
-    if (contentType && (reservedConfigEditorWrite || lookupEnrichWrite)) headers["content-type"] = contentType;
+    if (contentType && hasBody) headers["content-type"] = contentType;
     const xForwardedFor = forwardedFor(req);
     if (xForwardedFor) headers["x-forwarded-for"] = xForwardedFor;
     if (req.headers.host) headers["x-forwarded-host"] = firstHeader(req.headers.host) || "";
+    // Lets the API mark the admin session cookie Secure when the site is served over HTTPS.
+    const proto = firstHeader(req.headers["x-forwarded-proto"]) || ((req.socket as { encrypted?: boolean }).encrypted ? "https" : "");
+    if (proto) headers["x-forwarded-proto"] = proto;
 
-    // Reserved for a future Web config editor. The API currently returns 501,
-    // but the same-origin proxy path is intentionally wired now so a later UI
-    // can add restricted controls or source-file editing without reshaping URLs.
-    const upstream = await fetch(target, { method, headers, body: reservedConfigEditorWrite || lookupEnrichWrite ? JSON.stringify(req.body || {}) : undefined, cache: "no-store" });
+    const upstream = await fetch(target, { method, headers, body: hasBody ? JSON.stringify(req.body || {}) : undefined, cache: "no-store" });
     upstream.headers.forEach((value, key) => {
       const lower = key.toLowerCase();
-      if (!HOP_BY_HOP_HEADERS.has(lower) && lower !== "content-type" && lower !== "content-length") {
+      if (!HOP_BY_HOP_HEADERS.has(lower) && lower !== "content-type" && lower !== "content-length" && lower !== "set-cookie") {
         res.setHeader(key, value);
       }
     });
+    const cookies = upstream.headers.getSetCookie();
+    if (cookies.length) res.setHeader("Set-Cookie", cookies);
     const text = await upstream.text();
     sendUpstream(res, path, upstream.status, text, upstream.headers.get("content-type"));
   } catch (error) {

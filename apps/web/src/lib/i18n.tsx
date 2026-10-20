@@ -312,6 +312,7 @@ const messages = {
     listSep: ", ",
     dnsTimeout: "timed out",
     aiLabel: "AI",
+    adminPanel: "Admin",
   },
   "zh-CN": {
     docs: "文档",
@@ -611,6 +612,7 @@ const messages = {
     listSep: "、",
     dnsTimeout: "超时",
     aiLabel: "AI",
+    adminPanel: "管理",
   },
   "zh-TW": {
     docs: "文件",
@@ -910,6 +912,7 @@ const messages = {
     listSep: "、",
     dnsTimeout: "逾時",
     aiLabel: "AI",
+    adminPanel: "管理",
   },
 } as const;
 

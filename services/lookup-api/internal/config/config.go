@@ -449,136 +449,136 @@ func validateHTTPURL(value string) error {
 	return nil
 }
 
-type fileConfig struct {
-	Server        *serverConfig        `toml:"server"`
-	API           *apiConfig           `toml:"api"`
-	Auth          *authConfig          `toml:"auth"`
-	Lookup        *lookupConfig        `toml:"lookup"`
-	DNS           *dnsConfig           `toml:"dns"`
-	Enrichment    *enrichmentConfig    `toml:"enrichment"`
-	AI            *aiConfig            `toml:"ai"`
-	ICP           *icpConfig           `toml:"icp"`
-	RateLimit     *rateLimitConfig     `toml:"rate_limit"`
-	Metrics       *metricsConfig       `toml:"metrics"`
-	Observability *observabilityConfig `toml:"observability"`
-	PSL           *pslConfig           `toml:"public_suffix"`
+type FileConfig struct {
+	Server        *ServerConfig        `toml:"server" json:"server,omitempty"`
+	API           *APIConfig           `toml:"api" json:"api,omitempty"`
+	Auth          *AuthConfig          `toml:"auth" json:"auth,omitempty"`
+	Lookup        *LookupConfig        `toml:"lookup" json:"lookup,omitempty"`
+	DNS           *DNSConfig           `toml:"dns" json:"dns,omitempty"`
+	Enrichment    *EnrichmentConfig    `toml:"enrichment" json:"enrichment,omitempty"`
+	AI            *AIConfig            `toml:"ai" json:"ai,omitempty"`
+	ICP           *ICPConfig           `toml:"icp" json:"icp,omitempty"`
+	RateLimit     *RateLimitConfig     `toml:"rate_limit" json:"rate_limit,omitempty"`
+	Metrics       *MetricsConfig       `toml:"metrics" json:"metrics,omitempty"`
+	Observability *ObservabilityConfig `toml:"observability" json:"observability,omitempty"`
+	PSL           *PSLConfig           `toml:"public_suffix" json:"public_suffix,omitempty"`
 }
 
-type apiConfig struct {
-	Enabled     *bool               `toml:"enabled"`
-	IPAllowlist []string            `toml:"ip_allowlist"`
-	Endpoints   *apiEndpointsConfig `toml:"endpoints"`
+type APIConfig struct {
+	Enabled     *bool               `toml:"enabled" json:"enabled,omitempty"`
+	IPAllowlist []string            `toml:"ip_allowlist" json:"ip_allowlist,omitempty"`
+	Endpoints   *APIEndpointsConfig `toml:"endpoints" json:"endpoints,omitempty"`
 }
 
-type apiEndpointsConfig struct {
-	Health       *bool `toml:"health"`
-	Version      *bool `toml:"version"`
-	Capabilities *bool `toml:"capabilities"`
-	Metrics      *bool `toml:"metrics"`
-	Lookup       *bool `toml:"lookup"`
-	LookupAI     *bool `toml:"lookup_ai"`
-	LookupEnrich *bool `toml:"lookup_enrich"`
-	ICP          *bool `toml:"icp"`
-	Admin        *bool `toml:"admin"`
-	AdminStatus  *bool `toml:"admin_status"`
-	AdminConfig  *bool `toml:"admin_config"`
+type APIEndpointsConfig struct {
+	Health       *bool `toml:"health" json:"health,omitempty"`
+	Version      *bool `toml:"version" json:"version,omitempty"`
+	Capabilities *bool `toml:"capabilities" json:"capabilities,omitempty"`
+	Metrics      *bool `toml:"metrics" json:"metrics,omitempty"`
+	Lookup       *bool `toml:"lookup" json:"lookup,omitempty"`
+	LookupAI     *bool `toml:"lookup_ai" json:"lookup_ai,omitempty"`
+	LookupEnrich *bool `toml:"lookup_enrich" json:"lookup_enrich,omitempty"`
+	ICP          *bool `toml:"icp" json:"icp,omitempty"`
+	Admin        *bool `toml:"admin" json:"admin,omitempty"`
+	AdminStatus  *bool `toml:"admin_status" json:"admin_status,omitempty"`
+	AdminConfig  *bool `toml:"admin_config" json:"admin_config,omitempty"`
 }
 
-type serverConfig struct {
-	Addr                *string `toml:"addr"`
-	DataDir             *string `toml:"data_dir"`
-	TrustProxy          *bool   `toml:"trust_proxy"`
-	AllowCustomServers  *bool   `toml:"allow_custom_servers"`
-	AllowPrivateServers *bool   `toml:"allow_private_servers"`
+type ServerConfig struct {
+	Addr                *string `toml:"addr" json:"addr,omitempty"`
+	DataDir             *string `toml:"data_dir" json:"data_dir,omitempty"`
+	TrustProxy          *bool   `toml:"trust_proxy" json:"trust_proxy,omitempty"`
+	AllowCustomServers  *bool   `toml:"allow_custom_servers" json:"allow_custom_servers,omitempty"`
+	AllowPrivateServers *bool   `toml:"allow_private_servers" json:"allow_private_servers,omitempty"`
 }
 
-type authConfig struct {
-	Mode         *string  `toml:"mode"`
-	SitePassword *string  `toml:"site_password"`
-	APITokens    []string `toml:"api_tokens"`
+type AuthConfig struct {
+	Mode         *string  `toml:"mode" json:"mode,omitempty"`
+	SitePassword *string  `toml:"site_password" json:"site_password,omitempty"`
+	APITokens    []string `toml:"api_tokens" json:"api_tokens,omitempty"`
 }
 
-type lookupConfig struct {
-	Timeout          *string `toml:"timeout"`
-	ProviderTimeout  *string `toml:"provider_timeout"`
-	RDAPEnabled      *bool   `toml:"rdap_enabled"`
-	WHOISEnabled     *bool   `toml:"whois_enabled"`
-	WHOISWebEnabled  *bool   `toml:"whois_web_enabled"`
-	WHOISFollowLimit *int    `toml:"whois_follow_limit"`
-	FastResponse     *bool   `toml:"fast_response"`
+type LookupConfig struct {
+	Timeout          *string `toml:"timeout" json:"timeout,omitempty"`
+	ProviderTimeout  *string `toml:"provider_timeout" json:"provider_timeout,omitempty"`
+	RDAPEnabled      *bool   `toml:"rdap_enabled" json:"rdap_enabled,omitempty"`
+	WHOISEnabled     *bool   `toml:"whois_enabled" json:"whois_enabled,omitempty"`
+	WHOISWebEnabled  *bool   `toml:"whois_web_enabled" json:"whois_web_enabled,omitempty"`
+	WHOISFollowLimit *int    `toml:"whois_follow_limit" json:"whois_follow_limit,omitempty"`
+	FastResponse     *bool   `toml:"fast_response" json:"fast_response,omitempty"`
 }
 
-type dnsConfig struct {
-	Enabled       *bool    `toml:"enabled"`
-	Timeout       *string  `toml:"timeout"`
-	IPv4Resolvers []string `toml:"ipv4_resolvers"`
-	IPv6Resolvers []string `toml:"ipv6_resolvers"`
-	DoHResolvers  []string `toml:"doh_resolvers"`
-	FilterFakeIP  *bool    `toml:"filter_fake_ip"`
-	DNSVizEnabled *bool    `toml:"dnsviz_enabled"`
+type DNSConfig struct {
+	Enabled       *bool    `toml:"enabled" json:"enabled,omitempty"`
+	Timeout       *string  `toml:"timeout" json:"timeout,omitempty"`
+	IPv4Resolvers []string `toml:"ipv4_resolvers" json:"ipv4_resolvers,omitempty"`
+	IPv6Resolvers []string `toml:"ipv6_resolvers" json:"ipv6_resolvers,omitempty"`
+	DoHResolvers  []string `toml:"doh_resolvers" json:"doh_resolvers,omitempty"`
+	FilterFakeIP  *bool    `toml:"filter_fake_ip" json:"filter_fake_ip,omitempty"`
+	DNSVizEnabled *bool    `toml:"dnsviz_enabled" json:"dnsviz_enabled,omitempty"`
 }
 
-type enrichmentConfig struct {
-	EPP       *bool `toml:"epp"`
-	Brands    *bool `toml:"brands"`
-	Registrar *bool `toml:"registrar"`
-	Pricing   *bool `toml:"pricing"`
-	Moz       *bool `toml:"moz"`
+type EnrichmentConfig struct {
+	EPP       *bool `toml:"epp" json:"epp,omitempty"`
+	Brands    *bool `toml:"brands" json:"brands,omitempty"`
+	Registrar *bool `toml:"registrar" json:"registrar,omitempty"`
+	Pricing   *bool `toml:"pricing" json:"pricing,omitempty"`
+	Moz       *bool `toml:"moz" json:"moz,omitempty"`
 }
 
-type aiConfig struct {
-	Enabled         *bool    `toml:"enabled"`
-	Provider        *string  `toml:"provider"`
-	BaseURL         *string  `toml:"base_url"`
-	APIKey          *string  `toml:"api_key"`
-	Model           *string  `toml:"model"`
-	Timeout         *string  `toml:"timeout"`
-	CacheTTL        *string  `toml:"cache_ttl"`
-	MaxInputChars   *int     `toml:"max_input_chars"`
-	MinConfidence   *float64 `toml:"min_confidence"`
-	Temperature     *float64 `toml:"temperature"`
-	MaxOutputTokens *int     `toml:"max_output_tokens"`
-	MaxAttempts     *int     `toml:"max_attempts"`
-	IgnoreSuffixes  []string `toml:"ignore_suffixes"`
-	IgnoreRegex     []string `toml:"ignore_regex"`
-	Prompt          *string  `toml:"prompt"`
+type AIConfig struct {
+	Enabled         *bool    `toml:"enabled" json:"enabled,omitempty"`
+	Provider        *string  `toml:"provider" json:"provider,omitempty"`
+	BaseURL         *string  `toml:"base_url" json:"base_url,omitempty"`
+	APIKey          *string  `toml:"api_key" json:"api_key,omitempty"`
+	Model           *string  `toml:"model" json:"model,omitempty"`
+	Timeout         *string  `toml:"timeout" json:"timeout,omitempty"`
+	CacheTTL        *string  `toml:"cache_ttl" json:"cache_ttl,omitempty"`
+	MaxInputChars   *int     `toml:"max_input_chars" json:"max_input_chars,omitempty"`
+	MinConfidence   *float64 `toml:"min_confidence" json:"min_confidence,omitempty"`
+	Temperature     *float64 `toml:"temperature" json:"temperature,omitempty"`
+	MaxOutputTokens *int     `toml:"max_output_tokens" json:"max_output_tokens,omitempty"`
+	MaxAttempts     *int     `toml:"max_attempts" json:"max_attempts,omitempty"`
+	IgnoreSuffixes  []string `toml:"ignore_suffixes" json:"ignore_suffixes,omitempty"`
+	IgnoreRegex     []string `toml:"ignore_regex" json:"ignore_regex,omitempty"`
+	Prompt          *string  `toml:"prompt" json:"prompt,omitempty"`
 }
 
-type icpConfig struct {
-	Enabled          *bool    `toml:"enabled"`
-	AutoQuery        *bool    `toml:"auto_query"`
-	Timeout          *string  `toml:"timeout"`
-	CacheTTL         *string  `toml:"cache_ttl"`
-	NegativeCacheTTL *string  `toml:"negative_cache_ttl"`
-	ErrorCacheTTL    *string  `toml:"error_cache_ttl"`
-	BaseURL          *string  `toml:"base_url"`
-	UpstreamURL      *string  `toml:"upstream_url"`
-	CaptchaEnabled   *bool    `toml:"captcha_enabled"`
-	CaptchaRetries   *int     `toml:"captcha_retries"`
-	Sign             *string  `toml:"sign"`
-	PageSize         *int     `toml:"page_size"`
-	Blocklist        []string `toml:"blocklist"`
+type ICPConfig struct {
+	Enabled          *bool    `toml:"enabled" json:"enabled,omitempty"`
+	AutoQuery        *bool    `toml:"auto_query" json:"auto_query,omitempty"`
+	Timeout          *string  `toml:"timeout" json:"timeout,omitempty"`
+	CacheTTL         *string  `toml:"cache_ttl" json:"cache_ttl,omitempty"`
+	NegativeCacheTTL *string  `toml:"negative_cache_ttl" json:"negative_cache_ttl,omitempty"`
+	ErrorCacheTTL    *string  `toml:"error_cache_ttl" json:"error_cache_ttl,omitempty"`
+	BaseURL          *string  `toml:"base_url" json:"base_url,omitempty"`
+	UpstreamURL      *string  `toml:"upstream_url" json:"upstream_url,omitempty"`
+	CaptchaEnabled   *bool    `toml:"captcha_enabled" json:"captcha_enabled,omitempty"`
+	CaptchaRetries   *int     `toml:"captcha_retries" json:"captcha_retries,omitempty"`
+	Sign             *string  `toml:"sign" json:"sign,omitempty"`
+	PageSize         *int     `toml:"page_size" json:"page_size,omitempty"`
+	Blocklist        []string `toml:"blocklist" json:"blocklist,omitempty"`
 }
 
-type rateLimitConfig struct {
-	Enabled *bool   `toml:"enabled"`
-	Anon    *string `toml:"anon"`
+type RateLimitConfig struct {
+	Enabled *bool   `toml:"enabled" json:"enabled,omitempty"`
+	Anon    *string `toml:"anon" json:"anon,omitempty"`
 }
 
-type metricsConfig struct {
-	Enabled *bool `toml:"enabled"`
+type MetricsConfig struct {
+	Enabled *bool `toml:"enabled" json:"enabled,omitempty"`
 }
 
-type observabilityConfig struct {
-	Reporter   *string `toml:"reporter"`
-	WebhookURL *string `toml:"webhook_url"`
-	Timeout    *string `toml:"timeout"`
+type ObservabilityConfig struct {
+	Reporter   *string `toml:"reporter" json:"reporter,omitempty"`
+	WebhookURL *string `toml:"webhook_url" json:"webhook_url,omitempty"`
+	Timeout    *string `toml:"timeout" json:"timeout,omitempty"`
 }
 
-type pslConfig struct {
-	AutoUpdate    *bool   `toml:"auto_update"`
-	URL           *string `toml:"url"`
-	UpdateTimeout *string `toml:"update_timeout"`
+type PSLConfig struct {
+	AutoUpdate    *bool   `toml:"auto_update" json:"auto_update,omitempty"`
+	URL           *string `toml:"url" json:"url,omitempty"`
+	UpdateTimeout *string `toml:"update_timeout" json:"update_timeout,omitempty"`
 }
 
 func configPathFromEnv(dataDir string) (string, bool) {
@@ -617,14 +617,14 @@ func applyFile(cfg *Config, path string) error {
 		return fmt.Errorf("read config file %s: %w", path, err)
 	}
 	body = bytes.TrimPrefix(body, []byte{0xef, 0xbb, 0xbf})
-	var file fileConfig
+	var file FileConfig
 	if err := unmarshalConfigBody(body, &file); err != nil {
 		return fmt.Errorf("parse config file %s: %w", path, err)
 	}
-	return file.apply(cfg)
+	return file.Apply(cfg)
 }
 
-func unmarshalConfigBody(body []byte, file *fileConfig) error {
+func unmarshalConfigBody(body []byte, file *FileConfig) error {
 	if err := toml.Unmarshal(body, file); err == nil {
 		return nil
 	} else {
@@ -664,7 +664,8 @@ func decodeBase64Config(body []byte) ([]byte, error) {
 	return nil, errors.New("invalid base64 config")
 }
 
-func (f fileConfig) apply(cfg *Config) error {
+// Apply copies every field set in f onto cfg. Unset (nil) fields leave cfg unchanged.
+func (f FileConfig) Apply(cfg *Config) error {
 	if f.Server != nil {
 		setString(&cfg.Addr, f.Server.Addr)
 		setString(&cfg.DataDir, f.Server.DataDir)

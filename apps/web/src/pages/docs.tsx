@@ -31,6 +31,7 @@ export default function DocsPage() {
           <div className="nav-links">
             <Link href="/docs">{t("docs")}</Link>
             <Link href="/status">{t("status")}</Link>
+            <Link href="/admin">{t("adminPanel")}</Link>
             <AppControls />
           </div>
         </nav>

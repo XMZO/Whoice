@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/xmzo/whoice/services/lookup-api/internal/admin"
 	"github.com/xmzo/whoice/services/lookup-api/internal/auth"
 	"github.com/xmzo/whoice/services/lookup-api/internal/config"
 	"github.com/xmzo/whoice/services/lookup-api/internal/icp"
@@ -40,6 +41,7 @@ const (
 	endpointLookupAI     apiEndpoint = "lookup_ai"
 	endpointLookupEnrich apiEndpoint = "lookup_enrich"
 	endpointICP          apiEndpoint = "icp"
+	endpointAdmin        apiEndpoint = "admin"
 	endpointAdminStatus  apiEndpoint = "admin_status"
 	endpointAdminConfig  apiEndpoint = "admin_config"
 )
@@ -57,6 +59,8 @@ type Server struct {
 	reporter observability.Reporter
 	mux      *http.ServeMux
 	config   model.ConfigStatus
+	admin    *admin.Manager
+	reload   func(time.Time) error
 }
 
 func New(cfg config.Config, service *lookup.Service, plugins []model.PluginInfo, stats *observability.Stats) *Server {
@@ -279,9 +283,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/lookup/ai", s.withLookupGuards(endpointLookupAI, s.handleLookupAI))
 	s.mux.HandleFunc("POST /api/lookup/enrich", s.withLookupGuards(endpointLookupEnrich, s.handleLookupEnrich))
 	s.mux.HandleFunc("GET /api/icp", s.withLookupGuards(endpointICP, s.handleICP))
-	s.mux.HandleFunc("GET /api/admin/status", s.withAdminGuard(endpointAdminStatus, s.handleAdminStatus))
-	s.mux.HandleFunc("GET /api/admin/config", s.withAdminGuard(endpointAdminConfig, s.handleAdminConfig))
-	s.mux.HandleFunc("PATCH /api/admin/config", s.withAdminGuard(endpointAdminConfig, s.handleAdminConfigUpdate))
+	s.adminRoutes()
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -337,62 +339,6 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, _ = w.Write([]byte(s.stats.Prometheus()))
-}
-
-func (s *Server) handleAdminStatus(w http.ResponseWriter, r *http.Request) {
-	snap := s.snapshotFromRequest(r)
-	writeJSON(w, http.StatusOK, map[string]any{
-		"ok":           true,
-		"version":      Version,
-		"capabilities": snap.cfg.Capabilities(),
-		"plugins":      snap.plugins,
-		"config":       snap.config,
-		"stats":        s.stats.Snapshot(),
-	})
-}
-
-func (s *Server) handleAdminConfig(w http.ResponseWriter, r *http.Request) {
-	snap := s.snapshotFromRequest(r)
-	writeJSON(w, http.StatusOK, map[string]any{
-		"ok":     true,
-		"config": snap.config,
-		"editor": configEditorStatus(snap),
-	})
-}
-
-func (s *Server) handleAdminConfigUpdate(w http.ResponseWriter, r *http.Request) {
-	snap := s.snapshotFromRequest(r)
-	// Intentionally reserved, not implemented yet. Future Web config editing
-	// should plug in here after adding a dedicated admin permission model,
-	// CSRF protection for browser sessions, source validation/diff preview,
-	// backup + atomic write, and reuse of the hot-reload validator before
-	// syncing changes back to snap.cfg.ConfigPath.
-	writeJSON(w, http.StatusNotImplemented, model.APIResponse{
-		OK: false,
-		Error: &model.APIError{
-			Code:    "config_editor_reserved",
-			Message: "Config editing is reserved for a future Web admin UI and is not enabled in this build.",
-		},
-		Config: configStatusPtr(snap.config),
-	})
-}
-
-func configEditorStatus(snap serverSnapshot) model.ConfigEditorStatus {
-	path := strings.TrimSpace(snap.cfg.ConfigPath)
-	status := model.ConfigEditorStatus{
-		Status:              "reserved",
-		Path:                path,
-		Format:              "toml-or-base64-toml",
-		Writable:            false,
-		SourceReadable:      false,
-		Surfaces:            []string{"restricted-controls", "source-file"},
-		SupportedOperations: []string{"inspect-capabilities"},
-		Reason:              "Reserved for a future Web admin UI. The API does not read or write the config source through HTTP yet.",
-	}
-	if path == "" {
-		status.Reason = "No config file path is active, so Web config editing cannot be enabled."
-	}
-	return status
 }
 
 func (s *Server) handleLookup(w http.ResponseWriter, r *http.Request) {
@@ -903,29 +849,6 @@ func (s *Server) withLookupGuards(endpoint apiEndpoint, next http.HandlerFunc) h
 	}
 }
 
-func (s *Server) withAdminGuard(endpoint apiEndpoint, next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		snap := s.snapshot()
-		if err := apiEndpointAllowed(endpoint, r, snap); err != nil {
-			writeAPIAccessError(w, err)
-			return
-		}
-		if snap.auth != nil {
-			if err := snap.auth.Authenticate(r); err != nil {
-				writeJSON(w, http.StatusUnauthorized, model.APIResponse{
-					OK: false,
-					Error: &model.APIError{
-						Code:    "unauthorized",
-						Message: "Authentication is required.",
-					},
-				})
-				return
-			}
-		}
-		next(w, r.WithContext(context.WithValue(r.Context(), snapshotContextKey{}, snap)))
-	}
-}
-
 type apiAccessError struct {
 	status  int
 	code    string
@@ -981,6 +904,8 @@ func endpointEnabled(endpoint apiEndpoint, cfg config.Config) bool {
 		return cfg.APILookupEnrichEnabled
 	case endpointICP:
 		return cfg.APIICPEnabled
+	case endpointAdmin:
+		return cfg.APIAdminEnabled
 	case endpointAdminStatus:
 		return cfg.APIAdminEnabled && cfg.APIAdminStatusEnabled
 	case endpointAdminConfig:

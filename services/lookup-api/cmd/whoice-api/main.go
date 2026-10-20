@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/xmzo/whoice/services/lookup-api/internal/admin"
 	"github.com/xmzo/whoice/services/lookup-api/internal/config"
 	"github.com/xmzo/whoice/services/lookup-api/internal/data/publicsuffixes"
 	"github.com/xmzo/whoice/services/lookup-api/internal/httpapi"
@@ -20,6 +22,10 @@ import (
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
 		healthcheck()
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "reset-admin-password" {
+		resetAdminPassword()
 		return
 	}
 
@@ -48,11 +54,36 @@ func main() {
 	if err != nil {
 		log.Fatalf("build runtime: %v", err)
 	}
+	adminManager, generated, err := admin.Open(cfg.DataDir)
+	if err != nil {
+		log.Fatalf("admin credentials: %v", err)
+	}
+	server.SetAdmin(adminManager)
+	if generated != "" {
+		log.Printf("admin panel password generated: %s (sign in at /admin and change it there; reset with `whoice-api reset-admin-password`)", generated)
+	} else if adminManager.PasswordFromEnv() {
+		log.Printf("admin panel password is set by %s", admin.PasswordEnv)
+	}
 	runtimecfg.StartConfigWatcher(context.Background(), server, runtimecfg.Builder{Addr: cfg.Addr, ConfigPath: cfg.ConfigPath}, runtimecfg.DefaultWatchInterval)
 
 	log.Printf("whoice lookup-api listening on %s", cfg.Addr)
 	if err := http.ListenAndServe(cfg.Addr, server.Handler()); err != nil {
 		log.Fatal(err)
+	}
+}
+
+func resetAdminPassword() {
+	cfg, err := config.LoadWithError()
+	if err != nil {
+		log.Fatalf("load config: %v", err)
+	}
+	password, err := admin.ResetPassword(cfg.DataDir)
+	if err != nil {
+		log.Fatalf("reset admin password: %v", err)
+	}
+	fmt.Printf("New admin panel password: %s\n", password)
+	if os.Getenv(admin.PasswordEnv) != "" {
+		fmt.Printf("Note: %s is set and takes priority over the stored password.\n", admin.PasswordEnv)
 	}
 }
 

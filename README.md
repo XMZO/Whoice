@@ -7,6 +7,7 @@ Whoice is a self-hosted WHOIS and RDAP lookup service for domains, IP addresses,
 - **Lookup**: RDAP and WHOIS queried in parallel and merged, with an optional WHOIS Web fallback, referral following, non-UTF-8 decoding, and TLD-specific parsers for more than 30 registries.
 - **Enrichment**: multi-resolver DNS (UDP and DoH, compared per answer), EPP lock status, DNSSEC, ICANN registrar metadata, registrar and nameserver brands, DNSViz links, registration pricing, and Moz scores.
 - **Optional modules**: ICP filing lookup, AI-assisted parsing of non-standard WHOIS records, password or token authentication, rate limiting, and Prometheus metrics.
+- **Admin panel**: `/admin`, protected by a single password, edits every runtime setting and applies it immediately.
 - **Web UI**: conclusion-first result page with a raw-response viewer, three languages (English, 简体中文, 繁體中文), light and dark themes, keyboard shortcuts, JSON and image export, and a runtime `/status` page.
 - **Freshness**: lookup results are never cached. Only slow-changing reference data (bootstrap files, server maps, ICP results, AI analysis) is reused.
 
@@ -45,9 +46,23 @@ docker compose pull && docker compose up -d
 
 **IPv6.** The compose network `whoice` has IPv6 enabled, which requires IPv6 support in the Docker daemon (`"ipv6": true` in `daemon.json`). If the daemon has no IPv6, either enable it and recreate the network (`docker compose down && docker network rm whoice; docker compose up -d`), or disable direct IPv6 DNS probes with `ipv6_resolvers = []` under `[dns]`. DoH still returns AAAA records over IPv4.
 
+## Admin Panel
+
+Open `/admin` and sign in with the admin password. On first start the API generates one and prints it once:
+
+```sh
+docker compose logs lookup-api | grep "admin panel password"
+```
+
+The panel shows service status and edits every setting described below except the startup-only `server.addr` and `server.data_dir`. Saved changes are validated, written back to `data/whoice.toml` (the previous file is kept as `whoice.toml.bak`), and applied immediately. Change the password in the panel, set it with `WHOICE_ADMIN_PASSWORD`, or reset it:
+
+```sh
+docker compose exec lookup-api /app/whoice-api reset-admin-password
+```
+
 ## Configuration
 
-Settings are read from `data/whoice.toml`. The generated file documents every option inline. Changes are hot-reloaded; only `server.addr` requires a restart. If an edit is invalid, the API keeps the last valid configuration and reports the error on `/status` and in lookup warnings. The file may also contain base64-encoded TOML.
+Settings can be changed in the admin panel or directly in `data/whoice.toml`. The generated file documents every option inline. Changes are hot-reloaded; only `server.addr` requires a restart. If an edit is invalid, the API keeps the last valid configuration and reports the error on `/status` and in lookup warnings. The file may also contain base64-encoded TOML.
 
 | Section | Controls |
 |---|---|
@@ -117,7 +132,7 @@ When no RDAP server is known for a suffix, the API falls back to the live IANA b
 | `GET /api/icp?domain=` | ICP filing lookup |
 | `GET /api/health`, `/api/version`, `/api/capabilities` | Health, version and plugins, feature flags |
 | `GET /api/metrics` | Prometheus metrics |
-| `GET /api/admin/status` | Runtime statistics (requires authentication) |
+| `/api/admin/*` | Admin panel API (requires the admin password or session) |
 
 Lookup parameters: `query` (domain, IP, CIDR, ASN, or URL), `rdap=1` or `whois=1` to use a single source, `exact_domain=1` to skip registrable-domain reduction, and `rdap_server`, `whois_server`, `whois_follow` for custom servers.
 

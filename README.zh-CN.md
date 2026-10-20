@@ -7,6 +7,7 @@ Whoice 是可自托管的 WHOIS / RDAP 查询服务，支持域名、IP 地址�
 - **查询**：并行查询 RDAP 与 WHOIS 并合并结果；支持 WHOIS Web 备用来源、referral 跟随、非 UTF-8 解码，内置 30 多个注册局的专用解析器。
 - **补充信息**：多解析器 DNS（UDP 与 DoH，逐条记录比对）、EPP 锁定状态、DNSSEC、ICANN 注册商信息、注册商与 NS 服务商识别、DNSViz 链接、注册价格、Moz 评分。
 - **可选模块**：ICP 备案查询、AI 解析非标准 WHOIS、密码或 Token 鉴权、限流、Prometheus 指标。
+- **管理面板**：`/admin`，单密码登录，可在网页上修改全部运行配置并立即生效。
 - **Web 界面**：结论优先的结果页与原文查看器，支持简体中文、繁體中文、English，浅色与深色主题，快捷键，JSON 与图片导出，以及运行状态页 `/status`。
 - **实时性**：查询结果从不缓存，只复用变化缓慢的参考数据（bootstrap 文件、服务器映射、ICP 结果、AI 分析）。
 
@@ -45,9 +46,23 @@ docker compose pull && docker compose up -d
 
 **IPv6**：compose 网络 `whoice` 开启了 IPv6，需要 Docker daemon 支持 IPv6（`daemon.json` 中 `"ipv6": true`）。如果 daemon 未开启 IPv6，可以开启后重建网络（`docker compose down && docker network rm whoice; docker compose up -d`），或在 `[dns]` 中设置 `ipv6_resolvers = []` 关闭 IPv6 直连探测。DoH 仍会通过 IPv4 返回 AAAA 记录。
 
+## 管理面板
+
+打开 `/admin`，用管理密码登录。API 首次启动时会随机生成密码，并在日志中打印一次：
+
+```sh
+docker compose logs lookup-api | grep "admin panel password"
+```
+
+面板显示服务状态，并可修改下文所有配置项（启动期配置 `server.addr`、`server.data_dir` 除外）。保存时会先校验，再写回 `data/whoice.toml`（旧文件保留为 `whoice.toml.bak`），并立即生效。密码可以在面板中修改，也可以用环境变量 `WHOICE_ADMIN_PASSWORD` 指定，或通过以下命令重置：
+
+```sh
+docker compose exec lookup-api /app/whoice-api reset-admin-password
+```
+
 ## 配置
 
-配置文件为 `data/whoice.toml`，自动生成的文件对每个选项都有注释。修改后自动热加载，只有 `server.addr` 需要重启。配置有误时，API 继续使用上一份有效配置，并在 `/status` 和查询警告中提示错误。该文件也可以是 base64 编码的 TOML。
+配置可以在管理面板中修改，也可以直接编辑 `data/whoice.toml`。自动生成的文件对每个选项都有注释。修改后自动热加载，只有 `server.addr` 需要重启。配置有误时，API 继续使用上一份有效配置，并在 `/status` 和查询警告中提示错误。该文件也可以是 base64 编码的 TOML。
 
 | 配置段 | 内容 |
 |---|---|
@@ -117,7 +132,7 @@ model = "..."
 | `GET /api/icp?domain=` | ICP 备案查询 |
 | `GET /api/health`、`/api/version`、`/api/capabilities` | 健康检查、版本与插件、功能开关 |
 | `GET /api/metrics` | Prometheus 指标 |
-| `GET /api/admin/status` | 运行统计（需鉴权） |
+| `/api/admin/*` | 管理面板接口（需管理密码或登录会话） |
 
 查询参数：`query`（域名、IP、CIDR、ASN 或 URL）；`rdap=1` 或 `whois=1` 只使用单一来源；`exact_domain=1` 不缩减到可注册域；`rdap_server`、`whois_server`、`whois_follow` 用于自定义服务器。
 

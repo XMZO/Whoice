@@ -265,6 +265,7 @@ export default function HomePage() {
               <Link href="/docs">{t("docs")}</Link>
               <Link href="/status">{t("status")}</Link>
               <a href="https://github.com/XMZO/Whoice" target="_blank" rel="noreferrer">GitHub</a>
+              <Link href="/admin">{t("adminPanel")}</Link>
               <AppControls />
             </nav>
             <a className="home-github-mobile" href="https://github.com/XMZO/Whoice" target="_blank" rel="noreferrer">GitHub</a>

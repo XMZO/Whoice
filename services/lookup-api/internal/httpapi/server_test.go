@@ -103,61 +103,6 @@ func TestMetricsEndpointCanBeDisabled(t *testing.T) {
 	}
 }
 
-func TestAdminConfigEditorIsReservedAndDoesNotExposeSource(t *testing.T) {
-	configPath := filepath.Join(t.TempDir(), "whoice.toml")
-	if err := os.WriteFile(configPath, []byte("secret = \"do-not-leak\"\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	cfg := config.Default()
-	cfg.ConfigPath = configPath
-	cfg.AuthMode = "token"
-	cfg.APITokens = []string{"admin-token"}
-	cfg.MetricsEnabled = true
-	server := New(cfg, nil, nil, observability.NewStats())
-
-	unauthorized := httptest.NewRecorder()
-	server.Handler().ServeHTTP(unauthorized, httptest.NewRequest(http.MethodGet, "/api/admin/config", nil))
-	if unauthorized.Code != http.StatusUnauthorized {
-		t.Fatalf("unauthorized status: got %d want 401", unauthorized.Code)
-	}
-
-	request := httptest.NewRequest(http.MethodGet, "/api/admin/config", nil)
-	request.Header.Set("Authorization", "Bearer admin-token")
-	response := httptest.NewRecorder()
-	server.Handler().ServeHTTP(response, request)
-	if response.Code != http.StatusOK {
-		t.Fatalf("status: got %d want 200, body=%s", response.Code, response.Body.String())
-	}
-	if strings.Contains(response.Body.String(), "do-not-leak") {
-		t.Fatalf("config source leaked in response: %s", response.Body.String())
-	}
-	var payload struct {
-		OK     bool                     `json:"ok"`
-		Config model.ConfigStatus       `json:"config"`
-		Editor model.ConfigEditorStatus `json:"editor"`
-	}
-	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
-		t.Fatal(err)
-	}
-	if !payload.OK || payload.Editor.Status != "reserved" || payload.Editor.Writable || payload.Editor.SourceReadable {
-		t.Fatalf("unexpected editor payload: %#v", payload)
-	}
-	if payload.Editor.Path != configPath || payload.Editor.Format != "toml-or-base64-toml" {
-		t.Fatalf("editor metadata: %#v", payload.Editor)
-	}
-
-	request = httptest.NewRequest(http.MethodPatch, "/api/admin/config", strings.NewReader(`{"source":"[metrics]\nenabled=false"}`))
-	request.Header.Set("Authorization", "Bearer admin-token")
-	response = httptest.NewRecorder()
-	server.Handler().ServeHTTP(response, request)
-	if response.Code != http.StatusNotImplemented {
-		t.Fatalf("patch status: got %d want 501, body=%s", response.Code, response.Body.String())
-	}
-	if !strings.Contains(response.Body.String(), "config_editor_reserved") {
-		t.Fatalf("patch body: %s", response.Body.String())
-	}
-}
-
 func TestLookupRequiresAuthWhenEnabled(t *testing.T) {
 	cfg := runtimeFixtureConfig(false, true, false)
 	cfg.AuthMode = "password"

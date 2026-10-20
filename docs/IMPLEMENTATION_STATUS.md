@@ -60,7 +60,7 @@ This audit compares the current repository with `PLAN.md`. The goal is to keep t
 ## Remaining Work Before Calling The Whole Plan Complete
 
 - Ongoing compatibility maintenance: add more TLD parsers and WHOIS Web modules only when backed by real samples and fixtures.
-- Ongoing production maintenance: harden authenticated admin surfaces once a safe browser auth flow is chosen. `/api/admin/config` is intentionally reserved and does not write config files yet.
+- Web admin panel at `/admin`: single-password sign-in with signed session cookies, runtime overview, and editing of every `whoice.toml` setting except startup-only keys. Saves are validated, written atomically with a `.bak` backup, and applied immediately.
 - Ongoing production maintenance: continue release, deployment, rollback, browser, and security hardening as real deployments shake out edge cases.
 - Optional future integrations: add external Pricing/Moz/importer jobs only if stable providers are chosen. Current Phase 4 local dataset enrichers are complete and do not call external APIs during lookup; pricing source swaps should plug into `internal/enrich/pricing` without adding provider-specific public config fields.
 
@@ -69,6 +69,6 @@ This audit compares the current repository with `PLAN.md`. The goal is to keep t
 The current repository now has Phase 0 architecture skeleton, Phase 1 core lookup MVP, Phase 2 experience layer, Phase 3 compatibility enhancement, Phase 4 optional enhancement, and Phase 5 productionization completed to their planned stage bars. Future work should move in this order:
 
 1. Add compatibility extensions from `unofficial/` references only when backed by real samples and fixtures, rewriting the behavior into Whoice's parser/provider architecture instead of copying implementation code.
-2. Expand the authenticated admin UI once a safe browser auth flow is chosen.
+2. Extend the admin panel with data snapshot management (brand map, pricing, registrar overrides).
 3. Continue production deployment/security documentation and release rollback hardening as deployments mature.
 4. Add external enrichment importers only if stable providers are chosen.

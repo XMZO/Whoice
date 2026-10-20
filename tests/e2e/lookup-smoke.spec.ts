@@ -748,3 +748,30 @@ test("mobile deferred enrichment keeps toolbox slots stable", async ({ page }, t
   expect(verticalOverflow).toBeLessThanOrEqual(2);
   await expect(page.getByText("...", { exact: true })).toHaveCount(0);
 });
+
+test("admin panel signs in, saves a setting, and fits one screen", async ({ page }, testInfo) => {
+  await page.goto("/admin");
+  await page.getByLabel("Password").fill("e2e-admin-password");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Lookup", exact: true }).click();
+  const providerTimeout = page.getByLabel("Per-source timeout");
+  const original = await providerTimeout.inputValue();
+  await providerTimeout.fill("9s");
+  await expect(page.getByText("1 unsaved")).toBeVisible();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByText("Saved and applied")).toBeVisible();
+
+  await page.reload();
+  await page.getByRole("button", { name: "Lookup", exact: true }).click();
+  await expect(page.getByLabel("Per-source timeout")).toHaveValue("9s");
+  await page.getByLabel("Per-source timeout").fill(original);
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByText("Saved and applied")).toBeVisible();
+
+  if (testInfo.project.name === "mobile-chrome") {
+    const verticalOverflow = await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight);
+    expect(verticalOverflow).toBeLessThanOrEqual(2);
+  }
+});

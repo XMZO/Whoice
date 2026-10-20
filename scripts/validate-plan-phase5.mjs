@@ -61,11 +61,13 @@ async function checkObservability() {
     "GET /api/version",
     "GET /api/capabilities",
     "GET /api/metrics",
-    "GET /api/admin/status",
     "X-Trace-ID",
-    "handleAdminStatus",
     "ConfigStatus",
     "go snap.reporter.ReportLookup",
+  ]);
+  await requireText(section, "services/lookup-api/internal/httpapi/admin.go", [
+    "GET /api/admin/status",
+    "handleAdminStatus",
   ]);
   await requireText(section, "services/lookup-api/internal/observability/stats.go", [
     "whoice_lookup_requests_total",

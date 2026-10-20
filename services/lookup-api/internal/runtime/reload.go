@@ -64,6 +64,13 @@ func StartConfigWatcher(ctx context.Context, srv *httpapi.Server, builder Builde
 	if interval <= 0 {
 		interval = DefaultWatchInterval
 	}
+	srv.SetConfigReloader(func(at time.Time) error {
+		snapshot, err := builder.Build()
+		if err != nil {
+			return err
+		}
+		return srv.ApplyRuntime(snapshot.Config, snapshot.Service, snapshot.Plugins, at)
+	})
 	go watch(ctx, path, interval, func(attemptedAt time.Time) {
 		time.Sleep(reloadDebounce)
 		snapshot, err := builder.Build()
