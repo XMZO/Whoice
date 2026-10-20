@@ -875,7 +875,7 @@ export function NetworkSection({ result, showHeader = true }: { result: LookupRe
 
 /* ---------- Sources ---------- */
 
-const rawLabelKey = { rdap: "rawRdap", whois: "rawWhois", whoisWeb: "rawWhois" } as const;
+const rawLabelKey: Partial<Record<string, "rawRdap" | "rawWhois">> = { rdap: "rawRdap", whois: "rawWhois", whoisWeb: "rawWhois" };
 
 export function SourcesSection({
   result,
@@ -894,8 +894,8 @@ export function SourcesSection({
   const ordered = providers.slice().sort((a, b) => (a.source === primary ? -1 : b.source === primary ? 1 : 0));
   const listed = new Set(providers.map((item) => item.source));
   const used = Array.isArray(result.source?.used) ? result.source.used : [];
-  const rawFor = (source: string) => (source === "rdap" ? result.raw?.rdap : source === "whois" ? result.raw?.whois : source === "whoisWeb" ? result.raw?.whoisWeb : undefined);
-  const missing = (["rdap", "whois", "whoisWeb"] as const).filter((source) => !listed.has(source) && (used.includes(source) || rawFor(source)));
+  const rawFor = (source: string) => (source === "rdap" ? result.raw?.rdap : source === "whois" ? result.raw?.whois : source === "whoisWeb" ? result.raw?.whoisWeb : source === "dns" ? result.raw?.dns : undefined);
+  const missing = (["rdap", "whois", "whoisWeb", "dns"] as const).filter((source) => !listed.has(source) && (used.includes(source) || rawFor(source)));
   const unused = (["rdap", "whois", "whoisWeb"] as const).filter((source) => !listed.has(source) && !used.includes(source) && !rawFor(source));
   const registry = result.registry || {};
   return (
@@ -925,13 +925,8 @@ export function SourcesSection({
                 <span className="trace-server">{displayServer(provider.server) || "—"}</span>
                 <span className="trace-meta">{provider.status === "error" ? `${t("providerFailed")} · ${provider.error || meta}` : provider.status === "skipped" ? provider.error || t("notUsed") : meta}</span>
               </span>
-              {raw && provider.source !== "whoisWeb" ? (
-                <button type="button" className="btn btn-sm" onClick={() => onOpenRaw(provider.source as RawTab)} title={t(rawLabelKey[provider.source])}>
-                  <FileIcon size={13} className="btn-icon" />
-                  {t("viewRaw")}
-                </button>
-              ) : raw ? (
-                <button type="button" className="btn btn-sm" onClick={() => onOpenRaw("whoisWeb")}>
+              {raw ? (
+                <button type="button" className="btn btn-sm" onClick={() => onOpenRaw(provider.source as RawTab)} title={rawLabelKey[provider.source] ? t(rawLabelKey[provider.source]!) : undefined}>
                   <FileIcon size={13} className="btn-icon" />
                   {t("viewRaw")}
                 </button>

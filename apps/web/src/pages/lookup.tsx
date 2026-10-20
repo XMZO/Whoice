@@ -197,7 +197,7 @@ export const getServerSideProps: GetServerSideProps<Props> = async (context) => 
 };
 
 function rawText(result: LookupResult) {
-  return [result.raw.whois, result.raw.whoisWeb, result.raw.rdap].filter(Boolean).join("\n\n");
+  return [result.raw.whois, result.raw.whoisWeb, result.raw.rdap, result.raw.dns].filter(Boolean).join("\n\n");
 }
 
 function aiResultKey(result?: LookupResult) {

@@ -26,6 +26,7 @@ import (
 	"github.com/xmzo/whoice/services/lookup-api/internal/normalize"
 	"github.com/xmzo/whoice/services/lookup-api/internal/parsers"
 	"github.com/xmzo/whoice/services/lookup-api/internal/providers"
+	"github.com/xmzo/whoice/services/lookup-api/internal/providers/delegation"
 )
 
 type Service struct {
@@ -44,6 +45,7 @@ type Service struct {
 	deferred         pipeline.Pipeline
 	ai               *aienrich.Enricher
 	inflight         *singleflight
+	delegation       delegationChecker
 	backgroundMu     sync.Mutex
 	backgroundCancel context.CancelFunc
 }
@@ -64,6 +66,7 @@ func NewService(cfg config.Config, providerList []providers.Provider, parserRegi
 		pricing:    buildPricingResolver(cfg),
 		ai:         aienrich.New(cfg),
 		inflight:   newSingleflight(),
+		delegation: delegation.New(),
 	}
 	service.enrichers = service.buildPipeline()
 	service.static = service.buildStaticPipeline()
@@ -160,6 +163,15 @@ func (s *Service) lookupFresh(ctx context.Context, q model.NormalizedQuery, opts
 			continue
 		}
 		parts = append(parts, part)
+	}
+
+	if len(parts) == 0 && whoisFailed(sourceErrors) {
+		if part, trace := s.delegationFallback(lookupCtx, q, opts); trace != nil {
+			providerTraces = append(providerTraces, *trace)
+			if part != nil {
+				parts = append(parts, part)
+			}
+		}
 	}
 
 	if len(parts) == 0 {
@@ -535,4 +547,60 @@ func (s *Service) providerEnabled(source model.SourceName, opts model.LookupOpti
 
 func requestKey(q model.NormalizedQuery, opts model.LookupOptions) string {
 	return fmt.Sprintf("%s:%s:rdap=%t:whois=%t:rs=%s:ws=%s:wf=%d:exact=%t:fast=%t", q.Type, q.Query, opts.UseRDAP, opts.UseWHOIS, opts.RDAPServer, opts.WHOISServer, opts.WHOISFollow, opts.ExactDomain, opts.FastResponse)
+}
+
+type delegationChecker interface {
+	Check(ctx context.Context, domain string) (*delegation.Result, error)
+}
+
+const delegationTimeout = 5 * time.Second
+
+func whoisFailed(errs []model.SourceError) bool {
+	for _, item := range errs {
+		if item.Source == model.SourceWHOIS {
+			return true
+		}
+	}
+	return false
+}
+
+// delegationFallback infers a domain's status from its DNS delegation when
+// WHOIS failed and no other source produced anything, e.g. registries without a public
+// WHOIS service (.al) or with an unreachable one (.uy).
+func (s *Service) delegationFallback(ctx context.Context, q model.NormalizedQuery, opts model.LookupOptions) (*model.PartialResult, *model.ProviderTrace) {
+	if s.delegation == nil || q.Type != model.QueryDomain || opts.RDAPServer != "" || opts.WHOISServer != "" {
+		return nil, nil
+	}
+	domain := q.RegisteredDomain
+	if domain == "" {
+		domain = q.Query
+	}
+	start := time.Now()
+	checkCtx, cancel := context.WithTimeout(ctx, delegationTimeout)
+	defer cancel()
+	trace := &model.ProviderTrace{Source: model.SourceDNS, Status: "ok", Query: domain}
+	result, err := s.delegation.Check(checkCtx, domain)
+	trace.ElapsedMs = time.Since(start).Milliseconds()
+	if err != nil {
+		trace.Status = "error"
+		trace.Error = err.Error()
+		return nil, trace
+	}
+	trace.Server = result.Server
+	trace.Bytes = len(result.Body)
+	part := &model.PartialResult{
+		Source: model.SourceDNS,
+		Status: result.Status,
+		Domain: model.DomainInfo{
+			Name:             q.Query,
+			Suffix:           q.Suffix,
+			RegisteredDomain: q.RegisteredDomain,
+		},
+		Raw:      model.RawData{DNS: result.Body},
+		Warnings: []string{fmt.Sprintf("No usable WHOIS or RDAP data; status inferred from the DNS delegation in the %s zone.", result.Zone)},
+	}
+	for _, host := range result.Nameservers {
+		part.Nameservers = append(part.Nameservers, model.Nameserver{Host: host})
+	}
+	return part, trace
 }

@@ -537,7 +537,7 @@ components:
       enum: [registered, unregistered, reserved, unknown, error]
     SourceName:
       type: string
-      enum: [rdap, whois, whoisWeb]
+      enum: [rdap, whois, whoisWeb, dns]
     SourceInfo:
       type: object
       required: [used]
@@ -902,6 +902,8 @@ components:
         whoisWeb:
           type: string
         rdap:
+          type: string
+        dns:
           type: string
     ResultMeta:
       type: object

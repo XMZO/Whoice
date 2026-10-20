@@ -2,6 +2,7 @@ package whois
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net"
 	"regexp"
@@ -16,7 +17,10 @@ import (
 
 var referralPattern = regexp.MustCompile(`(?im)^\s*(?:whois|refer):\s*([a-z0-9.-]+)\s*$`)
 
-const maxWHOISResponseBytes = 2 * 1024 * 1024
+const (
+	maxWHOISResponseBytes = 2 * 1024 * 1024
+	ianaServer            = "whois.iana.org"
+)
 
 type Provider struct {
 	resolver whoisservers.Resolver
@@ -69,6 +73,13 @@ func (p *Provider) Lookup(ctx context.Context, q model.NormalizedQuery, opts mod
 			body = body + "\n\n--- " + referral + " ---\n" + referredBody
 			usedServers = append(usedServers, referral)
 		}
+	}
+
+	// For a domain without a known registry server the query goes to IANA,
+	// which answers with the TLD record. Without a referral that record says
+	// nothing about the domain itself.
+	if opts.WHOISServer == "" && isBareIANATLDRecord(q, usedServers, body) {
+		return nil, fmt.Errorf("the registry for .%s publishes no WHOIS service", tldOf(q))
 	}
 
 	return &model.RawResponse{
@@ -144,4 +155,17 @@ func containsServer(servers []string, server string) bool {
 		}
 	}
 	return false
+}
+
+func tldOf(q model.NormalizedQuery) string {
+	name := strings.Trim(q.Query, ".")
+	if index := strings.LastIndex(name, "."); index >= 0 {
+		return name[index+1:]
+	}
+	return name
+}
+
+func isBareIANATLDRecord(q model.NormalizedQuery, usedServers []string, body string) bool {
+	return q.Type == model.QueryDomain && len(usedServers) == 1 &&
+		strings.EqualFold(usedServers[0], ianaServer) && findReferral(body) == ""
 }

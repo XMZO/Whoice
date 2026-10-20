@@ -30,6 +30,7 @@ const (
 	SourceRDAP     SourceName = "rdap"
 	SourceWHOIS    SourceName = "whois"
 	SourceWHOISWeb SourceName = "whoisWeb"
+	SourceDNS      SourceName = "dns"
 )
 
 type NormalizedQuery struct {
@@ -261,6 +262,7 @@ type RawData struct {
 	WHOIS    string `json:"whois,omitempty"`
 	RDAP     string `json:"rdap,omitempty"`
 	WHOISWeb string `json:"whoisWeb,omitempty"`
+	DNS      string `json:"dns,omitempty"`
 }
 
 type ResultMeta struct {

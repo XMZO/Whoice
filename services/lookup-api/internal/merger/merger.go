@@ -237,6 +237,7 @@ func mergeRaw(result *model.LookupResult, part *model.PartialResult) {
 	result.Raw.WHOIS = pick(result.Raw.WHOIS, part.Raw.WHOIS)
 	result.Raw.RDAP = pick(result.Raw.RDAP, part.Raw.RDAP)
 	result.Raw.WHOISWeb = pick(result.Raw.WHOISWeb, part.Raw.WHOISWeb)
+	result.Raw.DNS = pick(result.Raw.DNS, part.Raw.DNS)
 }
 
 func pick(current, incoming string) string {

@@ -405,6 +405,7 @@ export function sourceName(source?: string) {
   if (source === "rdap") return "RDAP";
   if (source === "whois") return "WHOIS";
   if (source === "whoisWeb") return "WHOIS Web";
+  if (source === "dns") return "DNS";
   return source || "";
 }
 

@@ -7,7 +7,7 @@ export type ResultStatus =
   | "unknown"
   | "error";
 
-export type SourceName = "rdap" | "whois" | "whoisWeb";
+export type SourceName = "rdap" | "whois" | "whoisWeb" | "dns";
 
 export type Brand = {
   name: string;
@@ -129,6 +129,7 @@ export type LookupResult = {
     whois?: string;
     rdap?: string;
     whoisWeb?: string;
+    dns?: string;
   };
   meta: {
     elapsedMs: number;

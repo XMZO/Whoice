@@ -4,7 +4,7 @@ import { useI18n } from "@/lib/i18n";
 import { displayServer, formatBytes, prettyRaw, textBytes } from "@/lib/resultModel";
 import type { LookupResult } from "@/lib/types";
 
-export type RawTab = "rdap" | "whois" | "whoisWeb" | "json";
+export type RawTab = "rdap" | "whois" | "whoisWeb" | "dns" | "json";
 
 type TabInfo = {
   id: RawTab;
@@ -76,6 +76,18 @@ export function RawDrawer({
         filename: `${result.normalizedQuery}.whois-web.txt`,
       });
     }
+    const dns = provider("dns");
+    if (result.raw?.dns) {
+      out.push({
+        id: "dns",
+        label: "DNS",
+        size: formatBytes(dns?.bytes ?? textBytes(result.raw.dns)),
+        url: dns?.server || "",
+        meta: ["UDP 53", dns ? `${dns.elapsedMs} ms` : ""].filter(Boolean).join(" · "),
+        text: result.raw.dns,
+        filename: `${result.normalizedQuery}.dns.txt`,
+      });
+    }
     out.push({
       id: "json",
       label: t("structuredJson"),
@@ -110,7 +122,7 @@ export function RawDrawer({
   }, [lastFocus, onClose]);
 
   function download() {
-    const blob = new Blob([current.text], { type: current.id === "whois" || current.id === "whoisWeb" ? "text/plain" : "application/json" });
+    const blob = new Blob([current.text], { type: current.id === "json" || current.id === "rdap" ? "application/json" : "text/plain" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;

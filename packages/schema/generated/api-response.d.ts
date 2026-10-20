@@ -47,8 +47,8 @@ export interface LookupResult {
  * via the `definition` "SourceInfo".
  */
 export interface SourceInfo {
-  primary?: 'rdap' | 'whois' | 'whoisWeb';
-  used: ('rdap' | 'whois' | 'whoisWeb')[];
+  primary?: 'rdap' | 'whois' | 'whoisWeb' | 'dns';
+  used: ('rdap' | 'whois' | 'whoisWeb' | 'dns')[];
   errors?: SourceError[];
 }
 /**
@@ -56,7 +56,7 @@ export interface SourceInfo {
  * via the `definition` "SourceError".
  */
 export interface SourceError {
-  source: 'rdap' | 'whois' | 'whoisWeb';
+  source: 'rdap' | 'whois' | 'whoisWeb' | 'dns';
   server?: string;
   error: string;
 }
@@ -297,6 +297,7 @@ export interface RawData {
   whois?: string;
   rdap?: string;
   whoisWeb?: string;
+  dns?: string;
 }
 /**
  * This interface was referenced by `WhoiceAPIResponse`'s JSON-Schema
@@ -315,7 +316,7 @@ export interface ResultMeta {
  * via the `definition` "ProviderTrace".
  */
 export interface ProviderTrace {
-  source: 'rdap' | 'whois' | 'whoisWeb';
+  source: 'rdap' | 'whois' | 'whoisWeb' | 'dns';
   status: 'ok' | 'error' | 'skipped';
   server?: string;
   query?: string;

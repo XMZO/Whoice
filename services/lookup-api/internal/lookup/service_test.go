@@ -2,6 +2,7 @@ package lookup
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -12,6 +13,7 @@ import (
 	"github.com/xmzo/whoice/services/lookup-api/internal/model"
 	"github.com/xmzo/whoice/services/lookup-api/internal/parsers"
 	providerapi "github.com/xmzo/whoice/services/lookup-api/internal/providers"
+	"github.com/xmzo/whoice/services/lookup-api/internal/providers/delegation"
 )
 
 type testProvider struct {
@@ -306,5 +308,101 @@ func TestLookupSkipsUnavailableRDAPAndUsesWHOIS(t *testing.T) {
 	}
 	if !sawSkippedRDAP {
 		t.Fatalf("expected skipped RDAP trace, got %#v", result.Meta.Providers)
+	}
+}
+
+type fakeDelegation struct {
+	result *delegation.Result
+	err    error
+	calls  int
+}
+
+func (f *fakeDelegation) Check(_ context.Context, domain string) (*delegation.Result, error) {
+	f.calls++
+	if f.err != nil {
+		return nil, f.err
+	}
+	result := *f.result
+	result.Domain = domain
+	return &result, nil
+}
+
+func delegationTestService(checker delegationChecker, whoisErr error) *Service {
+	service := NewService(config.Config{
+		LookupTimeout:   time.Second,
+		ProviderTimeout: time.Second,
+		RDAPEnabled:     true,
+		WHOISEnabled:    true,
+	}, []providerapi.Provider{
+		testProvider{source: model.SourceRDAP, err: providerapi.Skip(`no RDAP bootstrap server for domain "ka.uy"`)},
+		testProvider{source: model.SourceWHOIS, err: whoisErr},
+	}, parsers.NewRegistry(parsers.WHOISParser{}))
+	service.delegation = checker
+	return service
+}
+
+func TestLookupFallsBackToDNSDelegationWhenRegistryHasNoWHOIS(t *testing.T) {
+	checker := &fakeDelegation{result: &delegation.Result{
+		Zone:        "uy",
+		Server:      "a.nic.uy (200.40.30.254)",
+		Status:      model.StatusRegistered,
+		Nameservers: []string{"jeff.ns.cloudflare.com", "sloan.ns.cloudflare.com"},
+		Body:        "; DNS delegation check for ka.uy\n",
+	}}
+	service := delegationTestService(checker, errors.New("dial tcp 164.73.128.51:43: i/o timeout"))
+	result, err := service.Lookup(context.Background(), "ka.uy", model.LookupOptions{UseRDAP: true, UseWHOIS: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != model.StatusRegistered || result.Source.Primary != model.SourceDNS || !result.Domain.Registered {
+		t.Fatalf("status %q primary %q", result.Status, result.Source.Primary)
+	}
+	if len(result.Nameservers) != 2 || result.Raw.DNS == "" {
+		t.Fatalf("nameservers %#v raw %q", result.Nameservers, result.Raw.DNS)
+	}
+	if len(result.Source.Errors) != 1 || result.Source.Errors[0].Source != model.SourceWHOIS {
+		t.Fatalf("WHOIS failure should stay visible: %#v", result.Source.Errors)
+	}
+	var trace *model.ProviderTrace
+	for i := range result.Meta.Providers {
+		if result.Meta.Providers[i].Source == model.SourceDNS {
+			trace = &result.Meta.Providers[i]
+		}
+	}
+	if trace == nil || trace.Status != "ok" || trace.Server != "a.nic.uy (200.40.30.254)" {
+		t.Fatalf("dns trace: %#v", result.Meta.Providers)
+	}
+	if len(result.Meta.Warnings) == 0 || !strings.Contains(result.Meta.Warnings[0], "DNS delegation") {
+		t.Fatalf("warnings: %#v", result.Meta.Warnings)
+	}
+}
+
+func TestLookupDNSDelegationReportsUnregistered(t *testing.T) {
+	checker := &fakeDelegation{result: &delegation.Result{Zone: "al", Status: model.StatusUnregistered, Body: "; NXDOMAIN\n"}}
+	service := delegationTestService(checker, errors.New("the registry for .al publishes no WHOIS service"))
+	result, err := service.Lookup(context.Background(), "free-name.al", model.LookupOptions{UseRDAP: true, UseWHOIS: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != model.StatusUnregistered || result.Domain.Registered {
+		t.Fatalf("status %q", result.Status)
+	}
+}
+
+func TestLookupKeepsProviderErrorWhenDelegationFails(t *testing.T) {
+	checker := &fakeDelegation{err: errors.New("no nameservers found")}
+	service := delegationTestService(checker, errors.New("dial tcp 164.73.128.51:43: i/o timeout"))
+	_, err := service.Lookup(context.Background(), "ka.uy", model.LookupOptions{UseRDAP: true, UseWHOIS: true})
+	if err == nil || !strings.Contains(err.Error(), "i/o timeout") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestLookupSkipsDelegationForCustomServers(t *testing.T) {
+	checker := &fakeDelegation{err: errors.New("unexpected")}
+	service := delegationTestService(checker, errors.New("dial tcp 192.0.2.1:43: i/o timeout"))
+	_, _ = service.Lookup(context.Background(), "ka.uy", model.LookupOptions{UseRDAP: true, UseWHOIS: true, WHOISServer: "192.0.2.1"})
+	if checker.calls != 0 {
+		t.Fatal("custom server lookups must not fall back to DNS")
 	}
 }
