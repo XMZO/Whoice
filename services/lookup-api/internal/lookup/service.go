@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/xmzo/whoice/services/lookup-api/internal/config"
@@ -150,7 +151,21 @@ func (s *Service) lookupFresh(ctx context.Context, q model.NormalizedQuery, opts
 	lookupCtx, cancel := context.WithTimeout(ctx, opts.LookupLimit)
 	defer cancel()
 
-	rawResponses, sourceErrors, providerTraces := s.runProviders(lookupCtx, q, opts)
+	providerCtx, stopProviders := context.WithCancel(lookupCtx)
+	defer stopProviders()
+	var early <-chan delegationOutcome
+	var stoppedEarly atomic.Bool
+	if s.delegationFirst(q, opts) {
+		early = s.startDelegation(lookupCtx, q, opts, func() {
+			stoppedEarly.Store(true)
+			stopProviders()
+		})
+	}
+
+	rawResponses, sourceErrors, providerTraces := s.runProviders(providerCtx, q, opts)
+	if stoppedEarly.Load() {
+		markStoppedEarly(sourceErrors, providerTraces)
+	}
 	parts := make([]*model.PartialResult, 0, len(rawResponses))
 	for _, raw := range rawResponses {
 		part, err := s.parsers.Parse(ctx, raw, q)
@@ -165,7 +180,16 @@ func (s *Service) lookupFresh(ctx context.Context, q model.NormalizedQuery, opts
 		parts = append(parts, part)
 	}
 
-	if len(parts) == 0 && whoisUnavailable(providerTraces) {
+	if early != nil {
+		// Delegation-first suffix: the check ran alongside the providers and
+		// is used only when they produced nothing.
+		if outcome := <-early; len(parts) == 0 && outcome.trace != nil {
+			providerTraces = append(providerTraces, *outcome.trace)
+			if outcome.part != nil {
+				parts = append(parts, outcome.part)
+			}
+		}
+	} else if len(parts) == 0 && whoisUnavailable(providerTraces) {
 		if part, trace := s.delegationFallback(lookupCtx, q, opts); trace != nil {
 			providerTraces = append(providerTraces, *trace)
 			if part != nil {
@@ -553,7 +577,83 @@ type delegationChecker interface {
 	Check(ctx context.Context, domain string) (*delegation.Result, error)
 }
 
-const delegationTimeout = 5 * time.Second
+const (
+	delegationTimeout = 5 * time.Second
+	// delegationGrace is how long providers may still answer after the
+	// parallel delegation check has a result.
+	delegationGrace = time.Second
+)
+
+// delegationFirstTLDs lists TLDs whose registry WHOIS is unreachable from
+// most networks and that have no RDAP service. Their delegation check runs
+// in parallel with the providers instead of after them timing out.
+var delegationFirstTLDs = map[string]bool{
+	"uy": true, // whois.nic.org.uy:43 does not accept connections
+}
+
+type delegationOutcome struct {
+	part  *model.PartialResult
+	trace *model.ProviderTrace
+}
+
+func (s *Service) delegationFirst(q model.NormalizedQuery, opts model.LookupOptions) bool {
+	if s.delegation == nil || q.Type != model.QueryDomain || opts.RDAPServer != "" || opts.WHOISServer != "" {
+		return false
+	}
+	return delegationFirstTLDs[suffixTLD(q.Query)]
+}
+
+// startDelegation runs the delegation check in the background. Once it has a
+// result, stop is called after delegationGrace so slow providers no longer
+// hold up the lookup.
+func (s *Service) startDelegation(ctx context.Context, q model.NormalizedQuery, opts model.LookupOptions, stop func()) <-chan delegationOutcome {
+	out := make(chan delegationOutcome, 1)
+	go func() {
+		part, trace := s.delegationFallback(ctx, q, opts)
+		out <- delegationOutcome{part: part, trace: trace}
+		if part == nil {
+			return
+		}
+		timer := time.NewTimer(delegationGrace)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+			stop()
+		case <-ctx.Done():
+		}
+	}()
+	return out
+}
+
+const stoppedEarlyMessage = "no reply before the DNS delegation check finished"
+
+func markStoppedEarly(errs []model.SourceError, traces []model.ProviderTrace) {
+	for i := range errs {
+		if isCanceled(errs[i].Error) {
+			errs[i].Error = stoppedEarlyMessage
+		}
+	}
+	for i := range traces {
+		if traces[i].Status == "error" && isCanceled(traces[i].Error) {
+			traces[i].Error = stoppedEarlyMessage
+		}
+	}
+}
+
+// isCanceled matches provider errors caused by context cancellation; net
+// errors report it as "operation was canceled" without wrapping the context
+// error.
+func isCanceled(message string) bool {
+	return strings.Contains(message, context.Canceled.Error()) || strings.Contains(message, "operation was canceled")
+}
+
+func suffixTLD(domain string) string {
+	domain = strings.ToLower(strings.Trim(domain, "."))
+	if index := strings.LastIndex(domain, "."); index >= 0 {
+		return domain[index+1:]
+	}
+	return domain
+}
 
 // whoisUnavailable reports whether WHOIS ran and failed, or was skipped
 // because the registry has no WHOIS service.

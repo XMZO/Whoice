@@ -3,6 +3,7 @@ package lookup
 import (
 	"context"
 	"errors"
+	"net"
 	"reflect"
 	"strings"
 	"testing"
@@ -404,5 +405,57 @@ func TestLookupSkipsDelegationForCustomServers(t *testing.T) {
 	_, _ = service.Lookup(context.Background(), "ka.uy", model.LookupOptions{UseRDAP: true, UseWHOIS: true, WHOISServer: "192.0.2.1"})
 	if checker.calls != 0 {
 		t.Fatal("custom server lookups must not fall back to DNS")
+	}
+}
+
+type hangingProvider struct{ source model.SourceName }
+
+func (p hangingProvider) Name() model.SourceName                { return p.source }
+func (p hangingProvider) Supports(q model.NormalizedQuery) bool { return q.Type == model.QueryDomain }
+func (p hangingProvider) Lookup(ctx context.Context, _ model.NormalizedQuery, _ model.LookupOptions) (*model.RawResponse, error) {
+	<-ctx.Done()
+	return nil, &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("operation was canceled")}
+}
+
+func TestDelegationFirstTLDDoesNotWaitForWHOISTimeout(t *testing.T) {
+	checker := &fakeDelegation{result: &delegation.Result{
+		Zone: "uy", Server: "a.nic.uy (200.40.30.254)", Status: model.StatusRegistered,
+		Nameservers: []string{"jeff.ns.cloudflare.com"}, Body: "; delegated\n",
+	}}
+	service := NewService(config.Config{LookupTimeout: 20 * time.Second, ProviderTimeout: 10 * time.Second, WHOISEnabled: true},
+		[]providerapi.Provider{hangingProvider{source: model.SourceWHOIS}}, parsers.NewRegistry(parsers.WHOISParser{}))
+	service.delegation = checker
+
+	start := time.Now()
+	result, err := service.Lookup(context.Background(), "ka.uy", model.LookupOptions{UseWHOIS: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(start); elapsed > delegationGrace+2*time.Second {
+		t.Fatalf("lookup waited %s for a hanging WHOIS server", elapsed)
+	}
+	if result.Status != model.StatusRegistered || result.Source.Primary != model.SourceDNS {
+		t.Fatalf("status %q primary %q", result.Status, result.Source.Primary)
+	}
+	if len(result.Source.Errors) != 1 || result.Source.Errors[0].Error != stoppedEarlyMessage {
+		t.Fatalf("source errors: %#v", result.Source.Errors)
+	}
+}
+
+func TestDelegationFirstPrefersWHOISWhenItAnswers(t *testing.T) {
+	checker := &fakeDelegation{result: &delegation.Result{Zone: "uy", Status: model.StatusRegistered, Body: "; delegated\n"}}
+	service := NewService(config.Config{LookupTimeout: 5 * time.Second, ProviderTimeout: 5 * time.Second, WHOISEnabled: true},
+		[]providerapi.Provider{testProvider{source: model.SourceWHOIS, raw: &model.RawResponse{
+			Source: model.SourceWHOIS, Server: "whois.nic.org.uy",
+			Body: "Domain Name: KA.UY\nRegistrar: Example Registrar\nName Server: NS1.EXAMPLE.UY\n",
+		}}}, parsers.NewRegistry(parsers.WHOISParser{}))
+	service.delegation = checker
+
+	result, err := service.Lookup(context.Background(), "ka.uy", model.LookupOptions{UseWHOIS: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Source.Primary != model.SourceWHOIS || result.Raw.DNS != "" {
+		t.Fatalf("primary %q raw dns %q", result.Source.Primary, result.Raw.DNS)
 	}
 }
