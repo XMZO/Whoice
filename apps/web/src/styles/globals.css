@@ -4,7 +4,7 @@
 
   Breakpoints:
   - desktop: full two-column result layout, content max 1040px (home 880px)
-  - short desktop: (min-width: 761px) and (max-height: 800px) - result sections become tabs
+  - short desktop: (min-width: 761px) and (max-height: 860px) - result sections become tabs
   - mobile: (max-width: 760px) - one screen, tabbed result card
 */
 
@@ -3064,27 +3064,62 @@ summary.src-tag::-webkit-details-marker {
   border-color: var(--amber);
 }
 
-/* Tall desktop: both columns end on the same line; the last card in each
-   column absorbs the difference instead of leaving a ragged edge. */
-@media (min-width: 761px) and (min-height: 801px) {
+/* Tall desktop: the detail page is exactly one screen. The two lower
+   columns fill the space under the hero and end on the same line; a card
+   whose content does not fit scrolls inside itself instead of the page. */
+@media (min-width: 761px) and (min-height: 861px) {
+  .lookup-workbench {
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+  }
+
+  .tool-stage {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .tool-stage > .error-panel {
+    overflow: auto;
+  }
+
+  .result-hero {
+    flex: 0 0 auto;
+  }
+
   .result-lower {
     align-items: stretch;
+    flex: 1 1 auto;
+    grid-template-rows: minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  .lower-col {
+    min-height: 0;
+  }
+
+  .lower-col > .result-section {
+    display: flex;
+    flex: 0 1 auto;
+    flex-direction: column;
+    min-height: 0;
   }
 
   .lower-col > .result-section:last-child {
-    display: flex;
     flex: 1 1 auto;
-    flex-direction: column;
   }
 
-  .lower-col > .result-section:last-child > .result-card {
+  .lower-col > .result-section > .result-card {
     flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    scrollbar-width: thin;
   }
 }
 
 /* ---------- Short desktop: lower sections become one tabbed card ---------- */
 
-@media (min-width: 761px) and (max-height: 800px) {
+@media (min-width: 761px) and (max-height: 860px) {
   .lookup-workbench {
     height: 100vh;
     height: 100dvh;
@@ -4804,7 +4839,7 @@ summary.src-tag::-webkit-details-marker {
   }
 }
 
-@media (min-width: 761px) and (max-height: 800px) {
+@media (min-width: 761px) and (max-height: 860px) {
   .adm-shell {
     padding: 14px 24px;
   }
