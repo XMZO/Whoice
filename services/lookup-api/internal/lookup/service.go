@@ -165,7 +165,7 @@ func (s *Service) lookupFresh(ctx context.Context, q model.NormalizedQuery, opts
 		parts = append(parts, part)
 	}
 
-	if len(parts) == 0 && whoisFailed(sourceErrors) {
+	if len(parts) == 0 && whoisUnavailable(providerTraces) {
 		if part, trace := s.delegationFallback(lookupCtx, q, opts); trace != nil {
 			providerTraces = append(providerTraces, *trace)
 			if part != nil {
@@ -555,9 +555,11 @@ type delegationChecker interface {
 
 const delegationTimeout = 5 * time.Second
 
-func whoisFailed(errs []model.SourceError) bool {
-	for _, item := range errs {
-		if item.Source == model.SourceWHOIS {
+// whoisUnavailable reports whether WHOIS ran and failed, or was skipped
+// because the registry has no WHOIS service.
+func whoisUnavailable(traces []model.ProviderTrace) bool {
+	for _, trace := range traces {
+		if trace.Source == model.SourceWHOIS && (trace.Status == "error" || trace.Status == "skipped") {
 			return true
 		}
 	}

@@ -12,6 +12,7 @@ import (
 
 	"github.com/xmzo/whoice/services/lookup-api/internal/data/whoisservers"
 	"github.com/xmzo/whoice/services/lookup-api/internal/model"
+	"github.com/xmzo/whoice/services/lookup-api/internal/providers"
 	"golang.org/x/text/encoding/charmap"
 )
 
@@ -79,7 +80,7 @@ func (p *Provider) Lookup(ctx context.Context, q model.NormalizedQuery, opts mod
 	// which answers with the TLD record. Without a referral that record says
 	// nothing about the domain itself.
 	if opts.WHOISServer == "" && isBareIANATLDRecord(q, usedServers, body) {
-		return nil, fmt.Errorf("the registry for .%s publishes no WHOIS service", tldOf(q))
+		return nil, providers.Skip(fmt.Sprintf("the registry for .%s publishes no WHOIS service", tldOf(q)))
 	}
 
 	return &model.RawResponse{

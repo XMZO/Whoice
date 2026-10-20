@@ -379,7 +379,7 @@ func TestLookupFallsBackToDNSDelegationWhenRegistryHasNoWHOIS(t *testing.T) {
 
 func TestLookupDNSDelegationReportsUnregistered(t *testing.T) {
 	checker := &fakeDelegation{result: &delegation.Result{Zone: "al", Status: model.StatusUnregistered, Body: "; NXDOMAIN\n"}}
-	service := delegationTestService(checker, errors.New("the registry for .al publishes no WHOIS service"))
+	service := delegationTestService(checker, providerapi.Skip("the registry for .al publishes no WHOIS service"))
 	result, err := service.Lookup(context.Background(), "free-name.al", model.LookupOptions{UseRDAP: true, UseWHOIS: true})
 	if err != nil {
 		t.Fatal(err)
