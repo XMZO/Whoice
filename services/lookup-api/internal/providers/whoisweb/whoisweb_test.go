@@ -310,3 +310,39 @@ func domainQuery(value, suffix string) model.NormalizedQuery {
 		RegisteredDomain: value,
 	}
 }
+
+func TestDNSHEModuleConvertsJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("domain") == "free.cc.cd" {
+			_, _ = w.Write([]byte(`{"success":true,"domain":"free.cc.cd","registered":false,"status":"unregistered","registrant_country":"-","name_servers":[],"message":"domain not registered"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"success":true,"domain":"anby.cc.cd","registered":true,"status":"active","created_at":"2026-02-14 11:07","expires_at":"2028-02-14 11:07","registrar":"DNSHE","registrar_url":"https://www.dnshe.com","registrant_name":"REDACTED FOR PRIVACY","registrant_email":"abuse@dnshe.com","registrant_country":"REDACTED FOR PRIVACY","name_servers":["renan.ns.cloudflare.com","robin.ns.cloudflare.com"],"dnssec":"Unsigned"}`))
+	}))
+	defer server.Close()
+
+	provider := NewWithClient(server.Client(), DNSHEModule{BaseURL: server.URL})
+	q := model.NormalizedQuery{Type: model.QueryDomain, Query: "anby.cc.cd", Suffix: "cc.cd", RegisteredDomain: "anby.cc.cd"}
+	if !provider.Supports(q) || !provider.Required(q) {
+		t.Fatal("cc.cd should be supported and required")
+	}
+	raw, err := provider.Lookup(context.Background(), q, model.LookupOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Registrar: DNSHE", "Creation Date: 2026-02-14 11:07:00", "Registry Expiry Date: 2028-02-14 11:07:00", "Name Server: renan.ns.cloudflare.com"} {
+		if !strings.Contains(raw.Body, want) {
+			t.Fatalf("missing %q in:\n%s", want, raw.Body)
+		}
+	}
+	if strings.Contains(raw.Body, "REDACTED") || strings.Contains(raw.Body, "not registered") {
+		t.Fatalf("redaction or miss text leaked:\n%s", raw.Body)
+	}
+
+	free := model.NormalizedQuery{Type: model.QueryDomain, Query: "free.cc.cd", Suffix: "cc.cd", RegisteredDomain: "free.cc.cd"}
+	raw, err = provider.Lookup(context.Background(), free, model.LookupOptions{})
+	if err != nil || !strings.Contains(raw.Body, "Domain not registered") {
+		t.Fatalf("unregistered body %q err %v", raw.Body, err)
+	}
+}

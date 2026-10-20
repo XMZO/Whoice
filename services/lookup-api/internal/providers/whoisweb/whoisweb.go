@@ -32,6 +32,14 @@ type Module interface {
 	Lookup(ctx context.Context, client *http.Client, q model.NormalizedQuery) (*ModuleResult, error)
 }
 
+// RegistryModule marks a module that queries the registry's own lookup
+// service rather than scraping a third-party page. Such modules run even when
+// the WHOIS Web fallback is switched off, because they are the only WHOIS
+// source for their suffixes.
+type RegistryModule interface {
+	Registry() bool
+}
+
 type ModuleResult struct {
 	Body        string
 	Endpoint    string
@@ -72,6 +80,7 @@ func DefaultModules() []Module {
 		NIModule{BaseURL: defaultNIBaseURL},
 		PAModule{BaseURL: defaultPABaseURL},
 		VNModule{BaseURL: defaultVNBaseURL},
+		DNSHEModule{BaseURL: defaultDNSHEBaseURL},
 	}
 }
 
@@ -108,6 +117,16 @@ func (p *Provider) Lookup(ctx context.Context, q model.NormalizedQuery, _ model.
 		StatusCode:  result.StatusCode,
 		ElapsedMs:   time.Since(start).Milliseconds(),
 	}, nil
+}
+
+// Required reports whether the query is served by a registry module and so
+// must run regardless of the WHOIS Web switch.
+func (p *Provider) Required(q model.NormalizedQuery) bool {
+	if q.Type != model.QueryDomain {
+		return false
+	}
+	module, ok := p.findModule(q.Suffix).(RegistryModule)
+	return ok && module.Registry()
 }
 
 func (p *Provider) findModule(suffix string) Module {

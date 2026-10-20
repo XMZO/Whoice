@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import {
   BuildingIcon,
   CalendarIcon,
@@ -660,26 +661,101 @@ function linkifyValue(value: string) {
 }
 
 function SourcePopovers({ sources }: { sources?: RegistrationSource[] }) {
-  const pick = useT3();
   const values = Array.isArray(sources) ? sources.filter((source) => source.source || source.confidence !== undefined || source.evidence) : [];
   if (!values.length) return null;
   return (
     <>
       {values.map((source, index) => (
-        <details className="source-popover" key={`${source.source || "source"}-${index}`}>
-          <summary className={source.source?.startsWith("ai") ? "src-tag src-tag-ai" : "src-tag"}>
-            {sourceTag(source.source) || "?"}
-            {source.confidence !== undefined && source.source?.startsWith("ai") ? ` ${Math.round(source.confidence * 100)}%` : ""}
-          </summary>
-          <span className="source-popover-body">
+        <SourcePopover key={`${source.source || "source"}-${index}`} source={source} />
+      ))}
+    </>
+  );
+}
+
+const POPOVER_GAP = 6;
+const POPOVER_MARGIN = 12;
+
+/**
+ * Source tag with a details popover. The popover is portaled to <body> and
+ * positioned against the tag, so scrolling cards cannot clip it. Hover
+ * previews it on desktop; a click pins it until an outside click, Escape,
+ * scroll, or resize. Touch screens get a bottom sheet.
+ */
+function SourcePopover({ source }: { source: RegistrationSource }) {
+  const pick = useT3();
+  const tagRef = useRef<HTMLButtonElement>(null);
+  const bodyRef = useRef<HTMLSpanElement>(null);
+  const [pinned, setPinned] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [style, setStyle] = useState<CSSProperties>({ visibility: "hidden" });
+  const open = pinned || hovered;
+  const sheet = typeof window !== "undefined" && window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+
+  useLayoutEffect(() => {
+    if (!open || sheet) return;
+    const tag = tagRef.current?.getBoundingClientRect();
+    const body = bodyRef.current?.getBoundingClientRect();
+    if (!tag || !body) return;
+    const below = tag.bottom + POPOVER_GAP;
+    const top = below + body.height > window.innerHeight - POPOVER_MARGIN && tag.top - POPOVER_GAP - body.height > POPOVER_MARGIN ? tag.top - POPOVER_GAP - body.height : below;
+    const left = Math.max(POPOVER_MARGIN, Math.min(tag.left, window.innerWidth - body.width - POPOVER_MARGIN));
+    setStyle({ left, top });
+  }, [open, sheet]);
+
+  useEffect(() => {
+    if (!pinned) return;
+    const close = () => setPinned(false);
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (tagRef.current?.contains(target) || bodyRef.current?.contains(target)) return;
+      close();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close();
+    };
+    const onScroll = (event: Event) => {
+      if (bodyRef.current?.contains(event.target as Node)) return;
+      close();
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", close);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [pinned]);
+
+  useEffect(() => {
+    if (!open) setStyle({ visibility: "hidden" });
+  }, [open]);
+
+  return (
+    <span className="source-popover" onMouseEnter={() => !sheet && setHovered(true)} onMouseLeave={() => setHovered(false)}>
+      <button
+        ref={tagRef}
+        type="button"
+        className={source.source?.startsWith("ai") ? "src-tag src-tag-ai" : "src-tag"}
+        aria-expanded={pinned}
+        onClick={() => setPinned((value) => !value)}
+      >
+        {sourceTag(source.source) || "?"}
+        {source.confidence !== undefined && source.source?.startsWith("ai") ? ` ${Math.round(source.confidence * 100)}%` : ""}
+      </button>
+      {open &&
+        createPortal(
+          <span ref={bodyRef} className="source-popover-body" data-sheet={sheet || undefined} style={sheet ? undefined : style} role="dialog">
             {source.value && <span><strong>{pick(t3("Value", "值", "值"))}</strong>{source.value}</span>}
             {source.source && <span><strong>{pick(t3("Source", "来源", "來源"))}</strong>{source.source}</span>}
             {source.confidence !== undefined && <span><strong>{pick(t3("Confidence", "置信度", "信賴度"))}</strong>{Math.round(source.confidence * 100)}%</span>}
             {source.evidence && <span><strong>{pick(t3("Evidence", "依据", "依據"))}</strong>{source.evidence}</span>}
-          </span>
-        </details>
-      ))}
-    </>
+          </span>,
+          document.body,
+        )}
+    </span>
   );
 }
 

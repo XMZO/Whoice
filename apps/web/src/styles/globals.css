@@ -373,13 +373,9 @@ kbd {
   color: var(--link);
 }
 
-summary.src-tag {
+button.src-tag {
   cursor: pointer;
-  list-style: none;
-}
-
-summary.src-tag::-webkit-details-marker {
-  display: none;
+  font-family: inherit;
 }
 
 .source-caption {
@@ -395,24 +391,19 @@ summary.src-tag::-webkit-details-marker {
   position: relative;
 }
 
+/* Portaled to <body> and placed by SourcePopover, so cards cannot clip it. */
 .source-popover-body {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 10px;
   box-shadow: var(--shadow-popover);
-  display: none;
+  display: grid;
   gap: 6px;
-  left: 0;
+  max-width: min(360px, calc(100vw - 24px));
   min-width: 240px;
   padding: 10px 12px;
-  position: absolute;
-  top: calc(100% + 6px);
-  z-index: 35;
-}
-
-.source-popover[open] .source-popover-body,
-.source-popover:hover .source-popover-body {
-  display: grid;
+  position: fixed;
+  z-index: 60;
 }
 
 .source-popover-body span {
@@ -4182,19 +4173,13 @@ summary.src-tag::-webkit-details-marker {
     min-height: 34px;
   }
 
-  .source-popover:hover .source-popover-body {
-    display: none;
-  }
-
-  .source-popover[open] .source-popover-body {
+  .source-popover-body[data-sheet] {
     bottom: max(12px, env(safe-area-inset-bottom));
-    display: grid;
     left: 12px;
     max-height: min(50vh, 360px);
+    max-width: none;
     overflow: auto;
-    position: fixed;
     right: 12px;
-    top: auto;
   }
 
   .resolver-group:hover .resolver-tooltip {

@@ -535,7 +535,7 @@ func (s *Service) runProviders(ctx context.Context, q model.NormalizedQuery, opt
 	started := 0
 
 	for _, provider := range s.providers {
-		if !provider.Supports(q) || !s.providerEnabled(provider.Name(), opts) {
+		if !provider.Supports(q) || !s.providerEnabledFor(provider, q, opts) {
 			continue
 		}
 		provider := provider
@@ -599,6 +599,20 @@ func (s *Service) runProviders(ctx context.Context, q model.NormalizedQuery, opt
 	}
 
 	return raws, errs, traces
+}
+
+type requiredProvider interface {
+	Required(model.NormalizedQuery) bool
+}
+
+// providerEnabledFor also runs WHOIS Web registry modules (the only WHOIS for
+// their suffixes) when the WHOIS Web fallback is switched off.
+func (s *Service) providerEnabledFor(provider providers.Provider, q model.NormalizedQuery, opts model.LookupOptions) bool {
+	if s.providerEnabled(provider.Name(), opts) {
+		return true
+	}
+	required, ok := provider.(requiredProvider)
+	return ok && provider.Name() == model.SourceWHOISWeb && opts.UseWHOIS && s.cfg.WHOISEnabled && required.Required(q)
 }
 
 func (s *Service) providerEnabled(source model.SourceName, opts model.LookupOptions) bool {

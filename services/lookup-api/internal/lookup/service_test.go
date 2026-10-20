@@ -522,3 +522,29 @@ func TestLookupDoesNotPreviewAvailability(t *testing.T) {
 		t.Fatalf("availability must wait for the final result, got %d previews (final status %q)", calls, result.Status)
 	}
 }
+
+type registryWebProvider struct {
+	testProvider
+	required bool
+}
+
+func (p registryWebProvider) Required(model.NormalizedQuery) bool { return p.required }
+
+func TestRegistryWHOISWebRunsWithFallbackSwitchedOff(t *testing.T) {
+	for _, required := range []bool{true, false} {
+		web := registryWebProvider{required: required, testProvider: testProvider{source: model.SourceWHOISWeb, raw: &model.RawResponse{
+			Source: model.SourceWHOISWeb, Server: "https://www.dnshe.com/whois.php",
+			Body: "Domain Name: anby.cc.cd\nRegistrar: DNSHE\nName Server: renan.ns.cloudflare.com\n",
+		}}}
+		service := NewService(config.Config{LookupTimeout: time.Second, ProviderTimeout: time.Second, WHOISEnabled: true, WHOISWebEnabled: false},
+			[]providerapi.Provider{web}, parsers.NewRegistry(parsers.WHOISParser{}))
+		service.delegation = &fakeDelegation{err: errors.New("unused")}
+		result, err := service.Lookup(context.Background(), "anby.cc.cd", model.LookupOptions{UseWHOIS: true})
+		if required && (err != nil || result.Source.Primary != model.SourceWHOISWeb) {
+			t.Fatalf("registry module should run: %v %#v", err, result)
+		}
+		if !required && err == nil {
+			t.Fatalf("plain WHOIS Web modules stay off: %#v", result.Source)
+		}
+	}
+}

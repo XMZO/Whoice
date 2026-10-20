@@ -143,7 +143,7 @@ func (WHOISParser) Parse(_ context.Context, raw model.RawResponse, q model.Norma
 	partial.Registrant.Address = firstValue(fields, "registrant street", "registrant address", "owner address")
 	partial.Registrant.PostalCode = firstValue(fields, "registrant postal code", "registrant zip", "owner postal code")
 	partial.Registrant.Email = contactEmail(firstValue(fields, "registrant email", "registrant contact email", "owner email", "email"))
-	partial.Registrant.Phone = firstValue(fields, "registrant phone", "registrant phone number", "owner phone", "phone")
+	partial.Registrant.Phone = contactPhone(firstValue(fields, "registrant phone", "registrant phone number", "owner phone", "phone"))
 
 	partial.Network.CIDR = firstValue(fields, "cidr")
 	partial.Network.Range = firstValue(fields, "netrange", "inetnum", "inet6num")
@@ -281,4 +281,20 @@ func contactEmail(value string) string {
 		return value
 	}
 	return ""
+}
+
+// contactPhone drops placeholders such as "+000000000" that some registrars
+// put in redacted records.
+func contactPhone(value string) string {
+	value = strings.TrimSpace(value)
+	digits := strings.Trim(strings.Map(func(r rune) rune {
+		if r >= '0' && r <= '9' {
+			return r
+		}
+		return -1
+	}, value), "0")
+	if digits == "" {
+		return ""
+	}
+	return value
 }

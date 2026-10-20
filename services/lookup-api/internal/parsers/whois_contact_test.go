@@ -24,3 +24,11 @@ func TestWHOISRegistrantEmailDropsRedactionSentence(t *testing.T) {
 		}
 	}
 }
+
+func TestContactPhoneDropsPlaceholders(t *testing.T) {
+	for value, want := range map[string]string{"+000000000": "", "+0.0000000000": "", "+216.71840721": "+216.71840721", "": ""} {
+		if got := contactPhone(value); got != want {
+			t.Fatalf("contactPhone(%q) = %q, want %q", value, got, want)
+		}
+	}
+}

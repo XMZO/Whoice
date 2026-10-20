@@ -469,28 +469,6 @@ func (STWHOISParser) Parse(ctx context.Context, raw model.RawResponse, q model.N
 	return partial, nil
 }
 
-type TNWHOISParser struct{}
-
-func (TNWHOISParser) Name() string { return "whois-tld-tn" }
-
-func (TNWHOISParser) Supports(raw model.RawResponse) bool {
-	return raw.Source == model.SourceWHOIS && hasQuerySuffix(raw, ".tn")
-}
-
-func (TNWHOISParser) Priority() int { return 88 }
-
-func (TNWHOISParser) Parse(ctx context.Context, raw model.RawResponse, q model.NormalizedQuery) (*model.PartialResult, error) {
-	partial, err := WHOISParser{}.Parse(ctx, raw, q)
-	if err != nil {
-		return partial, err
-	}
-	dnsFields := parseFlexibleKeyValues(strings.Join(blockLinesFlexible(raw.Body, "dns servers"), "\n"))
-	if nameservers := nameserversFromValues(valuesFor(dnsFields, "name")); len(nameservers) > 0 {
-		partial.Nameservers = nameservers
-	}
-	return partial, nil
-}
-
 type UZWHOISParser struct{}
 
 func (UZWHOISParser) Name() string { return "whois-tld-uz" }
