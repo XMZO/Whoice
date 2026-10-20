@@ -303,8 +303,10 @@ func TestApplyDoHUsesFreshTimeoutAfterSlowUDP(t *testing.T) {
 		NormalizedQuery: "example.com",
 		Type:            model.QueryDomain,
 	}
+	// Leave room for a fresh TLS handshake to the DoH test server on slow
+	// CI runners; the UDP resolver still uses up the whole timeout.
 	ApplyWithResolverOptions(context.Background(), result, Options{
-		Timeout:      20 * time.Millisecond,
+		Timeout:      500 * time.Millisecond,
 		DoHServers:   []string{server.URL},
 		FilterFakeIP: true,
 	}, slowEmptyResolver{})
@@ -351,7 +353,12 @@ func TestApplyDoHAnswersWithinPipelineDeadlineDespiteSlowUDP(t *testing.T) {
 func TestLookupDoHIPIsolatesSlowResolvers(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "slow") {
-			time.Sleep(100 * time.Millisecond)
+			// Far beyond the per-resolver timeout; returns as soon as the
+			// client gives up so the test does not wait for it.
+			select {
+			case <-time.After(5 * time.Second):
+			case <-r.Context().Done():
+			}
 			w.WriteHeader(http.StatusGatewayTimeout)
 			return
 		}
@@ -368,7 +375,9 @@ func TestLookupDoHIPIsolatesSlowResolvers(t *testing.T) {
 	http.DefaultClient = server.Client()
 	t.Cleanup(func() { http.DefaultClient = oldClient })
 
-	result := lookupDoHIP(context.Background(), "example.com", []string{server.URL + "/slow", server.URL + "/dns-query"}, 20*time.Millisecond)
+	// The timeout must leave room for a fresh TLS handshake on slow CI
+	// runners (20ms was not enough); the slow resolver still never answers.
+	result := lookupDoHIP(context.Background(), "example.com", []string{server.URL + "/slow", server.URL + "/dns-query"}, 500*time.Millisecond)
 	if result.Err != nil {
 		t.Fatal(result.Err)
 	}
