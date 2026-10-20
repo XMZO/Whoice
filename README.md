@@ -161,7 +161,7 @@ Images:
 - Prometheus-style metrics endpoint for lookup/provider counters and latency histograms
 - Provider trace output for debugging and admin observability
 - OpenAPI/JSON Schema contract checks with generated TypeScript types, parser fixture samples, runtime API fixture samples, data snapshot validation, and Go/Web drift guards
-- Next.js search UI, All/RDAP/WHOIS source modes, shared local history, result panels, local plugin renderers, raw evidence display, runtime status page, API docs, theme, i18n, PWA, Dynamic OG, keyboard shortcuts, share/export menu, copy URL/query/raw, download JSON, and download OG image actions
+- Next.js search UI, All/RDAP/WHOIS source modes, shared local history, conclusion-first result layout with tabbed sections on short and mobile screens, raw-response drawer, runtime status page, API docs, theme, i18n, PWA, Dynamic OG, keyboard shortcuts, share/export menu, copy URL/query/raw, download JSON, and download OG image actions
 - Playwright smoke coverage for hydration, runtime status, result-page in-place lookup, source switching, theme/language controls, null-array response tolerance, and DNSViz rendering
 
 ## Runtime Controls

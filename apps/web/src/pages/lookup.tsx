@@ -3,12 +3,36 @@ import Link from "next/link";
 import type { GetServerSideProps } from "next";
 import { useRouter } from "next/router";
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import packageInfo from "../../package.json";
 import { AppControls } from "@/components/AppControls";
-import { analyzeRegistration, appendLookupOptions, enrichLookup, getAPIBase, getCapabilities, lookup, lookupICP, normalizeLookupInput, type LookupOptions } from "@/lib/api";
+import { BrandMark } from "@/components/BrandMark";
+import { CheckCircleIcon, CopyIcon, DownloadIcon, FileIcon, ImageIcon, LinkIcon, SearchIcon, WarnIcon } from "@/components/Icons";
+import { RawDrawer, type RawTab } from "@/components/RawDrawer";
+import {
+  DNSSection,
+  DNSVizLink,
+  DomainMetrics,
+  LockBar,
+  NetworkMetrics,
+  NetworkSection,
+  PriceSection,
+  RegistrantSection,
+  SourceTags,
+  SourcesSection,
+  StatusList,
+  pricingMeta,
+  pricingSummary,
+  registrantFieldCount,
+  type ICPState,
+} from "@/components/ResultSections";
+import { analyzeRegistration, appendLookupOptions, enrichLookup, getCapabilities, lookup, lookupICP, normalizeLookupInput, type LookupOptions } from "@/lib/api";
 import { writeHistory } from "@/lib/history";
-import { useI18n } from "@/lib/i18n";
-import { renderResultPlugins } from "@/lib/resultPlugins";
-import type { APIResponse, ICPResult, LookupResult } from "@/lib/types";
+import { useI18n, type I18nKey } from "@/lib/i18n";
+import { kindLabel, sourceName, sourceTag } from "@/lib/resultModel";
+import type { APIResponse, LookupResult } from "@/lib/types";
+
+type SectionTab = "overview" | "dns" | "owner" | "price" | "source" | "network";
+
 
 type Props = {
   query: string;
@@ -30,15 +54,6 @@ type LookupState = {
   nonce: number;
 };
 
-type ICPState = {
-  domain: string;
-  loading: boolean;
-  requested: boolean;
-  httpStatus?: number;
-  result?: ICPResult;
-  errorCode?: string;
-  error?: string;
-};
 
 type AIState = {
   key: string;
@@ -63,6 +78,7 @@ type ErrorViewModel = {
   message: string;
   detail?: string;
 };
+
 
 async function loadICPAutoQuery() {
   try {
@@ -178,818 +194,6 @@ export const getServerSideProps: GetServerSideProps<Props> = async (context) => 
   }
 };
 
-function Row({ label, value }: { label: string; value?: ReactNode }) {
-  if (value === undefined || value === null || value === "") return null;
-  return (
-    <div className="detail-row">
-      <dt>{label}</dt>
-      <dd>{value}</dd>
-    </div>
-  );
-}
-
-function brandLabel(brand?: LookupResult["registrar"]["brand"]) {
-  if (!brand) return undefined;
-  return brand.name;
-}
-
-function BrandBadge({ brand, compact }: { brand?: LookupResult["registrar"]["brand"]; compact?: boolean }) {
-  if (!brand) return null;
-  const style = brand.color ? ({ "--brand-swatch": brand.color } as Record<string, string>) : undefined;
-  const logo = safeImageURL(brand.logo);
-  const body = (
-    <span className={compact ? "brand-badge compact" : "brand-badge"} style={style} title={brand.name}>
-      {logo ? (
-        <img className="brand-logo" src={logo} alt="" loading="lazy" referrerPolicy="no-referrer" />
-      ) : (
-        <span className="brand-initial" aria-hidden="true">{brand.name.slice(0, 1).toUpperCase()}</span>
-      )}
-      {!compact && <span>{brand.name}</span>}
-    </span>
-  );
-  const href = safeExternalURL(brand.website);
-  return href ? (
-    <a className="brand-link" href={href} target="_blank" rel="noreferrer" aria-label={brand.name}>
-      {body}
-    </a>
-  ) : body;
-}
-
-function safeImageURL(value?: string) {
-  if (!value) return undefined;
-  if (value.startsWith("/")) return value;
-  return safeExternalURL(value);
-}
-
-function SourceHint({
-  source,
-  confidence,
-  evidence,
-  value,
-}: {
-  source?: string;
-  confidence?: number;
-  evidence?: string;
-  value?: string;
-}) {
-  if (!source && confidence === undefined && !evidence) return null;
-  const isAI = source?.startsWith("ai");
-  const label = isAI ? "AI" : source;
-  const parts = [
-    source,
-    value ? `value: ${value}` : "",
-    confidence !== undefined ? `confidence ${Math.round(confidence * 100)}%` : "",
-    evidence ? `evidence: ${evidence}` : "",
-  ].filter(Boolean);
-  return (
-    <span className={isAI ? "source-hint ai-source" : "source-hint"} title={parts.join("\n")}>
-      {label}
-      {confidence !== undefined ? ` ${Math.round(confidence * 100)}%` : ""}
-    </span>
-  );
-}
-
-type RegistrationSource = NonNullable<LookupResult["registrant"]["extra"]>[number];
-
-function RegistrationSourceBadges({ sources }: { sources?: RegistrationSource[] }) {
-  const values = Array.isArray(sources) ? sources.filter((source) => source.source || source.confidence !== undefined || source.evidence || source.value) : [];
-  if (!values.length) return null;
-  return (
-    <div className="registration-source-list">
-      {values.map((source, index) => (
-        <details className="source-popover" key={`${source.source || "source"}-${source.value || ""}-${index}`}>
-          <summary className={source.source?.startsWith("ai") ? "source-hint ai-source" : "source-hint"}>
-            {sourceLabel(source.source)}
-            {source.confidence !== undefined ? ` ${Math.round(source.confidence * 100)}%` : ""}
-          </summary>
-          <span className="source-popover-body">
-            {source.value && <span><strong>Value</strong>{source.value}</span>}
-            {source.source && <span><strong>Source</strong>{source.source}</span>}
-            {source.confidence !== undefined && <span><strong>Confidence</strong>{Math.round(source.confidence * 100)}%</span>}
-            {source.evidence && <span><strong>Evidence</strong>{source.evidence}</span>}
-          </span>
-        </details>
-      ))}
-    </div>
-  );
-}
-
-function sourceLabel(source?: string) {
-  if (!source) return "Source";
-  if (source.startsWith("ai")) return "AI";
-  if (source === "whois") return "WHOIS";
-  if (source === "rdap") return "RDAP";
-  if (source === "whoisWeb") return "Web";
-  return source;
-}
-
-function RawBlock({ title, value }: { title: string; value?: string }) {
-  if (!value) return null;
-  return (
-    <details className="panel raw-panel">
-      <summary className="panel-summary">
-        <h2>{title}</h2>
-        <span>{formatByteCount(value.length)}</span>
-      </summary>
-      <pre>{value}</pre>
-    </details>
-  );
-}
-
-function formatByteCount(value: number) {
-  if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
-  if (value >= 1024) return `${Math.round(value / 1024)} KB`;
-  return `${value} B`;
-}
-
-function hasNetwork(result: LookupResult) {
-  return Boolean(result.network.range || result.network.cidr || result.network.name || result.network.type || result.network.originAS || result.network.country);
-}
-
-function hasRegistration(result: LookupResult) {
-  const registrant = result.registrant || {};
-  return Boolean(
-    registrant.name ||
-    registrant.organization ||
-    registrant.country ||
-    registrant.province ||
-    registrant.city ||
-    registrant.address ||
-    registrant.postalCode ||
-    registrant.email ||
-    registrant.phone ||
-    registrant.extra?.length
-  );
-}
-
-function ActionValue({
-  value,
-  href,
-  onCopy,
-  displayValue,
-  className,
-}: {
-  value?: string;
-  href?: string;
-  onCopy?: (value: string) => void;
-  displayValue?: ReactNode;
-  className?: string;
-}) {
-  const text = value?.trim();
-  if (!text) return null;
-  return (
-    <span className={className ? `action-value ${className}` : "action-value"} title={displayValue ? text : undefined}>
-      {href ? (
-        <a href={href} target="_blank" rel="noreferrer">{displayValue || text}</a>
-      ) : (
-        <span>{displayValue || text}</span>
-      )}
-      {onCopy && (
-        <button type="button" className="inline-copy" onClick={() => onCopy(text)} title="Copy" aria-label={`Copy ${text}`}>
-          Copy
-        </button>
-      )}
-    </span>
-  );
-}
-
-function RegistrationValue({
-  value,
-  source,
-  confidence,
-  evidence,
-  sources,
-  onCopy,
-}: {
-  value?: string;
-  source?: string;
-  confidence?: number;
-  evidence?: string;
-  sources?: RegistrationSource[];
-  onCopy?: (value: string) => void;
-}) {
-  const text = value?.trim();
-  if (!text) return null;
-  const fieldSources = sources?.length ? sources : source || confidence !== undefined || evidence ? [{ label: "", value: text, source, confidence, evidence }] : undefined;
-  return (
-    <div className="registration-value">
-      <ActionValue value={text} onCopy={onCopy} />
-      <RegistrationSourceBadges sources={fieldSources} />
-    </div>
-  );
-}
-
-function RegistrationRow({
-  label,
-  value,
-  registrant,
-  fieldKey,
-  onCopy,
-}: {
-  label: string;
-  value?: string;
-  registrant: LookupResult["registrant"];
-  fieldKey: string;
-  onCopy?: (value: string) => void;
-}) {
-  if (!value?.trim()) return null;
-  const sources = registrant.fieldSources?.[fieldKey];
-  return (
-    <Row
-      label={label}
-      value={
-        <RegistrationValue
-          value={value}
-          source={registrant.source}
-          confidence={registrant.confidence}
-          evidence={registrant.evidence}
-          sources={sources}
-          onCopy={onCopy}
-        />
-      }
-    />
-  );
-}
-
-function externalDomainURL(value?: string) {
-  const text = value?.trim();
-  if (!text) return undefined;
-  return `https://${text}`;
-}
-
-function safeExternalURL(value?: string) {
-  const text = value?.trim();
-  if (!text) return undefined;
-  if (/^https?:\/\//i.test(text)) return text;
-  if (/^[a-z0-9.-]+\.[a-z]{2,}(?:\/.*)?$/i.test(text)) return `https://${text}`;
-  return undefined;
-}
-
-function DNSPanel({ result, pending, onCopy }: { result: LookupResult; pending?: boolean; onCopy?: (value: string) => void }) {
-  const { t } = useI18n();
-  const dns = result.enrichment?.dns;
-  const hasRecords = Boolean(dns?.cname || dns?.a?.length || dns?.aaaa?.length || dns?.mx?.length || dns?.ns?.length);
-  const registryNs = dns?.registryNs?.length ? dns.registryNs : result.nameservers.map((ns) => ns.host).filter(Boolean);
-  const liveNs = dns?.ns || [];
-  const mergedNs = mergeNameserverValues(registryNs, liveNs);
-
-  return (
-    <section className="panel dns-panel">
-      <div className="panel-head">
-        <h2>{t("dns")}</h2>
-        <div className="panel-status-slot">
-          {pending && !dns ? <span className="source-hint ai-pending">loading</span> : <DNSResolverBadges resolvers={dns?.resolvers} />}
-        </div>
-      </div>
-      <dl className="detail-list">
-        <Row
-          label={t("nameservers")}
-          value={
-            mergedNs.length ? (
-              <NameserverBlock registryNs={registryNs} liveNs={liveNs} mismatch={dns?.nsMismatch} nameservers={result.nameservers} onCopy={onCopy} />
-            ) : (
-              <span className="muted">{t("noNameservers")}</span>
-            )
-          }
-        />
-        {pending && !dns ? (
-          <DNSPendingRows />
-        ) : hasRecords ? (
-          <>
-            <Row label="CNAME" value={dns?.cname} />
-            <Row label="A" value={dns?.a?.length ? <DNSAddressGroup title="A" addresses={dns.a} /> : undefined} />
-            <Row label="AAAA" value={dns?.aaaa?.length ? <DNSAddressGroup title="AAAA" addresses={dns.aaaa} /> : undefined} />
-            <Row label="MX" value={dns?.mx?.length ? <DNSValueGroup title="MX" values={dns.mx.map((item) => `${item.pref} ${item.host}`)} /> : undefined} />
-            <Row label="DNS ms" value={dns?.elapsedMs} />
-          </>
-        ) : (
-          <Row label="Records" value={<span className="muted">{t("noDns")}</span>} />
-        )}
-      </dl>
-    </section>
-  );
-}
-
-function DNSPendingRows() {
-  const { t } = useI18n();
-  return (
-    <>
-      <Row label={t("records")} value={<span className="muted">{t("dnsUpdating")}</span>} />
-      <Row label="A" value={<PendingLine />} />
-      <Row label="AAAA" value={<PendingLine />} />
-      <Row label="MX" value={<PendingLine />} />
-      <Row label="DNS ms" value={<PendingLine compact />} />
-    </>
-  );
-}
-
-function PendingLine({ compact }: { compact?: boolean }) {
-  return <span className={compact ? "pending-line compact" : "pending-line"} aria-hidden="true" />;
-}
-
-function ICPPanel({
-  domain,
-  state,
-  onLookup,
-}: {
-  domain?: string;
-  state: ICPState;
-  onLookup: () => void;
-}) {
-  if (!domain) return null;
-  const records = state.result?.records || [];
-  const found = state.result?.status === "found" && records.length > 0;
-  const checked = state.requested && !state.loading;
-  const notFound = state.result?.status === "not_found" && !state.error;
-  const unavailable = Boolean(state.error);
-  return (
-    <section className="panel icp-panel">
-      <div className="panel-head">
-        <h2>ICP备案</h2>
-        <button type="button" className="inline-action compact" onClick={onLookup} disabled={state.loading}>
-          {state.loading ? "查询中" : checked ? "刷新" : "查询"}
-        </button>
-      </div>
-      {!state.requested ? (
-        <p className="muted">手动查询，不影响 WHOIS 结果。</p>
-      ) : state.loading ? (
-        <p className="muted">正在查询工信部备案信息</p>
-      ) : unavailable ? (
-        <p className="muted">{icpErrorMessage(state)}</p>
-      ) : found ? (
-        <details className="icp-details">
-          <summary>
-            <span className="status-pill ok">已备案</span>
-            <span>{records[0].serviceLicence || records[0].mainLicence || domain}</span>
-            {state.result?.cached && <span className="muted">cached</span>}
-          </summary>
-          <div className="icp-record-list">
-            {records.map((record, index) => (
-              <dl className="detail-list icp-record" key={`${record.domain}-${record.serviceLicence}-${index}`}>
-                <Row label="域名" value={record.domain || domain} />
-                <Row label="主办单位" value={record.unitName} />
-                <Row label="主体性质" value={record.natureName} />
-                <Row label="主体备案号" value={record.mainLicence} />
-                <Row label="网站备案号" value={record.serviceLicence} />
-                <Row label="网站名称" value={record.serviceName} />
-                <Row label="审核时间" value={record.updateRecordTime} />
-              </dl>
-            ))}
-          </div>
-        </details>
-      ) : notFound ? (
-        <p className="muted">没有备案信息。</p>
-      ) : (
-        <p className="muted">没有备案信息。</p>
-      )}
-    </section>
-  );
-}
-
-function icpErrorMessage(state: ICPState) {
-  if (state.errorCode === "icp_disabled" || state.httpStatus === 503) {
-    return "备案查询未启用。";
-  }
-  if (state.errorCode === "icp_route_missing" || state.httpStatus === 404) {
-    return "备案接口未接入当前运行的服务，请重启 Web/API 或更新镜像。";
-  }
-  if (state.errorCode === "api_unreachable") {
-    return "备案查询暂不可用：后端 API 无法连接。";
-  }
-  if (state.errorCode === "icp_invalid_response") {
-    return state.error || "备案接口返回了非 JSON 响应，请重启 Web/API 后再试。";
-  }
-  return state.error ? `备案查询暂不可用：${state.error}` : "备案查询暂不可用。";
-}
-
-function NSComparison({
-  registryNs,
-  dnsNs,
-  mismatch,
-  nameservers,
-  onCopy,
-}: {
-  registryNs?: string[];
-  dnsNs?: string[];
-  mismatch?: boolean;
-  nameservers: LookupResult["nameservers"];
-  onCopy?: (value: string) => void;
-}) {
-  const liveNs = dnsNs || [];
-  const whoisNs = registryNs || [];
-  if (!liveNs.length && !whoisNs.length) return null;
-  if (!mismatch) {
-    return <DNSValueGroup title="NS" values={liveNs.length ? liveNs : whoisNs} onCopy={onCopy} />;
-  }
-  return (
-    <div className="ns-compare">
-      <div className="ns-warning">WHOIS/RDAP NS and live DNS NS differ</div>
-      <details className="ns-evidence">
-        <summary>
-          <span>Show NS evidence</span>
-          <span className="muted">{whoisNs.length} registry / {liveNs.length} live</span>
-        </summary>
-        <div className="ns-evidence-grid">
-          <div>
-            <strong>WHOIS/RDAP NS <span>{whoisNs.length}</span></strong>
-            <NSList values={whoisNs} nameservers={nameservers} onCopy={onCopy} grouped />
-          </div>
-          <div>
-            <strong>Live DNS NS <span>{liveNs.length}</span></strong>
-            <NSList values={liveNs} nameservers={nameservers} onCopy={onCopy} grouped />
-          </div>
-        </div>
-      </details>
-    </div>
-  );
-}
-
-function NSList({
-  values,
-  nameservers,
-  onCopy,
-  grouped,
-}: {
-  values: string[];
-  nameservers?: LookupResult["nameservers"];
-  onCopy?: (value: string) => void;
-  grouped?: boolean;
-}) {
-  if (!values.length) return <span className="muted">none</span>;
-  if (grouped) {
-    return <NameserverGroupedList values={values} nameservers={nameservers} onCopy={onCopy} />;
-  }
-  return (
-    <span className="dns-record-list">
-      {values.map((value) => (
-        <span key={value} className="dns-record-item">
-          <ActionValue value={value} onCopy={onCopy} />
-          {nameservers ? <NameserverAddresses host={value} nameservers={nameservers} /> : null}
-        </span>
-      ))}
-    </span>
-  );
-}
-
-function NameserverGroupedList({ values, nameservers, onCopy }: { values: string[]; nameservers?: LookupResult["nameservers"]; onCopy?: (value: string) => void }) {
-  const groups = groupNameserversBySuffix(values);
-  return (
-    <span className="ns-compact-list">
-      {groups.map((group) => (
-        <span className="ns-group" key={group.suffix}>
-          <span className="ns-group-suffix" title={group.suffix}>{group.suffix}</span>
-          <span className="ns-group-hosts">
-            {group.items.map((item) => (
-              <button type="button" className="ns-host-chip" key={item.host} onClick={() => onCopy?.(item.host)} title={item.host} aria-label={`Copy ${item.host}`}>
-                {item.label}
-              </button>
-            ))}
-          </span>
-          {nameservers && (
-            <span className="ns-group-addresses">
-              {group.items.map((item) => (
-                <NameserverAddresses key={item.host} host={item.host} nameservers={nameservers} />
-              ))}
-            </span>
-          )}
-        </span>
-      ))}
-    </span>
-  );
-}
-
-function groupNameserversBySuffix(values: string[]) {
-  const groups = new Map<string, { suffix: string; items: { host: string; label: string }[] }>();
-  for (const value of values) {
-    const host = normalizeNameserverHost(value);
-    if (!host) continue;
-    const labels = host.split(".");
-    const suffix = labels.length >= 3 ? labels.slice(1).join(".") : host;
-    const label = labels.length >= 3 ? labels[0] : host;
-    const group = groups.get(suffix) || { suffix, items: [] };
-    group.items.push({ host, label });
-    groups.set(suffix, group);
-  }
-  return Array.from(groups.values()).sort((a, b) => a.suffix.localeCompare(b.suffix));
-}
-
-function NameserverBlock({
-  registryNs,
-  liveNs,
-  mismatch,
-  nameservers,
-  onCopy,
-}: {
-  registryNs?: string[];
-  liveNs?: string[];
-  mismatch?: boolean;
-  nameservers: LookupResult["nameservers"];
-  onCopy?: (value: string) => void;
-}) {
-  const merged = mergeNameserverValues(registryNs || [], liveNs || []);
-
-  if (merged.length === 0) return null;
-  if (mismatch) {
-    return <NSComparison registryNs={registryNs} dnsNs={liveNs} mismatch nameservers={nameservers} onCopy={onCopy} />;
-  }
-  return (
-    <div className="nameserver-list">
-      {merged.map((host) => (
-        <span key={host} className="nameserver-item">
-          <ActionValue value={host} onCopy={() => onCopy?.(host)} />
-          <NameserverBrand host={host} nameservers={nameservers} />
-          <NameserverAddresses host={host} nameservers={nameservers} />
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function mergeNameserverValues(...groups: string[][]) {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const group of groups) {
-    for (const value of group) {
-      const normalized = normalizeNameserverHost(value);
-      if (!normalized || seen.has(normalized)) continue;
-      seen.add(normalized);
-      out.push(normalized);
-    }
-  }
-  return out.sort();
-}
-
-function normalizeNameserverHost(value: string) {
-  return value.trim().replace(/\.$/, "").toLowerCase();
-}
-
-function nameserverBrand(host: string, nameservers?: LookupResult["nameservers"]) {
-  if (!nameservers) return undefined;
-  const matched = nameservers.find((ns) => normalizeNameserverHost(ns.host) === host);
-  return matched?.brand;
-}
-
-function NameserverBrand({ host, nameservers }: { host: string; nameservers?: LookupResult["nameservers"] }) {
-  return <BrandBadge brand={nameserverBrand(normalizeNameserverHost(host), nameservers)} compact />;
-}
-
-function NameserverAddresses({ host, nameservers }: { host: string; nameservers: LookupResult["nameservers"] }) {
-  const matched = nameservers.find((ns) => normalizeNameserverHost(ns.host) === host);
-  const addresses = Array.isArray(matched?.addresses) ? matched.addresses.filter(Boolean) : [];
-  if (!addresses.length) return null;
-  return (
-    <span className="nameserver-addresses">
-      {addresses.map((address) => (
-        <span className="ns-address-chip" key={address}>IP {address}</span>
-      ))}
-    </span>
-  );
-}
-
-function DNSResolverBadges({ resolvers }: { resolvers?: NonNullable<LookupResult["enrichment"]["dns"]>["resolvers"] }) {
-  if (!resolvers?.length) return null;
-  const groups = groupDNSResolvers(resolvers);
-  return (
-    <div className="dns-resolver-badges">
-      {groups.map((group) => (
-        <ResolverGroupBadge group={group} key={group.key} />
-      ))}
-    </div>
-  );
-}
-
-type DNSResolverInfo = NonNullable<NonNullable<LookupResult["enrichment"]["dns"]>["resolvers"]>[number];
-type DNSResolverGroup = ReturnType<typeof groupDNSResolvers>[number];
-
-function ResolverGroupBadge({ group, compact }: { group: DNSResolverGroup; compact?: boolean }) {
-  return (
-    <span className="resolver-group">
-      <ResolverIcon source={group.source} resolver={group.resolver} endpoint={group.endpoint} status={group.status} count={group.items.length} compact={compact} />
-      <span className="resolver-tooltip" role="tooltip">
-        {group.items.map((resolver, index) => {
-          const meta = resolverMeta(resolver.source, resolver.resolver, resolver.endpoint);
-          const status = resolver.status || "ok";
-          return (
-            <span key={`${resolver.source}-${resolver.resolver}-${resolver.endpoint || ""}-${index}`} className={`resolver-tooltip-row resolver-status-${status}`}>
-              <ResolverIcon source={resolver.source} resolver={resolver.resolver} endpoint={resolver.endpoint} status={status} compact />
-              <span className="resolver-tooltip-main">{resolver.endpoint || resolver.resolver}</span>
-              <span className="resolver-tooltip-status">{resolverStatusLabel(status)}</span>
-              {resolver.error && <span className="resolver-tooltip-error">{resolver.error}</span>}
-              <span className="sr-only">{meta.title}</span>
-            </span>
-          );
-        })}
-      </span>
-    </span>
-  );
-}
-
-function groupDNSResolvers(resolvers: DNSResolverDisplayInfo[]) {
-  const map = new Map<string, { key: string; source?: string; resolver?: string; endpoint?: string; status?: string; items: DNSResolverDisplayInfo[] }>();
-  for (const resolver of resolvers) {
-    const meta = resolverMeta(resolver.source, resolver.resolver, resolver.endpoint);
-    const key = `${resolver.source || ""}-${meta.kind}`;
-    const existing = map.get(key);
-    if (existing) {
-      existing.items.push(resolver);
-      existing.status = mergeResolverStatus(existing.status, resolver.status);
-      continue;
-    }
-    map.set(key, {
-      key,
-      source: resolver.source,
-      resolver: resolver.source === "udp" ? "udp" : resolver.resolver,
-      endpoint: resolver.endpoint,
-      status: resolver.status,
-      items: [resolver],
-    });
-  }
-  return Array.from(map.values());
-}
-
-type DNSAddressInfo = NonNullable<NonNullable<LookupResult["enrichment"]["dns"]>["a"]>[number];
-type DNSResolverDisplayInfo = {
-  source?: string;
-  resolver?: string;
-  endpoint?: string;
-  status?: string;
-  error?: string;
-};
-
-function DNSAddressGroup({ title, addresses }: { title: string; addresses?: DNSAddressInfo[] }) {
-  if (!addresses?.length) return null;
-  const summary = addresses.length === 1 ? addresses[0].ip : `${addresses.length} records`;
-  return (
-    <details className="dns-record-group">
-      <summary>
-        <span>{summary}</span>
-        {addresses.length > 1 && <span className="muted">{title}</span>}
-      </summary>
-      <div className="dns-record-list">
-        {addresses.map((address) => (
-          <span key={address.ip} className="dns-record-item">
-            <span className="dns-record-address">{address.ip}</span>
-            <DNSRecordResolverBadges address={address} />
-          </span>
-        ))}
-      </div>
-    </details>
-  );
-}
-
-function DNSRecordResolverBadges({ address }: { address: DNSAddressInfo }) {
-  const resolvers = resolversFromDNSAddress(address);
-  if (resolvers.length === 0) return null;
-  const groups = groupDNSResolvers(resolvers);
-  return (
-    <span className="dns-record-resolvers">
-      {groups.map((group) => (
-        <ResolverGroupBadge group={group} compact key={group.key} />
-      ))}
-    </span>
-  );
-}
-
-function resolversFromDNSAddress(address: DNSAddressInfo): DNSResolverDisplayInfo[] {
-  const sources = splitResolverValues(address.source).map((source) => source.toLowerCase());
-  const resolvers = splitResolverValues(address.resolver);
-  const endpoints = splitResolverValues(address.endpoint);
-  const count = Math.max(resolvers.length, endpoints.length, sources.length === 1 && resolvers.length === 0 ? 1 : 0);
-  const out: DNSResolverDisplayInfo[] = [];
-  let dohEndpointIndex = 0;
-  for (let index = 0; index < count; index += 1) {
-    const resolver = resolvers[index] || resolvers[0] || "";
-    let source = inferResolverSource(resolver, endpoints[index]);
-    if (!source && sources.length === 1) source = sources[0];
-    if (!source && sources.length > 1) source = sources.includes("udp") && isIPResolverLabel(resolver) ? "udp" : sources.includes("doh") ? "doh" : sources[0];
-    let endpoint = "";
-    if (source === "doh") {
-      endpoint = endpoints[dohEndpointIndex] || endpoints[index] || "";
-      dohEndpointIndex += 1;
-    } else if (!sources.length && endpoints[index]) {
-      endpoint = endpoints[index];
-    }
-    if (!source && endpoint) source = "doh";
-    if (!source && !resolver && !endpoint) continue;
-    out.push({ source, resolver, endpoint, status: "ok" });
-  }
-  for (let index = dohEndpointIndex; index < endpoints.length; index += 1) {
-    out.push({ source: "doh", resolver: labelFromDoHEndpoint(endpoints[index]), endpoint: endpoints[index], status: "ok" });
-  }
-  return out;
-}
-
-function inferResolverSource(resolver?: string, endpoint?: string) {
-  if (isIPResolverLabel(resolver) || (resolver || "").toLowerCase() === "system") return "udp";
-  const value = `${resolver || ""} ${endpoint || ""}`.toLowerCase();
-  if (/https?:\/\//.test(value) || value.includes("dns.google") || value.includes("cloudflare") || value.includes("doh.pub") || value.includes("alidns")) return "doh";
-  return "";
-}
-
-function isIPResolverLabel(value?: string) {
-  const text = value || "";
-  return /^(?:\d{1,3}\.){3}\d{1,3}$/.test(text) || text.includes(":");
-}
-
-function labelFromDoHEndpoint(endpoint: string) {
-  try {
-    return new URL(endpoint).hostname || endpoint;
-  } catch {
-    return endpoint;
-  }
-}
-
-function DNSValueGroup({ title, values, onCopy }: { title: string; values?: string[]; onCopy?: (value: string) => void }) {
-  if (!values?.length) return null;
-  const summary = values.length === 1 ? values[0] : `${values.length} records`;
-  return (
-    <details className="dns-record-group">
-      <summary>
-        <span>{summary}</span>
-        {values.length > 1 && <span className="muted">{title}</span>}
-      </summary>
-      <div className="dns-record-list">
-        {values.map((value) => (
-          <span key={value} className="dns-record-item">
-            {onCopy ? <ActionValue value={value} onCopy={onCopy} /> : value}
-          </span>
-        ))}
-      </div>
-    </details>
-  );
-}
-
-function ResolverIcon({
-  source,
-  resolver,
-  endpoint,
-  compact,
-  status,
-  count,
-}: {
-  source?: string;
-  resolver?: string;
-  endpoint?: string;
-  compact?: boolean;
-  status?: string;
-  count?: number;
-}) {
-  if (!source && !resolver) return null;
-  const parts = splitResolverValues(resolver);
-  const endpoints = splitResolverValues(endpoint);
-  if (parts.length > 1) {
-    return (
-      <span className="resolver-icon-stack">
-        {parts.map((part, index) => (
-          <ResolverIcon key={`${part}-${index}`} source={source} resolver={part} endpoint={endpoints[index] || endpoint} compact={compact} status={status} />
-        ))}
-      </span>
-    );
-  }
-  const meta = resolverMeta(source, resolver, endpoint);
-  const title = [meta.title, resolverStatusLabel(status), count && count > 1 ? `${count} resolvers` : ""].filter(Boolean).join(" - ");
-  return (
-    <span className={`resolver-icon resolver-${meta.kind} resolver-status-${status || "ok"}${compact ? " compact" : ""}`} tabIndex={0} aria-label={title}>
-      {meta.label}{count && count > 1 ? <span className="resolver-count">{count}</span> : null}
-    </span>
-  );
-}
-
-function splitResolverValues(value?: string) {
-  return (value || "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function resolverMeta(source?: string, resolver?: string, endpoint?: string) {
-  const value = (resolver || "").toLowerCase();
-  const sourceLabel = (source || "").toUpperCase();
-  if (source === "udp" && value === "udp") {
-    return { kind: "udp", label: "U", title: "UDP DNS resolvers" };
-  }
-  if (source === "doh") {
-    if (value.includes("cloudflare")) return { kind: "cf", label: "CF", title: endpoint || "https://cloudflare-dns.com/dns-query" };
-    if (value.includes("google")) return { kind: "google", label: "G", title: endpoint || "https://dns.google/resolve" };
-    if (value.includes("doh.pub")) return { kind: "tencent", label: "T", title: endpoint || "https://doh.pub/dns-query" };
-    if (value.includes("alidns")) return { kind: "ali", label: "A", title: endpoint || "https://dns.alidns.com/dns-query" };
-    return { kind: "doh", label: "D", title: endpoint || resolver || "DoH" };
-  }
-  return { kind: "udp", label: "U", title: [sourceLabel, resolver].filter(Boolean).join(" ") };
-}
-
-function mergeResolverStatus(current?: string, incoming?: string) {
-  if (current === "error" || incoming === "error") return "error";
-  if (current === "empty" || incoming === "empty") return "empty";
-  return current || incoming || "ok";
-}
-
-function resolverStatusLabel(status?: string) {
-  if (status === "error") return "failed";
-  if (status === "empty") return "no answer";
-  return "answered";
-}
-
 function rawText(result: LookupResult) {
   return [result.raw.whois, result.raw.whoisWeb, result.raw.rdap].filter(Boolean).join("\n\n");
 }
@@ -1071,329 +275,95 @@ function errorView(response: APIResponse, status: number): ErrorViewModel {
   };
 }
 
-function RegistrationPanel({ result, aiLoading, aiError, onCopy }: { result: LookupResult; aiLoading?: boolean; aiError?: string; onCopy?: (value: string) => void }) {
+function SourceToggle({ value, onChange }: { value: SourceMode; onChange: (value: SourceMode) => void }) {
   const { t } = useI18n();
-  const registrant = result.registrant || {};
-  const extras = Array.isArray(registrant.extra) ? registrant.extra.filter((field) => field.label && field.value) : [];
-  const ai = result.meta?.ai;
-  return (
-    <section className="panel registration-panel">
-      <div className="panel-head">
-        <h2>{t("registration")}</h2>
-        {aiLoading && <span className="source-hint ai-pending">{t("aiAnalyzing")}</span>}
-        {!aiLoading && aiError && <span className="source-hint ai-error" title={aiError}>AI error</span>}
-        {ai && (
-          <span className={`source-hint ${ai.status === "error" ? "ai-error" : "ai-source"}`} title={[ai.provider, ai.model, ai.reason, ai.error].filter(Boolean).join("\n")}>
-            AI {ai.status}{ai.cached ? " cached" : ""}
-          </span>
-        )}
-      </div>
-      {!hasRegistration(result) ? (
-        <p className="muted">{aiLoading ? t("aiChecking") : t("noRegistration")}</p>
-      ) : (
-        <dl className="detail-list registration-list">
-          <RegistrationRow label={t("name")} fieldKey="name" value={registrant.name} registrant={registrant} onCopy={onCopy} />
-          <RegistrationRow label={t("organization")} fieldKey="organization" value={registrant.organization} registrant={registrant} onCopy={onCopy} />
-          <RegistrationRow label={t("country")} fieldKey="country" value={registrant.country} registrant={registrant} />
-          <RegistrationRow label={t("province")} fieldKey="province" value={registrant.province} registrant={registrant} />
-          <RegistrationRow label={t("city")} fieldKey="city" value={registrant.city} registrant={registrant} />
-          <RegistrationRow label={t("address")} fieldKey="address" value={registrant.address} registrant={registrant} onCopy={onCopy} />
-          <RegistrationRow label={t("postalCode")} fieldKey="postalCode" value={registrant.postalCode} registrant={registrant} />
-          <RegistrationRow label={t("email")} fieldKey="email" value={registrant.email} registrant={registrant} onCopy={onCopy} />
-          <RegistrationRow label={t("phone")} fieldKey="phone" value={registrant.phone} registrant={registrant} onCopy={onCopy} />
-          {extras.length > 0 && (
-            <Row
-              label={t("registryFields")}
-              value={
-                <div className="registration-extra-list">
-                  {extras.map((field, index) => (
-                    <div key={`${field.label}-${field.value}-${index}`} className="registration-extra-item">
-                      <span className="registration-extra-label">{field.label}</span>
-                      <ActionValue value={field.value} onCopy={onCopy} />
-                      <RegistrationSourceBadges sources={[field]} />
-                    </div>
-                  ))}
-                </div>
-              }
-            />
-          )}
-        </dl>
-      )}
-    </section>
-  );
-}
-
-function NetworkPanel({ result }: { result: LookupResult }) {
-  const { t } = useI18n();
-  return (
-    <section className="panel network-panel">
-      <div className="panel-head">
-        <h2>{t("network")}</h2>
-      </div>
-      {!hasNetwork(result) ? (
-        <p className="muted">{t("noNetwork")}</p>
-      ) : (
-        <dl className="detail-list">
-          <Row label={t("range")} value={result.network.range} />
-          <Row label={t("cidr")} value={result.network.cidr} />
-          <Row label={t("name")} value={result.network.name} />
-          <Row label={t("type")} value={result.network.type} />
-          <Row label={t("originAs")} value={result.network.originAS} />
-          <Row label={t("country")} value={result.network.country} />
-        </dl>
-      )}
-    </section>
-  );
-}
-
-function SummaryPanel({ result, onCopy }: { result: LookupResult; onCopy?: (value: string) => void }) {
-  const { t } = useI18n();
-  return (
-    <section className="panel summary-panel">
-      <div className="panel-head">
-        <h2>{t("summary")}</h2>
-      </div>
-      <dl className="detail-list">
-        <Row label={t("domain")} value={<ActionValue value={result.domain.name} href={externalDomainURL(result.domain.name)} onCopy={onCopy} />} />
-        <Row label={t("unicode")} value={<ActionValue value={result.domain.unicodeName} href={externalDomainURL(result.domain.unicodeName)} onCopy={onCopy} />} />
-        <Row
-          label={t("registrar")}
-          value={
-            result.registrar.name ? (
-              <span className="registration-value">
-                <ActionValue value={result.registrar.name} href={safeExternalURL(result.registrar.url)} />
-                <SourceHint source={result.registrar.source} confidence={result.registrar.confidence} evidence={result.registrar.evidence} />
-              </span>
-            ) : (
-              <span className="status-pill off">{t("notParsed")}</span>
-            )
-          }
-        />
-        <Row label={t("registrarBrand")} value={<BrandBadge brand={result.registrar.brand} />} />
-        <Row label={t("ianaId")} value={result.registrar.ianaId} />
-        <Row label={t("registrarCountry")} value={result.registrar.country} />
-        <Row label={t("created")} value={<DateInsight value={result.dates.createdAt} days={result.dates.ageDays} kind="age" />} />
-        <Row label={t("expires")} value={<DateInsight value={result.dates.expiresAt} days={result.dates.remainingDays} kind="expiry" />} />
-        <Row label={t("updated")} value={result.dates.updatedAt} />
-        <Row label={t("age")} value={domainAgeLabel(result.dates.ageDays, t)} />
-        <Row label={t("remaining")} value={remainingLabel(result.dates.remainingDays, t)} />
-        <Row label={t("dnssec")} value={result.dnssec.text} />
-      </dl>
-    </section>
-  );
-}
-
-function DateInsight({ value, days, kind }: { value?: string; days?: number; kind: "age" | "expiry" }) {
-  const { t } = useI18n();
-  if (!value && days === undefined) return null;
-  const tone = kind === "expiry" ? expiryTone(days) : ageTone(days);
-  return (
-    <span className="date-insight">
-      {value && <span>{value}</span>}
-      {days !== undefined && <span className={`insight-pill insight-${tone}`}>{kind === "expiry" ? remainingLabel(days, t) : domainAgeLabel(days, t, true)}</span>}
-    </span>
-  );
-}
-
-function domainAgeLabel(days?: number, translate?: (key: any) => string, includeTone?: boolean) {
-  if (days === undefined || days === null) return undefined;
-  const years = days / 365;
-  const label = years >= 1
-    ? `${years.toFixed(years >= 10 ? 0 : 1)}${translate ? translate("yearsShort") : "y"}`
-    : `${days}${translate ? translate("daysShort") : "d"}`;
-  const prefix = translate ? translate("domainAge") : "age";
-  const tone = includeTone ? ageTextTone(days, translate) : "";
-  return [prefix, label, tone].filter(Boolean).join(" ");
-}
-
-function remainingLabel(days?: number, translate?: (key: any) => string) {
-  if (days === undefined || days === null) return undefined;
-  const abs = Math.abs(days);
-  const text = abs >= 365
-    ? `${(abs / 365).toFixed(abs >= 3650 ? 0 : 1)}${translate ? translate("yearsShort") : "y"}`
-    : `${abs}${translate ? translate("daysShort") : "d"}`;
-  if (days < 0) return `${translate ? translate("expiredAgo") : "expired"} ${text}`;
-  return `${translate ? translate("expiresIn") : "expires in"} ${text}`;
-}
-
-function ageTextTone(days?: number, translate?: (key: any) => string) {
-  if (days === undefined || days === null || !translate) return "";
-  if (days < 90) return translate("newDomain");
-  if (days >= 3650) return translate("oldDomain");
-  if (days >= 1095) return translate("matureDomain");
-  return "";
-}
-
-function expiryTone(days?: number) {
-  if (days === undefined || days === null) return "neutral";
-  if (days < 0) return "danger";
-  if (days <= 30) return "danger";
-  if (days <= 90) return "warn";
-  return "ok";
-}
-
-function ageTone(days?: number) {
-  if (days === undefined || days === null) return "neutral";
-  if (days < 90) return "new";
-  if (days >= 3650) return "old";
-  if (days >= 1095) return "ok";
-  return "neutral";
-}
-
-function StatusPanel({ statuses }: { statuses: LookupResult["statuses"] }) {
-  const { locale, t } = useI18n();
-  return (
-    <section className="panel status-panel">
-      <div className="panel-head">
-        <h2>{t("status")}</h2>
-      </div>
-      {statuses.length === 0 ? (
-        <p className="muted">{t("noStatus")}</p>
-      ) : (
-        <div className="chip-list">
-          {statuses.map((status) => (
-            <StatusChip key={`${status.code}-${status.source}`} status={status} locale={locale} />
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function StatusChip({ status, locale }: { status: LookupResult["statuses"][number]; locale: string }) {
-  const help = statusHelpText(status, locale);
-  return (
-    <a
-      className={`chip status-chip status-chip-${status.category || "unknown"}`}
-      href={status.url || "https://icann.org/epp"}
-      target="_blank"
-      rel="noreferrer"
-      title={[status.code, help].filter(Boolean).join("\n")}
-    >
-      <span>{status.label || status.code}</span>
-      {help && <small>{help}</small>}
-    </a>
-  );
-}
-
-function statusHelpText(status: LookupResult["statuses"][number], locale: string) {
-  if (locale === "zh-CN" || locale === "zh-TW") {
-    const key = normalizeStatusCode(status.label || status.code);
-    return statusHelpZh[key] || status.description;
-  }
-  return status.description;
-}
-
-function normalizeStatusCode(value?: string) {
-  return (value || "").toLowerCase().replace(/https?:\/\/icann\.org\/epp#/i, "").replace(/[\s._-]+/g, "");
-}
-
-const statusHelpZh: Record<string, string> = {
-  ok: "域名没有待处理操作或禁止状态。",
-  active: "域名处于活动状态并已委派。",
-  inactive: "域名未委派，可能无法解析。",
-  addperiod: "域名处于初始注册宽限期。",
-  autorenewperiod: "域名处于自动续费宽限期。",
-  renewperiod: "域名处于续费宽限期。",
-  transferperiod: "域名处于转移后的宽限期。",
-  clienttransferprohibited: "注册商已锁定域名，禁止转移。",
-  clientdeleteprohibited: "注册商已锁定域名，禁止删除。",
-  clientupdateprohibited: "注册商已锁定域名，禁止更新。",
-  clienthold: "注册商暂停了域名的 DNS 发布。",
-  clientrenewprohibited: "注册商已锁定域名，禁止续费。",
-  servertransferprohibited: "注册局已锁定域名，禁止转移。",
-  serverdeleteprohibited: "注册局已锁定域名，禁止删除。",
-  serverhold: "注册局暂停了域名的 DNS 发布。",
-  serverrenewprohibited: "注册局已锁定域名，禁止续费。",
-  serverupdateprohibited: "注册局已锁定域名，禁止更新。",
-  pendingcreate: "创建操作正在处理中。",
-  pendingdelete: "域名正在等待删除。",
-  pendingrenew: "续费操作正在处理中。",
-  pendingrestore: "恢复操作正在等待注册局处理。",
-  pendingtransfer: "转移操作正在等待批准或拒绝。",
-  pendingupdate: "更新操作正在处理中。",
-  redemptionperiod: "域名已删除，但仍可能处于可恢复期。",
-};
-
-function StatusStrip({ result, onCopy }: { result: LookupResult; onCopy?: (value: string) => void }) {
-  return (
-    <section className={`status-strip status-${result.status}`}>
-      <div>
-        <p className="eyebrow">{result.type}</p>
-        <h1>
-          <ActionValue value={result.normalizedQuery} href={result.type === "domain" ? externalDomainURL(result.domain.unicodeName || result.normalizedQuery) : undefined} onCopy={onCopy} />
-        </h1>
-      </div>
-      <div className="status-badges">
-        <span>{result.status}</span>
-        {result.source.primary && <span>{result.source.primary} primary</span>}
-        <span>{result.meta.elapsedMs} ms</span>
-      </div>
-    </section>
-  );
-}
-
-function SourceLinks({
-  value,
-  onChange,
-  exactDomain,
-  onExactDomainChange,
-  forceAI,
-  onForceAIChange,
-}: {
-  value: SourceMode;
-  onChange: (value: SourceMode) => void;
-  exactDomain: boolean;
-  onExactDomainChange: (value: boolean) => void;
-  forceAI: boolean;
-  onForceAIChange: (value: boolean) => void;
-}) {
-  const { t } = useI18n();
-  const sourceOptions: { value: SourceMode; label: string }[] = [
+  const options: { value: SourceMode; label: string }[] = [
     { value: "all", label: t("all") },
     { value: "rdap", label: "RDAP" },
     { value: "whois", label: "WHOIS" },
   ];
-
   return (
-    <div className="source-bar source-tabs">
-      <div className="source-toggle" role="radiogroup" aria-label={t("lookupSource")}>
-        {sourceOptions.map((option) => (
-          <button
-            key={option.value}
-            aria-checked={value === option.value}
-            className={value === option.value ? "source-option active" : "source-option"}
-            onClick={() => onChange(option.value)}
-            role="radio"
-            type="button"
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-      <label className="inline-check" title={t("exactDomainHint")}>
-        <input type="checkbox" checked={exactDomain} onChange={(event) => onExactDomainChange(event.target.checked)} />
-        <span>{t("exactDomain")}</span>
-      </label>
-      <label className="inline-check" title={t("forceAIHint")}>
-        <input type="checkbox" checked={forceAI} onChange={(event) => onForceAIChange(event.target.checked)} />
-        <span>{t("forceAI")}</span>
-      </label>
+    <div className="source-toggle" role="radiogroup" aria-label={t("lookupSource")}>
+      {options.map((option) => (
+        <button
+          key={option.value}
+          aria-checked={value === option.value}
+          className={value === option.value ? "source-option active" : "source-option"}
+          onClick={() => onChange(option.value)}
+          role="radio"
+          type="button"
+        >
+          {option.label}
+        </button>
+      ))}
     </div>
   );
 }
 
-function LookupErrorPanel({ response, status }: { response: APIResponse; status: number }) {
+const statusLabelKey: Record<string, I18nKey> = {
+  registered: "statusRegistered",
+  unregistered: "statusUnregistered",
+  reserved: "statusReserved",
+  unknown: "statusUnknown",
+  error: "statusError",
+};
+
+function StatusBadge({ status }: { status: string }) {
+  const { t } = useI18n();
+  return (
+    <span className={`status-badge status-badge-${status}`}>
+      {status === "registered" ? <CheckCircleIcon size={14} /> : status === "error" || status === "reserved" ? <WarnIcon size={13} /> : <span className="status-badge-dot" aria-hidden="true" />}
+      {t(statusLabelKey[status] || "statusUnknown")}
+    </span>
+  );
+}
+
+function TabButton({
+  id,
+  active,
+  label,
+  meta,
+  dot,
+  onSelect,
+}: {
+  id: SectionTab;
+  active: boolean;
+  label: string;
+  meta?: ReactNode;
+  dot?: boolean;
+  onSelect: (id: SectionTab) => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <button type="button" role="tab" aria-selected={active} aria-controls={`section-${id}`} className={active ? "result-tab active" : "result-tab"} onClick={() => onSelect(id)}>
+      {label}
+      {meta !== undefined && meta !== "" && <span className="tab-meta">{meta}</span>}
+      {dot && <span className="tab-dot" role="img" aria-label={t("hasWarning")} />}
+    </button>
+  );
+}
+
+function LookupErrorPanel({ response, status, onRetry }: { response: APIResponse; status: number; onRetry?: () => void }) {
+  const { t } = useI18n();
   const view = errorView(response, status);
   return (
-    <section className="panel error-panel">
-      <p className="eyebrow">{view.eyebrow}</p>
+    <section className="error-panel">
+      <span className="status-badge status-badge-error">
+        <WarnIcon size={13} />
+        {view.eyebrow}
+      </span>
       <h1>{view.title}</h1>
       <p className="muted">{view.message}</p>
       {view.detail && <pre className="error-detail">{view.detail}</pre>}
+      {onRetry && (
+        <button type="button" className="btn btn-primary" onClick={onRetry}>
+          {t("retry")}
+        </button>
+      )}
     </section>
   );
 }
+
 
 export default function LookupPage({ query, response, httpStatus, sourceMode, options, icpAutoQuery }: Props) {
   const router = useRouter();
@@ -1417,7 +387,9 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
   const [icpState, setICPState] = useState<ICPState>({ domain: "", loading: false, requested: false });
   const [aiState, setAIState] = useState<AIState>({ key: "", loading: false, requested: false });
   const [enrichmentState, setEnrichmentState] = useState<EnrichmentState>({ key: "", loading: false, requested: false });
-  const { t } = useI18n();
+  const { t, tf } = useI18n();
+  const [tab, setTab] = useState<SectionTab>("overview");
+  const [rawTab, setRawTab] = useState<RawTab | null>(null);
   const pageURL = useMemo(() => lookupUrl(state.query, state.sourceMode, state.options), [state.options, state.query, state.sourceMode]);
   const absolutePageURL = typeof window === "undefined" ? pageURL : window.location.href;
   const ogImageURL = `/api/og?query=${encodeURIComponent(result?.normalizedQuery || state.query)}`;
@@ -1427,21 +399,15 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
   const pendingEnrichments = result?.meta?.pendingEnrichments || [];
   const rememberedEnrichments = enrichmentState.identity === currentEnrichmentIdentity && enrichmentState.requested ? enrichmentState.names || [] : [];
   const visibleEnrichments = pendingEnrichments.length ? pendingEnrichments : rememberedEnrichments;
-  const pendingDetailEnrichments = visibleEnrichments.filter((name) => name !== "dns");
   const enrichmentLoading = enrichmentState.loading && enrichmentState.identity === currentEnrichmentIdentity;
   const enrichmentError = enrichmentState.identity === currentEnrichmentIdentity ? enrichmentState.error : undefined;
-  const detailTools = result ? renderResultPlugins("details", result, { pending: pendingDetailEnrichments, enrichmentLoading, enrichmentError, lockSlots: true, translate: t }) : [];
-  const debugTools = result ? renderResultPlugins("debug", result) : [];
-  const showEnrichmentZone = Boolean(result);
   const dnsPending = Boolean(result && pendingEnrichments.includes("dns"));
-  const hasEvidence = Boolean(result && (debugTools.length || result.raw.whois || result.raw.whoisWeb || result.raw.rdap));
-  const enrichmentStatus = enrichmentLoading
-    ? visibleEnrichments.join(", ") || "running"
-    : enrichmentError
-      ? "error"
-      : visibleEnrichments.length
-        ? "ready"
-        : "idle";
+  const pricingPending = Boolean(result && !result.enrichment?.pricing && visibleEnrichments.includes("pricing") && (enrichmentLoading || pendingEnrichments.includes("pricing")));
+  const warnings = [
+    ...(enrichmentError ? [`enrichment: ${enrichmentError}`] : []),
+    ...metaWarnings,
+    ...sourceErrors.map((error) => `${error.source}: ${error.error}`),
+  ];
 
   useEffect(() => {
     const propsURL = lookupUrl(query, sourceMode, options);
@@ -1567,6 +533,11 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
       const isTyping = tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable;
       if (event.ctrlKey || event.metaKey || event.altKey) return;
       if (isTyping) return;
+      if (event.key === "Escape") {
+        setShareMenuOpen(false);
+        return;
+      }
+      if (rawTab) return;
       if (event.key === "/") {
         event.preventDefault();
         document.getElementById("lookup-mini-search")?.focus();
@@ -1595,7 +566,7 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [absolutePageURL, result, t]);
+  }, [absolutePageURL, rawTab, result, t]);
 
   async function runLookup(nextQuery: string, nextSourceMode = state.sourceMode, nextOptions = state.options, updateURL = true, armAI = true) {
     const trimmed = normalizeLookupInput(nextQuery);
@@ -1862,6 +833,79 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
     window.setTimeout(() => setActionState(""), 1400);
   }
 
+  const isDomain = result?.type === "domain";
+  const lowerTabs: SectionTab[] = isDomain ? ["dns", "owner", "price", "source"] : ["network", "owner", "source"];
+  const activeLower: SectionTab = lowerTabs.includes(tab) ? tab : lowerTabs[0];
+  const activeMobile: SectionTab = tab === "overview" || lowerTabs.includes(tab) ? tab : "overview";
+  const copyValue = (value: string) => void copy(value, t("copied"));
+  const usedSources = Array.isArray(result?.source?.used) ? result.source.used : [];
+  const elapsed = result?.meta?.elapsedMs ?? 0;
+  const warningText = warnings.length === 1 ? t("warningOne") : tf("warningMany", { n: warnings.length });
+  const ownerFields = result ? registrantFieldCount(result) : 0;
+  const ownerSources = result
+    ? Array.from(new Set(Object.values(result.registrant?.fieldSources || {}).flat().map((item) => sourceTag(item.source)).filter(Boolean)))
+    : [];
+
+  function selectTab(next: SectionTab) {
+    setTab(next);
+  }
+
+  function goSources() {
+    setTab("source");
+    window.requestAnimationFrame(() => document.getElementById("evidence")?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
+  }
+
+  function section(id: SectionTab, node: ReactNode) {
+    return (
+      <div className="result-section tool-zone" id={`section-${id}`} data-section={id} data-active={activeLower === id} data-mobile-active={activeMobile === id}>
+        {node}
+      </div>
+    );
+  }
+
+  const lowerTabLabel = (id: SectionTab): { label: string; meta?: ReactNode; dot?: boolean } => {
+    if (!result) return { label: id };
+    switch (id) {
+      case "dns":
+        return { label: t("dns"), meta: result.enrichment?.dns?.elapsedMs !== undefined ? `${result.enrichment.dns.elapsedMs} ms` : undefined };
+      case "owner":
+        return { label: t("registrant"), meta: ownerFields ? tf("fieldsShort", { n: ownerFields }) : undefined };
+      case "price":
+        return { label: t("priceScore"), meta: pricingSummary(result) };
+      case "network":
+        return { label: t("networkInfo") };
+      default:
+        return { label: t("sourcesShort"), meta: `${elapsed} ms`, dot: warnings.length > 0 };
+    }
+  };
+
+  const mobileTabLabel = (id: SectionTab) =>
+    id === "overview" ? t("tabOverview") : id === "dns" ? t("tabDns") : id === "owner" ? t("tabOwner") : id === "price" ? t("tabPrice") : id === "network" ? t("network") : t("tabSource");
+
+  const lowerExtra = (() => {
+    if (!result) return null;
+    if (activeLower === "dns" && result.enrichment?.dnsviz?.url) return <DNSVizLink url={result.enrichment.dnsviz.url} />;
+    if (activeLower === "owner" && ownerSources.length) {
+      return (
+        <span className="source-caption">
+          {t("source")}
+          <SourceTags sources={ownerSources} />
+        </span>
+      );
+    }
+    if (activeLower === "price") return <span className="section-meta">{pricingMeta(result)}</span>;
+    if (activeLower === "source" && result.source?.primary) {
+      const others = usedSources.filter((source) => source !== result.source.primary).map(sourceName);
+      return (
+        <span className="section-meta">
+          {sourceName(result.source.primary)} {t("primarySource")}
+          {others.length ? ` · ${others.join(" + ")} ${t("supplementary")}` : ""}
+        </span>
+      );
+    }
+    return null;
+  })();
+
   return (
     <>
       <Head>
@@ -1870,199 +914,222 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
         <meta property="og:image" content={`/api/og?query=${encodeURIComponent(result?.normalizedQuery || state.query)}`} />
         <meta name="twitter:card" content="summary_large_image" />
       </Head>
-      <main className="shell result-shell result-workbench-shell">
-        <nav className="top-nav">
-          <Link href="/" className="brand">Whoice</Link>
-          <div className="nav-links">
-            <Link href="/docs">{t("docs")}</Link>
-            <Link href="/status">{t("status")}</Link>
-            <AppControls />
+      <main className="lookup-workbench">
+        <header className="lookup-topbar tool-sidebar" aria-label={t("lookupToolbox")}>
+          <div className="topbar-search">
+            <BrandMark />
+            <form className="mini-search tool-panel" onSubmit={submitMiniSearch}>
+              <SearchIcon size={15} className="mini-search-icon" />
+              <input
+                id="lookup-mini-search"
+                name="query"
+                value={searchValue}
+                onChange={(event) => setSearchValue(event.target.value)}
+                aria-label={t("searchQuery")}
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <select className="source-select" aria-label={t("source")} value={state.sourceMode} onChange={(event) => switchSource(event.target.value as SourceMode)}>
+                <option value="all">{t("all")}</option>
+                <option value="rdap">RDAP</option>
+                <option value="whois">WHOIS</option>
+              </select>
+              <button disabled={isLoading} type="submit">{isLoading ? t("searching") : t("search")}</button>
+            </form>
           </div>
-        </nav>
+          <div className="topbar-source">
+            <SourceToggle value={state.sourceMode} onChange={switchSource} />
+          </div>
+          <div className="topbar-tail">
+            <div className="topbar-options">
+              <label className="inline-check" title={t("exactDomainHint")}>
+                <input type="checkbox" checked={parseBool(state.options.exactDomain)} onChange={(event) => switchExactDomain(event.target.checked)} />
+                <span>{t("exactDomain")}</span>
+              </label>
+              <label className="inline-check" title={t("forceAIHint")}>
+                <input type="checkbox" checked={parseBool(state.options.ai)} onChange={(event) => switchForceAI(event.target.checked)} />
+                <span>{t("forceAI")}</span>
+              </label>
+            </div>
+            <nav className="topbar-nav" aria-label={t("siteNav")}>
+              <Link href="/docs">{t("docs")}</Link>
+              <Link href="/status">{t("status")}</Link>
+              <AppControls />
+            </nav>
+          </div>
+        </header>
 
-        <div className="lookup-workbench">
-          <aside className="tool-sidebar" aria-label={t("lookupToolbox")}>
-            <section className="tool-panel tool-panel-search">
-              <div className="tool-panel-head">
-                <p className="eyebrow">{t("lookup")}</p>
-                <span className={`status-pill ${isLoading ? "" : "is-ghost"}`} aria-hidden={!isLoading}>
-                  {t("live")}
-                </span>
-              </div>
-              <form className="mini-search tool-search" onSubmit={submitMiniSearch}>
-                <input id="lookup-mini-search" name="query" value={searchValue} onChange={(event) => setSearchValue(event.target.value)} aria-label={t("searchQuery")} />
-                <button disabled={isLoading} type="submit">{isLoading ? t("searching") : t("search")}</button>
-              </form>
-              {state.query && (
-                <SourceLinks
-                  value={state.sourceMode}
-                  exactDomain={parseBool(state.options.exactDomain)}
-                  forceAI={parseBool(state.options.ai)}
-                  onChange={switchSource}
-                  onExactDomainChange={switchExactDomain}
-                  onForceAIChange={switchForceAI}
-                />
-              )}
-            </section>
+        <section className="tool-stage" aria-label={t("lookupWorkspace")} aria-busy={isLoading ? "true" : undefined}>
+          {isLoading && (
+            <div className="stage-loading loading-panel" aria-live="polite">
+              <span className="loading-bar" aria-hidden="true" />
+              <span className="loading-text">
+                {t("liveLookup")} <span className="mono">{searchValue}</span>
+              </span>
+            </div>
+          )}
 
-            {result && (
-              <section className="tool-panel">
-                <div className="tool-panel-head">
-                  <p className="eyebrow">{t("session")}</p>
-                  <span className={`status-pill status-dot status-dot-${result.status}`}>{result.status}</span>
-                </div>
-                <div className="tool-facts">
-                  <span><strong>{t("type")}</strong>{result.type}</span>
-                  {result.source.primary && <span><strong>{t("primary")}</strong>{result.source.primary}</span>}
-                  <span><strong>{t("elapsed")}</strong>{result.meta.elapsedMs} ms</span>
-                  <span><strong>{t("evidence")}</strong>{rawText(result) ? t("available") : t("empty")}</span>
-                  <span title={enrichmentError}><strong>{t("enrich")}</strong>{enrichmentStatus}</span>
-                </div>
-              </section>
-            )}
-
-            {result && (
-              <section className="tool-panel">
-                <div className="tool-panel-head">
-                  <p className="eyebrow">{t("output")}</p>
-                  <span className={`tool-action-state ${actionState ? "" : "is-ghost"}`} aria-live="polite">
-                    {actionState || t("ready")}
-                  </span>
-                </div>
-                <section className="action-bar tool-action-bar" aria-label="Result actions">
-                  <div className="share-menu">
-                    <button type="button" onClick={() => setShareMenuOpen((open) => !open)}>{t("share")}</button>
-                    {shareMenuOpen && (
-                      <div className="share-menu-panel">
-                        <button type="button" onClick={shareResult}>{t("copyUrl")}</button>
-                        <button type="button" onClick={() => copy(result.normalizedQuery, t("copied"))}>{t("copyQuery")}</button>
-                        <button type="button" onClick={downloadOGImage}>{t("downloadImage")}</button>
-                        <a href={ogImageURL} target="_blank" rel="noreferrer">{t("openImage")}</a>
-                      </div>
+          {!state.response.ok || !result ? (
+            <LookupErrorPanel response={state.response} status={state.httpStatus} onRetry={state.query ? () => void runLookup(state.query, state.sourceMode, state.options, false) : undefined} />
+          ) : (
+            <>
+              <section className="status-strip result-hero" data-tab={activeMobile} aria-label={result.normalizedQuery}>
+                <div className="hero-head">
+                  <div className="hero-badges">
+                    <StatusBadge status={result.status} />
+                    <span className="type-tag">{kindLabel(result.type, t)}</span>
+                    {result.registry?.name && (
+                      <span className="hero-meta">
+                        {t("registryLabel")} {result.registry.name}
+                      </span>
+                    )}
+                    <span className="hero-meta">
+                      {usedSources.map(sourceName).join(" + ") || sourceName(result.source?.primary)} · <span className="mono">{elapsed} ms</span>
+                    </span>
+                    {warnings.length > 0 && (
+                      <button type="button" className="warn-pill" onClick={goSources} aria-label={`${warningText}, ${t("viewSources")}`}>
+                        <WarnIcon size={13} />
+                        <span className="warn-long">{warningText}</span>
+                        <span className="warn-short">{warnings.length}</span>
+                      </button>
                     )}
                   </div>
-                  <button type="button" onClick={() => copy(rawText(result), t("copied"))}>{t("copyRaw")}</button>
-                  <button type="button" onClick={downloadResult}>{t("downloadJson")}</button>
-                </section>
-              </section>
-            )}
+                  <div className="hero-title">
+                    <h1>{result.normalizedQuery}</h1>
+                    <button type="button" className="icon-button ghost" aria-label={t("copyDomain")} title={t("copyDomain")} onClick={() => copyValue(result.normalizedQuery)}>
+                      <CopyIcon size={16} />
+                    </button>
+                  </div>
+                </div>
 
-            <section className="tool-panel shortcut-panel">
-              <p className="eyebrow">{t("keys")}</p>
-              <span className="shortcut-hint">
-                <kbd>/</kbd> search <kbd>S</kbd> share <kbd>C</kbd> URL <kbd>R</kbd> raw <kbd>J</kbd> JSON <kbd>O</kbd> image
-              </span>
-            </section>
-          </aside>
-
-          <section className="tool-stage" aria-label={t("lookupWorkspace")}>
-            {isLoading && (
-              <section className="panel loading-panel floating-loading-panel" aria-live="polite">
-                <p className="eyebrow">{t("liveLookup")}</p>
-                <h2>{searchValue}</h2>
-              </section>
-            )}
-
-            {!state.response.ok || !result ? (
-              <LookupErrorPanel response={state.response} status={state.httpStatus} />
-            ) : (
-              <>
-                <StatusStrip result={result} onCopy={(value) => copy(value, t("copied"))} />
-                <div className="result-sections tool-stage-sections">
-                  <section className="tool-zone">
-                    <div className="tool-zone-head">
-                      <span className="tool-zone-index">01</span>
-                      <div>
-                        <h2>{t("overviewTitle")}</h2>
-                        <p>{t("overviewDescription")}</p>
-                      </div>
-                    </div>
-                    <div className="result-band result-band-primary zone-body-overview">
-                      <SummaryPanel result={result} onCopy={(value) => copy(value, t("copied"))} />
-                      {result.type === "domain" ? <DNSPanel result={result} pending={dnsPending} onCopy={(value) => copy(value, t("copied"))} /> : <NetworkPanel result={result} />}
-                    </div>
-                  </section>
-
-                  <section className="tool-zone">
-                    <div className="tool-zone-head">
-                      <span className="tool-zone-index">02</span>
-                      <div>
-                        <h2>{t("ownershipTitle")}</h2>
-                        <p>{t("ownershipDescription")}</p>
-                      </div>
-                    </div>
-                    <div className="result-band result-band-secondary zone-body-ownership">
-                      {result.type === "domain" && (
-                        <RegistrationPanel
-                          result={result}
-                          aiLoading={aiState.loading && aiState.identity === currentAIIdentity}
-                          aiError={aiState.identity === currentAIIdentity ? aiState.error : undefined}
-                          onCopy={(value) => copy(value, t("copied"))}
-                        />
+                <div className="hero-actions">
+                  <section className="action-bar" aria-label="Result actions">
+                    <button type="button" className="btn action-btn" onClick={shareResult}>
+                      <LinkIcon size={15} className="btn-icon" />
+                      {t("share")}
+                    </button>
+                    <button type="button" className="btn action-btn" onClick={() => copy(rawText(result), t("copied"))}>
+                      <FileIcon size={15} className="btn-icon" />
+                      {t("copyRaw")}
+                    </button>
+                    <button type="button" className="btn action-btn" onClick={downloadResult}>
+                      <DownloadIcon size={15} className="btn-icon" />
+                      {t("downloadJson")}
+                    </button>
+                    <div className="share-menu">
+                      <button type="button" className="btn action-btn" aria-expanded={shareMenuOpen} onClick={() => setShareMenuOpen((open) => !open)}>
+                        <ImageIcon size={15} className="btn-icon" />
+                        {t("shareImage")}
+                      </button>
+                      {shareMenuOpen && (
+                        <div className="share-menu-panel">
+                          <button type="button" onClick={() => { setShareMenuOpen(false); void downloadOGImage(); }}>{t("downloadImage")}</button>
+                          <a href={ogImageURL} target="_blank" rel="noreferrer" onClick={() => setShareMenuOpen(false)}>{t("openImage")}</a>
+                          <button type="button" onClick={() => { setShareMenuOpen(false); void copy(result.normalizedQuery, t("copied")); }}>{t("copyQuery")}</button>
+                        </div>
                       )}
-                      {result.type === "domain" && <ICPPanel domain={icpDomain} state={icpState} onLookup={() => void runICPLookup()} />}
-                      <StatusPanel statuses={statuses} />
-                    </div>
-                  </section>
-
-                  {showEnrichmentZone && (
-                    <section className="tool-zone">
-                      <div className="tool-zone-head">
-                        <span className="tool-zone-index">03</span>
-                        <div>
-                          <h2>{t("enrichmentTitle")}</h2>
-                          <p>{t("enrichmentDescription")}</p>
-                        </div>
-                      </div>
-                      <div className="result-grid enrichment-grid zone-body-enrichment">
-                        {detailTools}
-                        <div className="plugin-shell">
-                          <section className={`panel warning-panel ${(sourceErrors.length > 0 || metaWarnings.length > 0 || enrichmentError) ? "" : "is-empty"}`}>
-                            <div className="panel-head">
-                              <h2>{t("warnings")}</h2>
-                            </div>
-                            {(sourceErrors.length > 0 || metaWarnings.length > 0 || enrichmentError) ? (
-                              <ul>
-                                {enrichmentError && <li>enrichment: {enrichmentError}</li>}
-                                {metaWarnings.map((warning) => (
-                                  <li key={warning}>{warning}</li>
-                                ))}
-                                {sourceErrors.map((error) => (
-                                  <li key={`${error.source}-${error.error}`}>{error.source}: {error.error}</li>
-                                ))}
-                              </ul>
-                            ) : (
-                              <p className="muted">{t("noProviderWarnings")}</p>
-                            )}
-                          </section>
-                        </div>
-                      </div>
-                    </section>
-                  )}
-
-                  <section className="tool-zone">
-                    <div className="tool-zone-head">
-                      <span className="tool-zone-index">04</span>
-                      <div>
-                        <h2>{t("evidenceTitle")}</h2>
-                        <p>{t("evidenceDescription")}</p>
-                      </div>
-                    </div>
-                    {/* Keep raw evidence and request diagnostics together for the Phase 1 contract guard. */}
-                    <div className="evidence-stack zone-body-evidence">
-                      {debugTools}
-                      {hasEvidence ? null : <section className="panel evidence-placeholder"><p className="muted">{t("noRawEvidence")}</p></section>}
-                      <RawBlock title={t("rawWhois")} value={result.raw.whois} />
-                      <RawBlock title="WHOIS Web" value={result.raw.whoisWeb} />
-                      <RawBlock title={t("rawRdap")} value={result.raw.rdap} />
                     </div>
                   </section>
                 </div>
-              </>
-            )}
-          </section>
+
+                <div className="mobile-tabs result-tabs" role="tablist" aria-label={t("resultSections")}>
+                  {(["overview", ...lowerTabs] as SectionTab[]).map((id) => (
+                    <TabButton key={id} id={id} active={activeMobile === id} label={mobileTabLabel(id)} dot={id === "source" && warnings.length > 0} onSelect={selectTab} />
+                  ))}
+                </div>
+
+                <div className="result-section hero-overview" id="section-overview" data-section="overview" data-active="true" data-mobile-active={activeMobile === "overview"}>
+                  {isDomain && result.status === "unregistered" ? (
+                    <p className="available-note">{t("availableHint")}</p>
+                  ) : isDomain ? (
+                    <DomainMetrics result={result} />
+                  ) : (
+                    <NetworkMetrics result={result} />
+                  )}
+                  {isDomain && result.status !== "unregistered" ? <LockBar result={result} /> : <StatusList result={result} />}
+                  <p className="hero-meta-line">
+                    {result.registry?.name && (
+                      <span>
+                        {t("registryLabel")} <strong>{result.registry.name}</strong>
+                      </span>
+                    )}
+                    <span>{usedSources.map(sourceName).join(" + ")}</span>
+                    <span>
+                      {t("elapsed")} <strong className="mono">{elapsed} ms</strong>
+                    </span>
+                  </p>
+                  {warnings.length > 0 && (
+                    <button type="button" className="warn-banner" onClick={goSources}>
+                      <WarnIcon size={15} />
+                      <strong>{warningText}</strong>
+                      <span className="spacer" />
+                      <span>{t("viewSources")} ›</span>
+                    </button>
+                  )}
+                </div>
+              </section>
+
+              <div className="result-lower" data-kind={isDomain ? "domain" : "network"}>
+                <div className="lower-tabs result-tabs" role="tablist" aria-label={t("resultSections")}>
+                  {lowerTabs.map((id) => {
+                    const info = lowerTabLabel(id);
+                    return <TabButton key={id} id={id} active={activeLower === id} label={info.label} meta={info.meta} dot={info.dot} onSelect={selectTab} />;
+                  })}
+                  <span className="spacer" />
+                  <span className="lower-tabs-extra">{lowerExtra}</span>
+                </div>
+                <div className="lower-col">
+                  {isDomain ? (
+                    <>
+                      {section("dns", <DNSSection result={result} pending={dnsPending} loadingError={enrichmentError} onCopy={copyValue} />)}
+                      {section("price", <PriceSection result={result} pending={pricingPending} loadingError={enrichmentError} />)}
+                    </>
+                  ) : (
+                    section("network", <NetworkSection result={result} />)
+                  )}
+                </div>
+                <div className="lower-col">
+                  {section(
+                    "owner",
+                    <RegistrantSection
+                      result={result}
+                      aiLoading={aiState.loading && aiState.identity === currentAIIdentity}
+                      aiError={aiState.identity === currentAIIdentity ? aiState.error : undefined}
+                      icpDomain={isDomain ? icpDomain : undefined}
+                      icpState={icpState}
+                      onICPLookup={() => void runICPLookup()}
+                      onCopy={copyValue}
+                    />,
+                  )}
+                  {/* Raw evidence (rawWhois / rawRdap) and request diagnostics live in the sources section and the raw drawer. */}
+                  {section("source", <SourcesSection result={result} warnings={warnings} onOpenRaw={(next) => setRawTab(next)} />)}
+                </div>
+              </div>
+            </>
+          )}
+        </section>
+
+        <footer className="lookup-footer">
+          <span className="shortcut-hint">
+            {t("keys")}
+            <span><kbd>/</kbd> {t("shortcutSearch")}</span>
+            <span><kbd>C</kbd> {t("share")}</span>
+            <span><kbd>R</kbd> {t("copyRaw")}</span>
+            <span><kbd>J</kbd> {t("downloadJson")}</span>
+            <span><kbd>O</kbd> {t("shareImage")}</span>
+          </span>
+          <span>Whoice v{packageInfo.version}</span>
+        </footer>
+
+        <div className={`toast tool-action-state ${actionState ? "is-on" : ""}`} role="status" aria-live="polite">
+          {actionState}
         </div>
+
+        {result && rawTab && (
+          <RawDrawer result={result} tab={rawTab} onTabChange={setRawTab} onClose={() => setRawTab(null)} onCopy={copyValue} pageQuery={state.query} />
+        )}
       </main>
     </>
   );
 }
+

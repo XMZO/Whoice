@@ -163,6 +163,19 @@ function isAllowedOverrideVariable(variable) {
     "resolver-error-bg",
     "resolver-error-border",
     "resolver-error-text",
+    "hair",
+    "faint",
+    "accent-ink",
+    "accent-bg",
+    "accent-2",
+    "ring",
+    "glow",
+    "glow-2",
+    "dot",
+    "live",
+    "live-ring",
+    "shadow",
+    "scrim",
   ]);
   return overrideVariables.has(variable);
 }

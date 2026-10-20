@@ -1,6 +1,7 @@
 import Head from "next/head";
 import Link from "next/link";
 import { AppControls } from "@/components/AppControls";
+import { BrandMark } from "@/components/BrandMark";
 import { useI18n } from "@/lib/i18n";
 
 function Row({ label, value }: { label: string; value: string }) {
@@ -26,7 +27,7 @@ export default function DocsPage() {
       </Head>
       <main className="shell docs-shell">
         <nav className="top-nav">
-          <Link href="/" className="brand">Whoice</Link>
+          <BrandMark />
           <div className="nav-links">
             <Link href="/docs">{t("docs")}</Link>
             <Link href="/status">{t("status")}</Link>

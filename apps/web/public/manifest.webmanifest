@@ -4,8 +4,8 @@
   "description": "Modular WHOIS and RDAP lookup.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f7f7f8",
-  "theme_color": "#111827",
+  "background_color": "#edf1f2",
+  "theme_color": "#08666d",
   "icons": [
     {
       "src": "/icon.svg",

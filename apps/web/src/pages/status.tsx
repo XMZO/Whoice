@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { GetServerSideProps } from "next";
 import { useEffect, useState } from "react";
 import { AppControls } from "@/components/AppControls";
+import { BrandMark } from "@/components/BrandMark";
 import { getServerAPIBase } from "@/lib/serverApi";
 import type { APIResponse, ConfigStatus } from "@/lib/types";
 import { useI18n } from "@/lib/i18n";
@@ -230,7 +231,7 @@ export default function StatusPage({ health, version, capabilities }: Props) {
       </Head>
       <main className="shell docs-shell">
         <nav className="top-nav">
-          <Link href="/" className="brand">Whoice</Link>
+          <BrandMark />
           <div className="nav-links">
             <Link href="/docs">{t("docs")}</Link>
             <Link href="/status">{t("status")}</Link>

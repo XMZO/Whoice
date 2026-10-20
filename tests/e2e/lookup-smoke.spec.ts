@@ -53,6 +53,26 @@ async function routeLookupFixtures(page: Page, fixtures: Record<string, any>) {
   });
 }
 
+// Result sections are tabs on short desktop and mobile viewports; on tall desktops every
+// section is visible and there is no tab to click.
+async function showSection(page: Page, name: RegExp) {
+  const tab = page.getByRole("tab", { name });
+  if (await tab.count()) {
+    await tab.first().click();
+    await expect(tab.first()).toHaveAttribute("aria-selected", "true");
+  }
+}
+
+async function chooseSource(page: Page, source: "rdap" | "whois") {
+  const radio = page.getByRole("radio", { name: source === "rdap" ? "RDAP" : "WHOIS" });
+  if (await radio.isVisible()) {
+    await radio.click();
+    await expect(radio).toHaveAttribute("aria-checked", "true");
+  } else {
+    await page.getByLabel("Source", { exact: true }).selectOption(source);
+  }
+}
+
 async function seedLookup(page: Page, query = "fixture.test", result = lookupFixture(query)) {
   await routeLookupFixtures(page, { [query]: result });
   await page.goto("/lookup");
@@ -124,7 +144,8 @@ test("result page searches in place without a full document navigation", async (
 
   await expect(page).toHaveURL(/\/lookup\?query=cloudflare\.com/);
   await expect(page.getByRole("heading", { name: "cloudflare.com" })).toBeVisible();
-  await expect(page.getByText("Provider Trace")).toBeVisible();
+  await showSection(page, /^Sources/);
+  await expect(page.locator("#evidence")).toBeVisible();
   expect(documentNavigations).toBe(initialNavigations);
   await page.waitForTimeout(750);
   expect(cloudflareLookups).toBe(1);
@@ -203,6 +224,7 @@ test("result plugins tolerate null arrays from stale or nonconforming APIs", asy
   await page.getByRole("button", { name: "Search" }).click();
 
   await expect(page.getByRole("heading", { name: "nullarray.test" })).toBeVisible();
+  await showSection(page, /^DNS/);
   await expect(page.getByText("No nameservers parsed.")).toBeVisible();
   await page.waitForTimeout(500);
   expect(pageErrors).toEqual([]);
@@ -217,17 +239,16 @@ test("source switch, controls, lookup proxy path, and DNSViz panel stay usable",
   await page.getByRole("button", { name: "Search" }).click();
   await expect(page.getByRole("heading", { name: "dnsviz-fixture.test" })).toBeVisible();
 
-  await page.getByRole("radio", { name: "WHOIS" }).click();
+  await chooseSource(page, "whois");
   await expect(page).toHaveURL(/whois=1/);
-  await expect(page.getByRole("radio", { name: "WHOIS" })).toHaveAttribute("aria-checked", "true");
 
   await page.getByLabel("Theme").selectOption("dark");
   await page.getByLabel("Language").selectOption("zh-CN");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
 
-  await expect(page.getByRole("heading", { name: "DNSViz", exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Open DNSViz" })).toHaveAttribute("href", /dnsviz\.net\/d\/dnsviz-fixture\.test\/dnssec\//);
+  await showSection(page, /^DNS/);
+  await expect(page.getByRole("link", { name: /DNSViz/ })).toHaveAttribute("href", /dnsviz\.net\/d\/dnsviz-fixture\.test\/dnssec\//);
 
   const proxiedLookup = await request.get("/api/lookup?query=example.com&rdap=1&whois_follow=0");
   expect(proxiedLookup.ok()).toBeTruthy();
@@ -315,16 +336,19 @@ test("deferred enrichment updates stay inside stable result slots", async ({ pag
   await page.getByLabel("Search query").fill("stable-layout.test");
   await page.getByRole("button", { name: "Search" }).click();
   await expect(page.getByRole("heading", { name: "stable-layout.test" })).toBeVisible();
+  await showSection(page, /^DNS/);
   await expect(page.getByText("DNS records are updating in the background.")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Evidence" })).toBeVisible();
 
-  const before = await page.locator(".tool-zone", { hasText: "Evidence" }).boundingBox();
+  const heroBefore = await page.locator(".result-hero").boundingBox();
+  const lowerBefore = await page.locator(".result-lower").boundingBox();
   releaseEnrichment();
-  await expect(page.getByRole("heading", { name: "Pricing" })).toBeVisible();
+  await showSection(page, /^Pric/);
   await expect(page.getByText("Example Registrar")).toBeVisible();
-  const after = await page.locator(".tool-zone", { hasText: "Evidence" }).boundingBox();
+  const heroAfter = await page.locator(".result-hero").boundingBox();
+  const lowerAfter = await page.locator(".result-lower").boundingBox();
 
-  expect(Math.abs((after?.y ?? 0) - (before?.y ?? 0))).toBeLessThanOrEqual(8);
+  expect(Math.abs((heroAfter?.height ?? 0) - (heroBefore?.height ?? 0))).toBeLessThanOrEqual(2);
+  expect(Math.abs((lowerAfter?.y ?? 0) - (lowerBefore?.y ?? 0))).toBeLessThanOrEqual(8);
 });
 
 test("AI metadata and parsed fields survive deferred enrichment", async ({ page }) => {
@@ -408,10 +432,13 @@ test("AI metadata and parsed fields survive deferred enrichment", async ({ page 
   await page.getByRole("button", { name: "Search" }).click();
 
   const registration = page.locator(".registration-panel");
+  await showSection(page, /^Registrant/);
   await expect(registration.getByText("AI ok")).toBeVisible();
   await expect(registration.getByText("AI Parsed Person", { exact: true })).toBeVisible();
   releaseEnrichment();
+  await showSection(page, /^Pric/);
   await expect(page.getByText("Price Registrar")).toBeVisible();
+  await showSection(page, /^Registrant/);
   await expect(registration.getByText("AI ok")).toBeVisible();
   await expect(registration.getByText("AI Parsed Person", { exact: true })).toBeVisible();
 });
@@ -470,6 +497,8 @@ test("AI option waits for an explicit search", async ({ page }) => {
 
   await page.getByLabel("Search query").fill("ai-toggle.test");
   await page.getByRole("button", { name: "Search" }).click();
+  await expect(page.getByRole("heading", { name: "ai-toggle.test" })).toBeVisible();
+  await showSection(page, /^Registrant/);
   await expect(page.locator(".registration-panel").getByText("AI ok")).toBeVisible();
   await expect(page.locator(".registration-panel").getByText("Toggle AI Person", { exact: true })).toBeVisible();
   expect(aiRequests).toBe(1);
@@ -548,9 +577,12 @@ test("AI ignored status survives deferred enrichment", async ({ page }) => {
   await page.getByRole("button", { name: "Search" }).click();
 
   const registration = page.locator(".registration-panel");
+  await showSection(page, /^Registrant/);
   await expect(registration.getByText("AI ignored")).toBeVisible();
   releaseEnrichment();
+  await showSection(page, /^Pric/);
   await expect(page.getByText("Ignored Price Registrar")).toBeVisible();
+  await showSection(page, /^Registrant/);
   await expect(registration.getByText("AI ignored")).toBeVisible();
   await expect(registration.getByText("Rule Parsed Person", { exact: true })).toBeVisible();
 });
@@ -612,8 +644,10 @@ test("mobile-chrome touch-friendly layout has no horizontal overflow", async ({ 
 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(2);
+  const verticalOverflow = await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight);
+  expect(verticalOverflow).toBeLessThanOrEqual(2);
 
-  const touchTargets = page.locator(".tool-panel button, .source-option, .inline-check");
+  const touchTargets = page.locator(".mini-search button, .result-tab, .action-btn").filter({ visible: true });
   const count = await touchTargets.count();
   expect(count).toBeGreaterThan(0);
   for (let index = 0; index < Math.min(count, 8); index += 1) {
@@ -621,8 +655,8 @@ test("mobile-chrome touch-friendly layout has no horizontal overflow", async ({ 
     expect(box?.height ?? 0).toBeGreaterThanOrEqual(34);
   }
 
-  await page.getByRole("radio", { name: "RDAP" }).tap();
-  await expect(page.getByRole("radio", { name: "RDAP" })).toHaveAttribute("aria-checked", "true");
+  await chooseSource(page, "rdap");
+  await expect(page).toHaveURL(/rdap=1/);
   await page.getByRole("button", { name: "Copy raw" }).tap();
 });
 
@@ -700,16 +734,17 @@ test("mobile deferred enrichment keeps toolbox slots stable", async ({ page }, t
   await page.getByRole("button", { name: "Search" }).tap();
   await expect(page.getByRole("heading", { name: "mobile-stable.test" })).toBeVisible();
 
-  const overviewBefore = await page.locator(".zone-body-overview").boundingBox();
-  const ownershipBefore = await page.locator(".zone-body-ownership").boundingBox();
+  const stageBefore = await page.locator(".tool-stage").boundingBox();
+  await showSection(page, /^Pric/);
   releaseEnrichment();
   await expect(page.getByText("Example Registrar")).toBeVisible();
-  const overviewAfter = await page.locator(".zone-body-overview").boundingBox();
-  const ownershipAfter = await page.locator(".zone-body-ownership").boundingBox();
+  const stageAfter = await page.locator(".tool-stage").boundingBox();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  const verticalOverflow = await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight);
 
-  expect(Math.abs((overviewAfter?.height ?? 0) - (overviewBefore?.height ?? 0))).toBeLessThanOrEqual(2);
-  expect(Math.abs((ownershipAfter?.height ?? 0) - (ownershipBefore?.height ?? 0))).toBeLessThanOrEqual(2);
+  expect(Math.abs((stageAfter?.height ?? 0) - (stageBefore?.height ?? 0))).toBeLessThanOrEqual(2);
+  expect(Math.abs((stageAfter?.y ?? 0) - (stageBefore?.y ?? 0))).toBeLessThanOrEqual(2);
   expect(overflow).toBeLessThanOrEqual(2);
+  expect(verticalOverflow).toBeLessThanOrEqual(2);
   await expect(page.getByText("...", { exact: true })).toHaveCount(0);
 });
