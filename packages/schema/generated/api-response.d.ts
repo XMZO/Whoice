@@ -262,6 +262,7 @@ export interface PricingInfo {
   provider?: string;
   source?: string;
   updatedAt?: string;
+  cachedAt?: string;
   registerOffer?: PricingOffer;
   renewOffer?: PricingOffer;
   transferOffer?: PricingOffer;

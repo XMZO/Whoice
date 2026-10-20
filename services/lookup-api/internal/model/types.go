@@ -195,13 +195,15 @@ type EnrichmentInfo struct {
 }
 
 type PricingInfo struct {
-	Register      *float64      `json:"register,omitempty"`
-	Renew         *float64      `json:"renew,omitempty"`
-	Transfer      *float64      `json:"transfer,omitempty"`
-	Currency      string        `json:"currency,omitempty"`
-	Provider      string        `json:"provider,omitempty"`
-	Source        string        `json:"source,omitempty"`
-	UpdatedAt     string        `json:"updatedAt,omitempty"`
+	Register  *float64 `json:"register,omitempty"`
+	Renew     *float64 `json:"renew,omitempty"`
+	Transfer  *float64 `json:"transfer,omitempty"`
+	Currency  string   `json:"currency,omitempty"`
+	Provider  string   `json:"provider,omitempty"`
+	Source    string   `json:"source,omitempty"`
+	UpdatedAt string   `json:"updatedAt,omitempty"`
+	// CachedAt is set when the prices came from the server-side cache.
+	CachedAt      string        `json:"cachedAt,omitempty"`
 	RegisterOffer *PricingOffer `json:"registerOffer,omitempty"`
 	RenewOffer    *PricingOffer `json:"renewOffer,omitempty"`
 	TransferOffer *PricingOffer `json:"transferOffer,omitempty"`

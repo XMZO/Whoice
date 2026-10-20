@@ -6,7 +6,7 @@ import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "reac
 import packageInfo from "../../package.json";
 import { AppControls } from "@/components/AppControls";
 import { BrandMark } from "@/components/BrandMark";
-import { CheckCircleIcon, CopyIcon, DownloadIcon, FileIcon, ImageIcon, LinkIcon, SearchIcon, WarnIcon } from "@/components/Icons";
+import { CheckCircleIcon, CopyIcon, DownloadIcon, ExternalIcon, FileIcon, LinkIcon, SearchIcon, WarnIcon } from "@/components/Icons";
 import { RawDrawer, type RawTab } from "@/components/RawDrawer";
 import {
   DNSSection,
@@ -20,7 +20,6 @@ import {
   SourceTags,
   SourcesSection,
   StatusList,
-  pricingMeta,
   pricingSummary,
   registrantFieldCount,
   type ICPState,
@@ -427,7 +426,6 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
   const sourceErrors = Array.isArray(result?.source.errors) ? result.source.errors : [];
   const metaWarnings = Array.isArray(result?.meta.warnings) ? result.meta.warnings : [];
   const [actionState, setActionState] = useState("");
-  const [shareMenuOpen, setShareMenuOpen] = useState(false);
   const [icpState, setICPState] = useState<ICPState>({ domain: "", loading: false, requested: false });
   const [aiState, setAIState] = useState<AIState>({ key: "", loading: false, requested: false });
   const [enrichmentState, setEnrichmentState] = useState<EnrichmentState>({ key: "", loading: false, requested: false });
@@ -437,7 +435,6 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
   const [rawTab, setRawTab] = useState<RawTab | null>(null);
   const pageURL = useMemo(() => lookupUrl(state.query, state.sourceMode, state.options), [state.options, state.query, state.sourceMode]);
   const absolutePageURL = typeof window === "undefined" ? pageURL : window.location.href;
-  const ogImageURL = `/api/og?query=${encodeURIComponent(result?.normalizedQuery || state.query)}`;
   const icpDomain = result?.type === "domain" ? result.domain.registeredDomain || result.domain.name || result.normalizedQuery : "";
   const currentAIIdentity = aiIdentity(result, state.nonce);
   const currentEnrichmentIdentity = enrichmentIdentity(result, state.nonce);
@@ -592,20 +589,12 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
       const isTyping = tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable;
       if (event.ctrlKey || event.metaKey || event.altKey) return;
       if (isTyping) return;
-      if (event.key === "Escape") {
-        setShareMenuOpen(false);
-        return;
-      }
       if (rawTab) return;
       if (event.key === "/") {
         event.preventDefault();
         document.getElementById("lookup-mini-search")?.focus();
       }
       if (!result) return;
-      if (event.key.toLowerCase() === "s") {
-        event.preventDefault();
-        setShareMenuOpen((open) => !open);
-      }
       if (event.key.toLowerCase() === "c") {
         event.preventDefault();
         void copy(absolutePageURL, t("copied"));
@@ -617,10 +606,6 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
       if (event.key.toLowerCase() === "j") {
         event.preventDefault();
         downloadResult();
-      }
-      if (event.key.toLowerCase() === "o") {
-        event.preventDefault();
-        downloadOGImage();
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -880,20 +865,6 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
     URL.revokeObjectURL(url);
   }
 
-  async function downloadOGImage() {
-    if (!result || typeof window === "undefined") return;
-    const response = await fetch(ogImageURL);
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${result.normalizedQuery}.whoice-og.png`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-    setActionState(t("imageDownloaded"));
-    window.setTimeout(() => setActionState(""), 1400);
-  }
-
   const expectedSources: string[] = state.sourceMode === "rdap" ? ["rdap"] : state.sourceMode === "whois" ? ["whois"] : ["rdap", "whois"];
   const answeredSources = new Set((result?.meta?.providers || []).map((provider) => provider.source));
   const pendingSources = state.pending ? expectedSources.filter((source) => !answeredSources.has(source as never)) : [];
@@ -957,7 +928,6 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
         </span>
       );
     }
-    if (activeLower === "price") return <span className="section-meta">{pricingMeta(result)}</span>;
     if (activeLower === "source" && result.source?.primary) {
       const others = usedSources.filter((source) => source !== result.source.primary).map(sourceName);
       return (
@@ -1057,7 +1027,16 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
                     )}
                   </div>
                   <div className="hero-title">
-                    <h1>{result.normalizedQuery}</h1>
+                    <h1>
+                      {isDomain ? (
+                        <a className="hero-domain-link" href={`https://${result.normalizedQuery}`} target="_blank" rel="noopener noreferrer" title={pick(t3("Open the website in a new tab", "在新标签页打开网站", "在新分頁開啟網站"))}>
+                          {result.normalizedQuery}
+                          <ExternalIcon size={16} className="hero-domain-icon" />
+                        </a>
+                      ) : (
+                        result.normalizedQuery
+                      )}
+                    </h1>
                     <button type="button" className="icon-button ghost" aria-label={t("copyDomain")} title={t("copyDomain")} onClick={() => copyValue(result.normalizedQuery)}>
                       <CopyIcon size={16} />
                     </button>
@@ -1078,19 +1057,6 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
                       <DownloadIcon size={15} className="btn-icon" />
                       {t("downloadJson")}
                     </button>
-                    <div className="share-menu">
-                      <button type="button" className="btn action-btn" aria-expanded={shareMenuOpen} onClick={() => setShareMenuOpen((open) => !open)}>
-                        <ImageIcon size={15} className="btn-icon" />
-                        {t("shareImage")}
-                      </button>
-                      {shareMenuOpen && (
-                        <div className="share-menu-panel">
-                          <button type="button" onClick={() => { setShareMenuOpen(false); void downloadOGImage(); }}>{t("downloadImage")}</button>
-                          <a href={ogImageURL} target="_blank" rel="noreferrer" onClick={() => setShareMenuOpen(false)}>{t("openImage")}</a>
-                          <button type="button" onClick={() => { setShareMenuOpen(false); void copy(result.normalizedQuery, t("copied")); }}>{t("copyQuery")}</button>
-                        </div>
-                      )}
-                    </div>
                   </section>
                 </div>
 
@@ -1178,7 +1144,6 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
             <span><kbd>C</kbd> {t("share")}</span>
             <span><kbd>R</kbd> {t("copyRaw")}</span>
             <span><kbd>J</kbd> {t("downloadJson")}</span>
-            <span><kbd>O</kbd> {t("shareImage")}</span>
           </span>
           <span>Whoice v{packageInfo.version}</span>
         </footer>

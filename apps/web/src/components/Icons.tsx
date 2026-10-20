@@ -71,14 +71,6 @@ export const DownloadIcon = (props: IconProps) => (
   </Svg>
 );
 
-export const ImageIcon = (props: IconProps) => (
-  <Svg {...props} strokeWidth={1.4}>
-    <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.5" />
-    <circle cx="5.75" cy="6.25" r="1.25" />
-    <path d="m14.25 10.5-3.5-3.25-6.5 6" />
-  </Svg>
-);
-
 export const BuildingIcon = (props: IconProps) => (
   <Svg {...props}>
     <path d="M3 14V2.75h6.5V14" />

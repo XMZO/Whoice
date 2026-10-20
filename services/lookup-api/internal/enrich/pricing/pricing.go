@@ -23,6 +23,7 @@ type BackgroundSource interface {
 
 type Resolver struct {
 	sources []Source
+	cache   *suffixCache
 }
 
 func NewDefaultResolver(dataDir string) *Resolver {
@@ -47,6 +48,20 @@ func (r *Resolver) Lookup(ctx context.Context, suffix string) (model.PricingInfo
 	if suffix == "" {
 		return model.PricingInfo{}, false, nil
 	}
+	if r.cache != nil {
+		return r.lookupCached(ctx, suffix)
+	}
+	return r.lookupSources(ctx, suffix)
+}
+
+func (r *Resolver) lookupSources(ctx context.Context, suffix string) (model.PricingInfo, bool, error) {
+	info, ok, _, err := r.lookupSourcesDetailed(ctx, suffix)
+	return info, ok, err
+}
+
+// lookupSourcesDetailed also reports whether an earlier source failed before
+// one answered; such fallback answers are not cached.
+func (r *Resolver) lookupSourcesDetailed(ctx context.Context, suffix string) (model.PricingInfo, bool, bool, error) {
 	var problems []string
 	for _, source := range r.sources {
 		if source == nil {
@@ -66,12 +81,12 @@ func (r *Resolver) Lookup(ctx context.Context, suffix string) (model.PricingInfo
 		if info.Source == "" {
 			info.Source = source.Name()
 		}
-		return info, true, nil
+		return info, true, len(problems) > 0, nil
 	}
 	if len(problems) > 0 {
-		return model.PricingInfo{}, false, errors.New(strings.Join(problems, "; "))
+		return model.PricingInfo{}, false, true, errors.New(strings.Join(problems, "; "))
 	}
-	return model.PricingInfo{}, false, nil
+	return model.PricingInfo{}, false, false, nil
 }
 
 func (r *Resolver) Start(ctx context.Context) {

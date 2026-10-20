@@ -127,7 +127,7 @@ async function checkPhase2() {
     await requireFile(phase, file);
   }
   await requireText(phase, "apps/web/src/lib/i18n.tsx", ["zh-CN", "zh-TW", "themeLight", "themeDark"]);
-  await requireText(phase, "apps/web/src/pages/lookup.tsx", ["downloadResult", "downloadOGImage", "copyRaw", "shareMenuOpen"]);
+  await requireText(phase, "apps/web/src/pages/lookup.tsx", ["downloadResult", "copyRaw", "lookupStream"]);
   await requireText(phase, "apps/web/src/pages/docs.tsx", ["/api/lookup", "Response envelope", "Runtime configuration"]);
 }
 

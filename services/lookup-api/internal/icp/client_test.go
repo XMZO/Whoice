@@ -154,6 +154,7 @@ func TestClientBlocklistReturnsHiddenNotFound(t *testing.T) {
 		ICPBlocklist: []string{"*.secret.example"},
 		ICPTimeout:   time.Second,
 	})
+	client.blockedDelay = func() time.Duration { return 0 }
 	result, err := client.Query(context.Background(), "www.secret.example")
 	if err != nil {
 		t.Fatal(err)
@@ -185,5 +186,44 @@ func TestParseMIITNotFound(t *testing.T) {
 	result := parseMIITResult("example.cn", []byte(`{"code":200,"success":true,"params":{"list":[]}}`))
 	if result.Status != StatusNotFound {
 		t.Fatalf("status: got %q", result.Status)
+	}
+}
+
+func TestClientBlocklistBehavesLikeARealMiss(t *testing.T) {
+	client := NewClient(config.Config{
+		ICPEnabled:          true,
+		ICPBlocklist:        []string{"secret.example"},
+		ICPTimeout:          time.Second,
+		ICPNegativeCacheTTL: time.Hour,
+	})
+	client.blockedDelay = func() time.Duration { return 50 * time.Millisecond }
+
+	first, err := client.Query(context.Background(), "secret.example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Status != StatusNotFound || first.Cached || first.ElapsedMs < 50 || first.Source != "miit" {
+		t.Fatalf("first answer should look like a fresh upstream miss: %#v", first)
+	}
+	second, _ := client.Query(context.Background(), "secret.example")
+	if !second.Cached || second.CachedAt == "" || second.ExpiresAt == "" || second.Status != StatusNotFound {
+		t.Fatalf("repeat answer should carry cache marks: %#v", second)
+	}
+
+	// A record cached before the domain was blocklisted stays hidden.
+	client.store("leaked.example", Result{Domain: "leaked.example", Status: StatusFound, Source: "miit", Records: []Record{{}}}, time.Hour)
+	client.cfg.ICPBlocklist = append(client.cfg.ICPBlocklist, "leaked.example")
+	hidden, _ := client.Query(context.Background(), "leaked.example")
+	if hidden.Status != StatusNotFound || len(hidden.Records) != 0 {
+		t.Fatalf("cached record leaked for blocklisted domain: %#v", hidden)
+	}
+
+}
+
+func TestRealisticQueryDelayRange(t *testing.T) {
+	for i := 0; i < 200; i++ {
+		if delay := realisticQueryDelay(); delay < 800*time.Millisecond || delay > 4400*time.Millisecond {
+			t.Fatalf("delay out of range: %s", delay)
+		}
 	}
 }

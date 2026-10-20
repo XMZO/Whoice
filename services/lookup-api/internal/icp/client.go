@@ -15,6 +15,7 @@ import (
 	_ "image/png"
 	"io"
 	"math"
+	mrand "math/rand/v2"
 	"net/http"
 	"net/url"
 	"sort"
@@ -64,6 +65,9 @@ type Client struct {
 	httpClient *http.Client
 	baseURL    string
 	upstream   string
+
+	// blockedDelay overrides realisticQueryDelay in tests.
+	blockedDelay func() time.Duration
 
 	mu          sync.Mutex
 	authToken   string
@@ -120,17 +124,25 @@ func (c *Client) Query(ctx context.Context, domain string) (Result, error) {
 	if !c.Enabled() {
 		return Result{Domain: domain, Status: StatusError, Message: "ICP lookup is disabled"}, errors.New("ICP lookup is disabled")
 	}
-	if c.isBlocked(domain) {
-		return c.notFound(domain, start), nil
-	}
-	if cached, ok := c.getCached(domain); ok {
+	// Blocklisted domains must look exactly like real misses: same cache
+	// marks on repeat queries, and a first answer that takes as long as a
+	// real upstream round trip. A record cached before the domain was
+	// blocklisted is never shown.
+	blocked := c.isBlocked(domain)
+	if cached, ok := c.getCached(domain); ok && (!blocked || cached.Status == StatusNotFound) {
 		return cached, nil
 	}
 	return c.doSingleflight(ctx, domain, func(ctx context.Context) (Result, error) {
-		if cached, ok := c.getCached(domain); ok {
+		if cached, ok := c.getCached(domain); ok && (!blocked || cached.Status == StatusNotFound) {
 			return cached, nil
 		}
-		result, err := c.queryFresh(ctx, domain, start)
+		var result Result
+		var err error
+		if blocked {
+			result, err = c.simulatedNotFound(ctx, domain, start)
+		} else {
+			result, err = c.queryFresh(ctx, domain, start)
+		}
 		c.store(domain, result, ttlForResult(c.cfg, result, err))
 		return result, err
 	})
@@ -530,15 +542,41 @@ func cloneHeaders(headers map[string]string) map[string]string {
 	return clone
 }
 
-func (c *Client) notFound(domain string, start time.Time) Result {
+// simulatedNotFound answers a blocklisted domain with an ordinary miss after
+// a delay drawn like a real upstream query.
+func (c *Client) simulatedNotFound(ctx context.Context, domain string, start time.Time) (Result, error) {
+	delay := c.blockedDelay
+	if delay == nil {
+		delay = realisticQueryDelay
+	}
+	timer := time.NewTimer(delay())
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+	case <-ctx.Done():
+		return Result{Domain: domain, Status: StatusError, Message: ctx.Err().Error()}, ctx.Err()
+	}
+	source := "miit"
+	if c.upstream != "" {
+		source = "icp-query"
+	}
 	return Result{
 		Domain:    domain,
 		Status:    StatusNotFound,
-		Source:    "miit",
-		Cached:    false,
+		Source:    source,
 		ElapsedMs: time.Since(start).Milliseconds(),
 		Message:   "no ICP record found",
+	}, nil
+}
+
+// realisticQueryDelay mimics MIIT/ICP_Query latency: mostly 0.8–2.4s with
+// an occasional slow tail.
+func realisticQueryDelay() time.Duration {
+	delay := 800*time.Millisecond + time.Duration(mrand.Int64N(int64(1600*time.Millisecond)))
+	if mrand.IntN(100) < 15 {
+		delay += 500*time.Millisecond + time.Duration(mrand.Int64N(int64(1500*time.Millisecond)))
 	}
+	return delay
 }
 
 func normalizeDomain(value string) string {

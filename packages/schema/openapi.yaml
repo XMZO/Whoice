@@ -792,6 +792,8 @@ components:
           type: string
         updatedAt:
           type: string
+        cachedAt:
+          type: string
         registerOffer:
           $ref: "#/components/schemas/PricingOffer"
         renewOffer:

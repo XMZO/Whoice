@@ -65,7 +65,7 @@ const SECTIONS: DocSection[] = [
           { name: "/api/capabilities", text: t3("Feature flags", "功能开关", "功能開關") },
           { name: "/api/metrics", text: t3("Prometheus metrics", "Prometheus 指标", "Prometheus 指標") },
           { name: "/api/admin/*", text: t3("Admin panel API; requires the admin password", "管理面板接口，需要管理密码", "管理面板介面，需要管理密碼") },
-          { name: "/api/og", text: t3("Share image for a result", "结果分享图片", "結果分享圖片") },
+          { name: "/api/og", text: t3("Link preview image (og:image)", "链接预览图片（og:image）", "連結預覽圖片（og:image）") },
         ],
       },
     ],
@@ -130,11 +130,9 @@ anon = "60/min"`,
 
 const SHORTCUTS: [string, T3][] = [
   ["/", t3("Focus search", "聚焦搜索框", "聚焦搜尋框")],
-  ["S", t3("Share image menu", "分享图片菜单", "分享圖片選單")],
   ["C", t3("Copy result link", "复制结果链接", "複製結果連結")],
   ["R", t3("Copy raw data", "复制原文", "複製原文")],
   ["J", t3("Download JSON", "下载 JSON", "下載 JSON")],
-  ["O", t3("Download share image", "下载分享图片", "下載分享圖片")],
 ];
 
 function Row({ label, value }: { label: string; value: string }) {

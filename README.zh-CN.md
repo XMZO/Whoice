@@ -8,7 +8,7 @@ Whoice 是可自托管的 WHOIS / RDAP 查询服务，支持域名、IP 地址�
 - **补充信息**：多解析器 DNS（UDP 与 DoH，逐条记录比对）、EPP 锁定状态、DNSSEC、ICANN 注册商信息、注册商与 NS 服务商识别、DNSViz 链接、注册价格、Moz 评分。
 - **可选模块**：ICP 备案查询、AI 解析非标准 WHOIS、密码或 Token 鉴权、限流、Prometheus 指标。
 - **管理面板**：`/admin`，单密码登录，可在网页上修改全部运行配置并立即生效。
-- **Web 界面**：结论优先的结果页与原文查看器，支持简体中文、繁體中文、English，浅色与深色主题，快捷键，JSON 与图片导出，以及运行状态页 `/status`。
+- **Web 界面**：结论优先的结果页与原文查看器，支持简体中文、繁體中文、English，浅色与深色主题，快捷键，JSON 导出，各来源返回即显示的流式结果，以及运行状态页 `/status`。
 - **实时性**：查询结果从不缓存，只复用变化缓慢的参考数据（bootstrap 文件、服务器映射、ICP 结果、AI 分析）。
 
 ## 部署
@@ -71,7 +71,7 @@ docker compose exec lookup-api /app/whoice-api reset-admin-password
 | `[auth]` | `none`、`password`（站点密码）或 `token`（API Token） |
 | `[lookup]` | 超时、RDAP / WHOIS / WHOIS Web 开关、referral 层数 |
 | `[dns]` | 解析器池（IPv4、IPv6、DoH）、fake-IP 过滤、DNSViz 链接 |
-| `[enrichment]` | EPP、注册商、服务商识别、价格、Moz |
+| `[enrichment]` | EPP、注册商、服务商识别、价格（按后缀缓存，默认 7 天）、Moz |
 | `[ai]` | OpenAI 兼容接口或 Ollama 地址、模型、提示词、缓存 |
 | `[icp]` | ICP 备案查询、缓存、验证码处理、上游服务 |
 | `[rate_limit]` | 匿名访问的固定窗口限流，如 `60/min` |

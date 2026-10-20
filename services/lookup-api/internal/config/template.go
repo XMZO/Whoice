@@ -180,6 +180,9 @@ brands = ` + tomlBool(cfg.EnrichBrands) + `
 # 当前使用米情局公开快照并定期刷新，失败时回退 data/pricing/pricing.json。
 # 这里故意只保留开关，之后换价格源不需要改公开配置格式。
 pricing = ` + tomlBool(cfg.EnrichPricing) + `
+# pricing_cache_ttl: How long prices for a suffix are reused from data/cache/pricing.json. "0" disables, "forever" never expires.
+# pricing_cache_ttl：每个后缀的价格在 data/cache/pricing.json 中缓存多久。"0" 不缓存，"forever" 永久。
+pricing_cache_ttl = ` + tomlCacheDuration(cfg.PricingCacheTTL) + `
 # moz: Add optional local Moz-like authority metrics from data/enrichment/moz.json only.
 # moz：从本地 data/enrichment/moz.json 补充 Moz 风格权重指标；不会实时请求外部 Moz API。
 moz = ` + tomlBool(cfg.EnrichMoz) + `

@@ -910,42 +910,6 @@ summary.src-tag::-webkit-details-marker {
   justify-content: flex-end;
 }
 
-.share-menu {
-  position: relative;
-}
-
-.share-menu-panel {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: var(--shadow-menu);
-  display: grid;
-  gap: 2px;
-  min-width: 170px;
-  padding: 5px;
-  position: absolute;
-  right: 0;
-  top: calc(100% + 6px);
-  z-index: 30;
-}
-
-.share-menu-panel button,
-.share-menu-panel a {
-  background: transparent;
-  border: 0;
-  border-radius: 6px;
-  color: var(--text);
-  font-size: 12.5px;
-  padding: 7px 10px;
-  text-align: left;
-}
-
-.share-menu-panel button:hover,
-.share-menu-panel a:hover {
-  background: var(--panel-subtle);
-  text-decoration: none;
-}
-
 .result-tabs {
   align-items: center;
   display: flex;
@@ -999,6 +963,31 @@ summary.src-tag::-webkit-details-marker {
 .hero-overview {
   grid-area: overview;
   min-width: 0;
+}
+
+.hero-domain-link {
+  align-items: center;
+  color: inherit;
+  display: inline-flex;
+  gap: 8px;
+  text-decoration: none;
+}
+
+.hero-domain-link:hover {
+  color: var(--link);
+  text-decoration: none;
+}
+
+.hero-domain-icon {
+  color: var(--faint);
+  flex: 0 0 auto;
+  opacity: 0.5;
+  transition: opacity 0.15s ease;
+}
+
+.hero-domain-link:hover .hero-domain-icon,
+.hero-domain-link:focus-visible .hero-domain-icon {
+  opacity: 1;
 }
 
 .metric-grid {

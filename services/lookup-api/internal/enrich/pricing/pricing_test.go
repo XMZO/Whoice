@@ -3,6 +3,7 @@ package pricing
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -202,4 +203,77 @@ func (s stubSource) Lookup(context.Context, string) (model.PricingInfo, bool, er
 
 func floatPtr(value float64) *float64 {
 	return &value
+}
+
+type countingSource struct {
+	name  string
+	calls int
+	info  model.PricingInfo
+	ok    bool
+	err   error
+}
+
+func (s *countingSource) Name() string { return s.name }
+
+func (s *countingSource) Lookup(context.Context, string) (model.PricingInfo, bool, error) {
+	s.calls++
+	return s.info, s.ok, s.err
+}
+
+func TestResolverCachesPerSuffixAndPersists(t *testing.T) {
+	dir := t.TempDir()
+	price := 9.5
+	source := &countingSource{name: "test", info: model.PricingInfo{Register: &price, Currency: "USD"}, ok: true}
+	resolver := NewResolver(source).WithCache(dir, 7*24*time.Hour)
+
+	first, ok, err := resolver.Lookup(context.Background(), "sb")
+	if err != nil || !ok || first.CachedAt != "" {
+		t.Fatalf("first lookup: %#v %v %v", first, ok, err)
+	}
+	second, ok, _ := resolver.Lookup(context.Background(), ".SB")
+	if !ok || second.CachedAt == "" || source.calls != 1 {
+		t.Fatalf("second lookup should hit the cache: %#v calls=%d", second, source.calls)
+	}
+
+	// A new resolver (config reload, restart) reads data/cache/pricing.json.
+	reloaded := NewResolver(source).WithCache(dir, 7*24*time.Hour)
+	if _, ok, _ := reloaded.Lookup(context.Background(), "sb"); !ok || source.calls != 1 {
+		t.Fatalf("persisted cache not used, calls=%d", source.calls)
+	}
+
+	// Misses are cached too.
+	source.ok = false
+	if _, ok, _ := reloaded.Lookup(context.Background(), "zz"); ok {
+		t.Fatal("unexpected price for zz")
+	}
+	reloaded.Lookup(context.Background(), "zz")
+	if source.calls != 2 {
+		t.Fatalf("negative answer should be cached, calls=%d", source.calls)
+	}
+}
+
+func TestResolverCacheExpiresAndSkipsFallbacks(t *testing.T) {
+	price := 1.0
+	online := &countingSource{name: "online", err: errors.New("down")}
+	local := &countingSource{name: "local", info: model.PricingInfo{Register: &price}, ok: true}
+	resolver := NewResolver(online, local).WithCache(t.TempDir(), time.Hour)
+	resolver.Lookup(context.Background(), "sb")
+	resolver.Lookup(context.Background(), "sb")
+	if online.calls != 2 {
+		t.Fatalf("fallback answers must not be cached, online calls=%d", online.calls)
+	}
+
+	online.err, online.ok, online.info = nil, true, model.PricingInfo{Register: &price}
+	clock := time.Now()
+	resolver.cache.now = func() time.Time { return clock }
+	resolver.Lookup(context.Background(), "io")
+	clock = clock.Add(2 * time.Hour)
+	resolver.Lookup(context.Background(), "io")
+	if online.calls != 4 {
+		t.Fatalf("expired entry should be refetched, online calls=%d", online.calls)
+	}
+
+	if NewResolver(online).WithCache(t.TempDir(), 0).cache != nil {
+		t.Fatal("ttl 0 disables the cache")
+	}
 }

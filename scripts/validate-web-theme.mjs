@@ -66,7 +66,6 @@ const criticalSelectors = [
   ".icp-panel",
   ".status-panel",
   ".action-bar",
-  ".share-menu-panel",
   ".resolver-tooltip",
   ".source-popover-body",
   ".raw-panel pre",

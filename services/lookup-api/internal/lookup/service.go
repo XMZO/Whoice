@@ -81,7 +81,7 @@ func buildPricingResolver(cfg config.Config) *pricing.Resolver {
 	if cfg.EnrichPricing {
 		sources = append([]pricing.Source{pricing.NewMiqingjuSnapshotSource()}, sources...)
 	}
-	return pricing.NewResolver(sources...)
+	return pricing.NewResolver(sources...).WithCache(cfg.DataDir, cfg.PricingCacheTTL)
 }
 
 func (s *Service) StartBackground(ctx context.Context) {

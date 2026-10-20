@@ -29,6 +29,7 @@ import {
   lockModel,
   lockOpLabel,
   normalizeHost,
+  relativeTime,
   resolverStatusItems,
   safeExternalURL,
   sinceLabel,
@@ -515,11 +516,18 @@ function PriceTile({ label, offer, fallbackCurrency }: { label: string; offer?: 
   );
 }
 
-export function pricingMeta(result: LookupResult) {
-  const pricing = result.enrichment?.pricing;
-  if (!pricing) return "";
-  const date = pricing.updatedAt ? pricing.updatedAt.slice(0, 10) : "";
-  return [pricing.source || pricing.provider, date].filter(Boolean).join(" · ");
+/** Marks data served from a server-side cache (pricing, ICP). */
+function CacheTag({ cachedAt }: { cachedAt?: string }) {
+  const { t, tf } = useI18n();
+  const pick = useT3();
+  if (!cachedAt) return null;
+  const timestamp = Date.parse(cachedAt);
+  if (Number.isNaN(timestamp)) return null;
+  return (
+    <span className="pill pill-xs" title={`${pick(t3("Cached at", "缓存于", "快取於"))} ${formatTimestamp(cachedAt)}`}>
+      {pick(t3("Cached", "缓存", "快取"))} · {relativeTime(timestamp, Date.now(), tf, t)}
+    </span>
+  );
 }
 
 export function PriceSection({ result, pending, loadingError, showHeader = true }: { result: LookupResult; pending?: boolean; loadingError?: string; showHeader?: boolean }) {
@@ -531,20 +539,19 @@ export function PriceSection({ result, pending, loadingError, showHeader = true 
   const register = offer(pricing?.registerOffer, pricing?.register);
   const renew = offer(pricing?.renewOffer, pricing?.renew);
   const transfer = offer(pricing?.transferOffer, pricing?.transfer);
-  const meta = pricingMeta(result);
   const mozMeta = [moz?.source, moz?.updatedAt?.slice(0, 10)].filter(Boolean).join(" · ");
   return (
     <section className="result-card price-panel plugin-shell" aria-labelledby="h-price" aria-busy={pending ? "true" : undefined}>
       {showHeader ? (
         <SectionHead id="h-price" icon={<TagIcon size={15} />} title={t("priceScore")}>
-          {meta && <span className="section-meta">{meta}</span>}
+          <CacheTag cachedAt={pricing?.cachedAt} />
         </SectionHead>
       ) : (
         <h2 id="h-price" className="sr-only">{t("priceScore")}</h2>
       )}
       <div className="price-head-narrow">
         <strong>{t("priceTitle")}</strong>
-        <span className="section-meta">{meta}</span>
+        <CacheTag cachedAt={pricing?.cachedAt} />
       </div>
       {pricing ? (
         <div className="price-grid">
@@ -841,7 +848,7 @@ function ICPBlock({ domain, state, onLookup }: { domain: string; state: ICPState
           <strong>
             {t("icpTitle")}
             {found && <span className="pill pill-green">{t("icpFound")}</span>}
-            {state.result?.cached && <span className="pill">{pick(CACHED)}</span>}
+            {state.result?.cached && <CacheTag cachedAt={state.result.cachedAt} />}
           </strong>
           <span className="icp-summary">{summary}</span>
         </span>

@@ -58,6 +58,7 @@ type Config struct {
 	DNSFilterFakeIP        bool
 	EnrichDNSViz           bool
 	EnrichPricing          bool
+	PricingCacheTTL        time.Duration
 	EnrichMoz              bool
 	AIEnabled              bool
 	AIProvider             string
@@ -212,6 +213,7 @@ func Default() Config {
 		AIProvider:             "openai-compatible",
 		AITimeout:              8 * time.Second,
 		AICacheTTL:             168 * time.Hour,
+		PricingCacheTTL:        168 * time.Hour,
 		AIMaxInputChars:        16000,
 		AIMinConfidence:        0.68,
 		AIMaxOutputTokens:      700,
@@ -524,6 +526,8 @@ type EnrichmentConfig struct {
 	Registrar *bool `toml:"registrar" json:"registrar,omitempty"`
 	Pricing   *bool `toml:"pricing" json:"pricing,omitempty"`
 	Moz       *bool `toml:"moz" json:"moz,omitempty"`
+	// PricingCacheTTL keeps per-suffix prices in data/cache/pricing.json.
+	PricingCacheTTL *string `toml:"pricing_cache_ttl" json:"pricing_cache_ttl,omitempty"`
 }
 
 type AIConfig struct {
@@ -725,6 +729,9 @@ func (f FileConfig) Apply(cfg *Config) error {
 		setBool(&cfg.EnrichRegistrar, f.Enrichment.Registrar)
 		setBool(&cfg.EnrichPricing, f.Enrichment.Pricing)
 		setBool(&cfg.EnrichMoz, f.Enrichment.Moz)
+		if err := setCacheDuration(&cfg.PricingCacheTTL, f.Enrichment.PricingCacheTTL, "enrichment.pricing_cache_ttl"); err != nil {
+			return err
+		}
 	}
 	if f.AI != nil {
 		setBool(&cfg.AIEnabled, f.AI.Enabled)
@@ -833,6 +840,7 @@ func applyEnv(cfg *Config) {
 	envBoolInto(&cfg.DNSFilterFakeIP, "WHOICE_DNS_FILTER_FAKE_IP")
 	envBoolInto(&cfg.EnrichDNSViz, "WHOICE_ENRICH_DNSVIZ")
 	envBoolInto(&cfg.EnrichPricing, "WHOICE_ENRICH_PRICING")
+	envCacheDurationInto(&cfg.PricingCacheTTL, "WHOICE_PRICING_CACHE_TTL")
 	envBoolInto(&cfg.EnrichMoz, "WHOICE_ENRICH_MOZ")
 	envBoolInto(&cfg.AIEnabled, "WHOICE_AI_ENABLED")
 	envStringInto(&cfg.AIProvider, "WHOICE_AI_PROVIDER")

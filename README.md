@@ -8,7 +8,7 @@ Whoice is a self-hosted WHOIS and RDAP lookup service for domains, IP addresses,
 - **Enrichment**: multi-resolver DNS (UDP and DoH, compared per answer), EPP lock status, DNSSEC, ICANN registrar metadata, registrar and nameserver brands, DNSViz links, registration pricing, and Moz scores.
 - **Optional modules**: ICP filing lookup, AI-assisted parsing of non-standard WHOIS records, password or token authentication, rate limiting, and Prometheus metrics.
 - **Admin panel**: `/admin`, protected by a single password, edits every runtime setting and applies it immediately.
-- **Web UI**: conclusion-first result page with a raw-response viewer, three languages (English, 简体中文, 繁體中文), light and dark themes, keyboard shortcuts, JSON and image export, and a runtime `/status` page.
+- **Web UI**: conclusion-first result page with a raw-response viewer, three languages (English, 简体中文, 繁體中文), light and dark themes, keyboard shortcuts, JSON export, results that stream in as each source answers, and a runtime `/status` page.
 - **Freshness**: lookup results are never cached. Only slow-changing reference data (bootstrap files, server maps, ICP results, AI analysis) is reused.
 
 ## Deployment
@@ -71,7 +71,7 @@ Settings can be changed in the admin panel or directly in `data/whoice.toml`. Th
 | `[auth]` | `none`, `password` (site password), or `token` (API tokens) |
 | `[lookup]` | Timeouts, RDAP / WHOIS / WHOIS Web toggles, referral depth |
 | `[dns]` | Resolver pools (IPv4, IPv6, DoH), fake-IP filtering, DNSViz links |
-| `[enrichment]` | EPP, registrar, brands, pricing, Moz |
+| `[enrichment]` | EPP, registrar, brands, pricing (cached per suffix, 7 days by default), Moz |
 | `[ai]` | OpenAI-compatible or Ollama endpoint, model, prompt, cache |
 | `[icp]` | ICP filing lookup, caching, captcha handling, upstream service |
 | `[rate_limit]` | Fixed-window limit for anonymous clients, e.g. `60/min` |
