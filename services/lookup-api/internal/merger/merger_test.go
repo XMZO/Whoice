@@ -135,3 +135,24 @@ func TestMergeNameserverAddresses(t *testing.T) {
 		}
 	}
 }
+
+func TestMergeNormalizesZonedRegistryDates(t *testing.T) {
+	result := New().Merge(model.NormalizedQuery{Type: model.QueryDomain, Query: "xmzo.pp.ua"}, []*model.PartialResult{{
+		Source: model.SourceWHOIS,
+		Status: model.StatusRegistered,
+		Dates: model.DateInfo{
+			CreatedAt: "09-Apr-2026 06:18:01 UTC",
+			UpdatedAt: "2026-04-09 06:32:11 PST",
+			ExpiresAt: "09-Apr-2127",
+		},
+	}})
+	if result.Dates.CreatedAt != "2026-04-09T06:18:01Z" {
+		t.Fatalf("created: %q", result.Dates.CreatedAt)
+	}
+	if result.Dates.UpdatedAt != "2026-04-09 06:32:11 PST" {
+		t.Fatalf("an ambiguous zone must stay as written: %q", result.Dates.UpdatedAt)
+	}
+	if result.Dates.ExpiresAt != "2127-04-09" || result.Dates.AgeDays == nil || result.Dates.RemainingDays == nil {
+		t.Fatalf("dates: %#v", result.Dates)
+	}
+}

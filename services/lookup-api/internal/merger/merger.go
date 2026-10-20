@@ -62,6 +62,7 @@ func (Merger) Merge(q model.NormalizedQuery, parts []*model.PartialResult) *mode
 	if q.Type == model.QueryDomain && result.Status == model.StatusRegistered {
 		result.Domain.Registered = true
 	}
+	normalizeDates(&result.Dates)
 	calculateDateDiffs(result)
 	return result
 }
@@ -362,12 +363,15 @@ func parseTime(value string) (time.Time, bool) {
 	if value == "" {
 		return time.Time{}, false
 	}
+	if parsed, ok := parseZonedTime(value); ok {
+		return parsed, true
+	}
 	layouts := []string{
-		time.RFC3339,
-		"2006-01-02T15:04:05Z",
+		"2006-01-02T15:04:05",
 		"2006-01-02 15:04:05",
 		"2006-01-02",
 		"2006.01.02 15:04:05",
+		"02-Jan-2006 15:04:05",
 		"02-Jan-2006",
 	}
 	for _, layout := range layouts {
@@ -376,4 +380,56 @@ func parseTime(value string) (time.Time, bool) {
 		}
 	}
 	return time.Time{}, false
+}
+
+// zonedLayouts carry an explicit UTC offset or a UTC/GMT suffix, so they can
+// be rewritten as RFC 3339 without guessing a time zone.
+var zonedLayouts = []string{
+	time.RFC3339Nano,
+	"2006-01-02 15:04:05Z07:00",
+	"2006-01-02T15:04:05 MST",
+	"2006-01-02 15:04:05 MST",
+	"02-Jan-2006 15:04:05 MST",
+	"2006.01.02 15:04:05 MST",
+	"Mon Jan 2 15:04:05 MST 2006",
+	"Mon Jan _2 15:04:05 MST 2006",
+}
+
+func parseZonedTime(value string) (time.Time, bool) {
+	for _, layout := range zonedLayouts {
+		parsed, err := time.Parse(layout, value)
+		if err != nil {
+			continue
+		}
+		if strings.Contains(layout, "MST") {
+			// Go accepts any abbreviation for MST and assumes offset 0 for
+			// unknown ones; trust only UTC and GMT.
+			if name, _ := parsed.Zone(); name != "UTC" && name != "GMT" {
+				continue
+			}
+		}
+		return parsed, true
+	}
+	return time.Time{}, false
+}
+
+// normalizeDates rewrites registry date formats such as
+// "09-Apr-2026 06:18:01 UTC" as RFC 3339. Values without a time zone are
+// left as they are.
+func normalizeDates(dates *model.DateInfo) {
+	for _, value := range []*string{&dates.CreatedAt, &dates.UpdatedAt, &dates.ExpiresAt} {
+		trimmed := strings.TrimSpace(*value)
+		if trimmed == "" {
+			continue
+		}
+		if parsed, ok := parseZonedTime(trimmed); ok {
+			if _, err := time.Parse(time.RFC3339Nano, trimmed); err != nil {
+				*value = parsed.UTC().Format(time.RFC3339)
+			}
+			continue
+		}
+		if parsed, err := time.Parse("02-Jan-2006", trimmed); err == nil {
+			*value = parsed.Format("2006-01-02")
+		}
+	}
 }

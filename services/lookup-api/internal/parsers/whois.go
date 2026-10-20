@@ -109,7 +109,7 @@ func (WHOISParser) Parse(_ context.Context, raw model.RawResponse, q model.Norma
 	partial.Registrar.WHOISServer = firstValue(fields, "registrar whois server")
 	partial.Dates.CreatedAt = firstValue(fields, "creation date", "created", "created on", "registered on")
 	partial.Dates.ExpiresAt = firstValue(fields, "registry expiry date", "expiration date", "expiry date", "expires", "paid-till")
-	partial.Dates.UpdatedAt = firstValue(fields, "updated date", "last updated", "modified", "changed")
+	partial.Dates.UpdatedAt = firstValue(fields, "updated date", "last updated", "last updated on", "updated on", "modified", "changed")
 	partial.DNSSEC.Text = firstValue(fields, "dnssec")
 
 	for _, status := range valuesFor(fields, "domain status", "status") {
