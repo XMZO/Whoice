@@ -56,6 +56,9 @@ async function routeLookupFixtures(page: Page, fixtures: Record<string, any>) {
 // Result sections are tabs on short desktop and mobile viewports; on tall desktops every
 // section is visible and there is no tab to click.
 async function showSection(page: Page, name: RegExp) {
+  // The page renders a pending view (with the query as heading) until the
+  // streamed result arrives; tabs only exist once it has.
+  await expect(page.locator(".lookup-pending")).toHaveCount(0);
   const tab = page.getByRole("tab", { name });
   if (await tab.count()) {
     await tab.first().click();

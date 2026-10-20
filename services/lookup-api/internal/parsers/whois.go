@@ -142,7 +142,7 @@ func (WHOISParser) Parse(_ context.Context, raw model.RawResponse, q model.Norma
 	partial.Registrant.City = firstValue(fields, "registrant city", "owner city")
 	partial.Registrant.Address = firstValue(fields, "registrant street", "registrant address", "owner address")
 	partial.Registrant.PostalCode = firstValue(fields, "registrant postal code", "registrant zip", "owner postal code")
-	partial.Registrant.Email = firstValue(fields, "registrant email", "registrant contact email", "owner email", "email")
+	partial.Registrant.Email = contactEmail(firstValue(fields, "registrant email", "registrant contact email", "owner email", "email"))
 	partial.Registrant.Phone = firstValue(fields, "registrant phone", "registrant phone number", "owner phone", "phone")
 
 	partial.Network.CIDR = firstValue(fields, "cidr")
@@ -269,4 +269,16 @@ func splitRegistrarURL(value string) (string, string) {
 		name = value
 	}
 	return name, url
+}
+
+// contactEmail keeps addresses and contact-form links. Registries that redact
+// the field often put a sentence there instead ("Please query the Whois
+// service of the Registrar of Record ..."), which is not contact data.
+func contactEmail(value string) string {
+	value = strings.TrimSpace(value)
+	lower := strings.ToLower(value)
+	if strings.Contains(value, "@") || strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
+		return value
+	}
+	return ""
 }

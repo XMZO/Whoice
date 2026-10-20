@@ -25,7 +25,7 @@ import {
   registrantFieldCount,
   type ICPState,
 } from "@/components/ResultSections";
-import { analyzeRegistration, appendLookupOptions, enrichLookup, getCapabilities, lookup, lookupICP, normalizeLookupInput, type LookupOptions } from "@/lib/api";
+import { analyzeRegistration, appendLookupOptions, enrichLookup, getCapabilities, lookupICP, lookupStream, normalizeLookupInput, type LookupOptions } from "@/lib/api";
 import { writeHistory } from "@/lib/history";
 import { useI18n, type I18nKey } from "@/lib/i18n";
 import { diagnostic } from "@/lib/diagnostic";
@@ -38,6 +38,8 @@ type SectionTab = "overview" | "dns" | "owner" | "price" | "source" | "network";
 
 type Props = {
   query: string;
+  /** True when the page was served without a result; the browser streams it. */
+  pending: boolean;
   response: APIResponse;
   httpStatus: number;
   sourceMode: SourceMode;
@@ -49,6 +51,8 @@ type SourceMode = "all" | "rdap" | "whois";
 
 type LookupState = {
   query: string;
+  /** Waiting for the final result; response.result may hold a preview. */
+  pending: boolean;
   response: APIResponse;
   httpStatus: number;
   sourceMode: SourceMode;
@@ -161,6 +165,7 @@ export const getServerSideProps: GetServerSideProps<Props> = async (context) => 
     return {
       props: {
         query,
+        pending: false,
         httpStatus: 400,
         sourceMode,
         options: serializableOptions,
@@ -173,28 +178,14 @@ export const getServerSideProps: GetServerSideProps<Props> = async (context) => 
     };
   }
 
-  try {
-    const { status, body } = await lookup(query, options);
-    return { props: { query, httpStatus: status, response: body, sourceMode, options: serializableOptions, icpAutoQuery } };
-  } catch (error) {
-    return {
-      props: {
-        query,
-        httpStatus: 502,
-        sourceMode,
-        options: serializableOptions,
-        icpAutoQuery,
-        response: {
-          ok: false,
-          error: {
-            code: "api_unreachable",
-            message: error instanceof Error ? error.message : diagnostic("Lookup API is unreachable."),
-          },
-        },
-      },
-    };
-  }
+  // The lookup itself runs in the browser as a stream, so navigation is
+  // instant and the first source to answer is shown right away.
+  return { props: { query, pending: true, httpStatus: 200, response: { ok: true }, sourceMode, options: serializableOptions, icpAutoQuery } };
 };
+
+function isDNSWarning(warning: string) {
+  return warning.startsWith("DNS ") || warning.startsWith("Registry/WHOIS nameservers differ");
+}
 
 function rawText(result: LookupResult) {
   return [result.raw.whois, result.raw.whoisWeb, result.raw.rdap, result.raw.dns].filter(Boolean).join("\n\n");
@@ -368,6 +359,32 @@ function TabButton({
   );
 }
 
+function LookupPendingView({ query, sources }: { query: string; sources: string[] }) {
+  const { t } = useI18n();
+  const pick = useT3();
+  return (
+    <section className="status-strip result-hero lookup-pending" aria-label={query} aria-live="polite">
+      <div className="hero-head">
+        <div className="hero-badges">
+          <span className="pill pill-amber pulse" role="status">{t("searching")}</span>
+          <span className="hero-meta">{sources.map(sourceName).join(" · ")}</span>
+        </div>
+        <div className="hero-title">
+          <h1>{query}</h1>
+        </div>
+      </div>
+      <div className="hero-overview pending-body">
+        <div className="pending-metrics" aria-hidden="true">
+          {[0, 1, 2, 3].map((index) => (
+            <span key={index} className="pending-metric" />
+          ))}
+        </div>
+        <p className="pending-note">{pick(t3("Results appear as each source answers.", "每个来源返回后立即显示结果。", "每個來源回應後立即顯示結果。"))}</p>
+      </div>
+    </section>
+  );
+}
+
 function LookupErrorPanel({ response, status, onRetry }: { response: APIResponse; status: number; onRetry?: () => void }) {
   const { t } = useI18n();
   const pick = useT3();
@@ -391,13 +408,14 @@ function LookupErrorPanel({ response, status, onRetry }: { response: APIResponse
 }
 
 
-export default function LookupPage({ query, response, httpStatus, sourceMode, options, icpAutoQuery }: Props) {
+export default function LookupPage({ query, pending, response, httpStatus, sourceMode, options, icpAutoQuery }: Props) {
   const router = useRouter();
-  const [state, setState] = useState<LookupState>({ query, response, httpStatus, sourceMode, options, nonce: 0 });
+  const [state, setState] = useState<LookupState>({ query, pending, response, httpStatus, sourceMode, options, nonce: 0 });
   const [searchValue, setSearchValue] = useState(query);
   const [isLoading, setIsLoading] = useState(false);
-  const handledURLRef = useRef(lookupUrl(query, sourceMode, options));
+  const handledURLRef = useRef(pending ? "" : lookupUrl(query, sourceMode, options));
   const inflightURLRef = useRef("");
+  const lookupAbortRef = useRef<AbortController | null>(null);
   const icpInflightRef = useRef("");
   const aiInflightRef = useRef("");
   const enrichmentInflightRef = useRef("");
@@ -435,6 +453,15 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
     ...metaWarnings,
     ...sourceErrors.map((error) => `${error.source}: ${error.error}`),
   ];
+  // Each warning is shown once, next to what it is about: DNS warnings in the
+  // DNS card, provider failures in their source row, the rest under sources.
+  const dnsWarnings = metaWarnings.filter(isDNSWarning);
+  const failedProviders = new Set((result?.meta?.providers || []).filter((provider) => provider.status === "error").map((provider) => provider.source));
+  const sourceWarnings = [
+    ...(enrichmentError ? [`enrichment: ${enrichmentError}`] : []),
+    ...metaWarnings.filter((warning) => !isDNSWarning(warning)),
+    ...sourceErrors.filter((error) => !failedProviders.has(error.source)).map((error) => `${error.source}: ${error.error}`),
+  ];
 
   useEffect(() => {
     const propsURL = lookupUrl(query, sourceMode, options);
@@ -445,8 +472,13 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
         return;
       }
     }
+    if (pending) {
+      void runLookup(query, sourceMode, options, false);
+      return;
+    }
     setState((current) => ({
       query,
+      pending: false,
       response,
       httpStatus,
       sourceMode,
@@ -458,7 +490,7 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
     if (response.ok && query) {
       writeHistory(normalizeLookupInput(query));
     }
-  }, [httpStatus, options, query, response, router.asPath, router.isReady, sourceMode]);
+  }, [httpStatus, options, pending, query, response, router.asPath, router.isReady, sourceMode]);
 
   useEffect(() => {
     setICPState({ domain: icpDomain, loading: false, requested: false });
@@ -500,25 +532,25 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
   }, [icpAutoQuery, icpDomain, icpState.loading, icpState.requested]);
 
   useEffect(() => {
-    if (!aiArmedRef.current) return;
+    if (!aiArmedRef.current || state.pending) return;
     if (!parseBool(state.options.ai) || !result || result.type !== "domain") return;
     const key = aiRequestKey(result, state.nonce);
     if (!key || aiState.key !== key || aiState.requested || aiState.loading) return;
     aiArmedRef.current = false;
     void runAIAnalysis(result, key, state.nonce);
-  }, [aiState.key, aiState.loading, aiState.requested, result, state.nonce, state.options.ai]);
+  }, [aiState.key, aiState.loading, aiState.requested, result, state.nonce, state.options.ai, state.pending]);
 
   useEffect(() => {
-    if (!result?.meta?.pendingEnrichments?.length) return;
+    if (state.pending || !result?.meta?.pendingEnrichments?.length) return;
     const key = enrichmentRequestKey(result, state.nonce);
     if (!key || enrichmentState.key !== key || enrichmentState.loading || enrichmentState.requested) return;
     void runDeferredEnrichment(result, key);
-  }, [enrichmentState.key, enrichmentState.loading, enrichmentState.requested, result, state.nonce]);
+  }, [enrichmentState.key, enrichmentState.loading, enrichmentState.requested, result, state.nonce, state.pending]);
 
   useEffect(() => {
     if (!router.isReady) return;
     const next = lookupParamsFromPath(router.asPath);
-    if (!next.query || isLoading) return;
+    if (!next.query) return;
     const nextURL = lookupUrl(next.query, next.sourceMode, next.options);
     if (nextURL !== handledURLRef.current && nextURL !== inflightURLRef.current) {
       void runLookup(next.query, next.sourceMode, next.options, false);
@@ -597,7 +629,7 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
 
   async function runLookup(nextQuery: string, nextSourceMode = state.sourceMode, nextOptions = state.options, updateURL = true, armAI = true) {
     const trimmed = normalizeLookupInput(nextQuery);
-    if (!trimmed || isLoading) return;
+    if (!trimmed) return;
     const requestOptions = {
       ...nextOptions,
       rdap: nextSourceMode === "rdap" ? "1" : undefined,
@@ -606,38 +638,44 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
     const serializableOptions = cleanOptions(requestOptions);
     const nextURL = lookupUrl(trimmed, nextSourceMode, serializableOptions);
     if (inflightURLRef.current === nextURL) return;
+    // A new lookup replaces the one in flight.
+    lookupAbortRef.current?.abort();
+    const controller = new AbortController();
+    lookupAbortRef.current = controller;
     inflightURLRef.current = nextURL;
+    handledURLRef.current = nextURL;
     aiArmedRef.current = armAI && parseBool(serializableOptions.ai);
+    const nonce = Date.now();
+    const settle = (next: Pick<LookupState, "response" | "httpStatus">) =>
+      setState((current) => (current.nonce === nonce ? { ...current, ...next, pending: false } : current));
     setIsLoading(true);
     setAIState({ key: "", loading: false, requested: false });
     setEnrichmentState({ key: "", loading: false, requested: false });
+    setState({ query: trimmed, pending: true, response: { ok: true }, httpStatus: 200, sourceMode: nextSourceMode, options: serializableOptions, nonce });
+    setSearchValue(trimmed);
+    if (updateURL && typeof window !== "undefined") {
+      void router.push(nextURL, undefined, { shallow: true, scroll: false });
+    }
     try {
-      const { status, body } = await lookup(trimmed, requestOptions);
-      const nextNonce = Date.now();
-      setState({
-        query: trimmed,
-        response: body,
-        httpStatus: status,
-        sourceMode: nextSourceMode,
-        options: serializableOptions,
-        nonce: nextNonce,
-      });
-      handledURLRef.current = nextURL;
-      setSearchValue(trimmed);
+      const { status, body } = await lookupStream(
+        trimmed,
+        requestOptions,
+        (preview) => {
+          if (controller.signal.aborted) return;
+          setState((current) => (current.nonce === nonce && current.pending ? { ...current, response: { ok: true, result: preview } } : current));
+        },
+        controller.signal,
+      );
+      if (controller.signal.aborted) return;
+      settle({ response: body, httpStatus: status });
       if (body.ok) {
         writeHistory(trimmed);
       }
-      if (updateURL && typeof window !== "undefined") {
-        void router.push(nextURL, undefined, { shallow: true, scroll: false });
-      }
     } catch (error) {
+      if (controller.signal.aborted) return;
       aiArmedRef.current = false;
-      setState({
-        query: trimmed,
+      settle({
         httpStatus: 502,
-        sourceMode: nextSourceMode,
-        options: serializableOptions,
-        nonce: Date.now(),
         response: {
           ok: false,
           error: {
@@ -646,16 +684,12 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
           },
         },
       });
-      handledURLRef.current = nextURL;
-      setSearchValue(trimmed);
-      setAIState({ key: "", loading: false, requested: false });
-      setEnrichmentState({ key: "", loading: false, requested: false });
-      if (updateURL && typeof window !== "undefined") {
-        void router.push(nextURL, undefined, { shallow: true, scroll: false });
-      }
     } finally {
-      inflightURLRef.current = "";
-      setIsLoading(false);
+      if (lookupAbortRef.current === controller) {
+        lookupAbortRef.current = null;
+        inflightURLRef.current = "";
+        setIsLoading(false);
+      }
     }
   }
 
@@ -860,6 +894,9 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
     window.setTimeout(() => setActionState(""), 1400);
   }
 
+  const expectedSources: string[] = state.sourceMode === "rdap" ? ["rdap"] : state.sourceMode === "whois" ? ["whois"] : ["rdap", "whois"];
+  const answeredSources = new Set((result?.meta?.providers || []).map((provider) => provider.source));
+  const pendingSources = state.pending ? expectedSources.filter((source) => !answeredSources.has(source as never)) : [];
   const isDomain = result?.type === "domain";
   const lowerTabs: SectionTab[] = isDomain ? ["dns", "owner", "price", "source"] : ["network", "owner", "source"];
   const activeLower: SectionTab = lowerTabs.includes(tab) ? tab : lowerTabs[0];
@@ -961,7 +998,7 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
                 <option value="rdap">RDAP</option>
                 <option value="whois">WHOIS</option>
               </select>
-              <button disabled={isLoading} type="submit">{isLoading ? t("searching") : t("search")}</button>
+              <button type="submit">{isLoading ? t("searching") : t("search")}</button>
             </form>
           </div>
           <div className="topbar-source">
@@ -987,16 +1024,9 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
         </header>
 
         <section className="tool-stage" aria-label={t("lookupWorkspace")} aria-busy={isLoading ? "true" : undefined}>
-          {isLoading && (
-            <div className="stage-loading loading-panel" aria-live="polite">
-              <span className="loading-bar" aria-hidden="true" />
-              <span className="loading-text">
-                {t("liveLookup")} <span className="mono">{searchValue}</span>
-              </span>
-            </div>
-          )}
-
-          {!state.response.ok || !result ? (
+          {state.pending && !result ? (
+            <LookupPendingView query={state.query} sources={pendingSources} />
+          ) : !state.response.ok || !result ? (
             <LookupErrorPanel response={state.response} status={state.httpStatus} onRetry={state.query ? () => void runLookup(state.query, state.sourceMode, state.options, false) : undefined} />
           ) : (
             <>
@@ -1004,6 +1034,11 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
                 <div className="hero-head">
                   <div className="hero-badges">
                     <StatusBadge status={result.status} />
+                    {state.pending && (
+                      <span className="pill pill-amber pulse" role="status" title={pendingSources.map(sourceName).join(" · ")}>
+                        {pick(t3("Updating", "正在补全", "正在補全"))} · {pendingSources.map(sourceName).join(" · ")}
+                      </span>
+                    )}
                     <span className="type-tag">{kindLabel(result.type, t)}</span>
                     {result.registry?.name && (
                       <span className="hero-meta">
@@ -1108,7 +1143,7 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
                 <div className="lower-col">
                   {isDomain ? (
                     <>
-                      {section("dns", <DNSSection result={result} pending={dnsPending} loadingError={enrichmentError} onCopy={copyValue} />)}
+                      {section("dns", <DNSSection result={result} pending={dnsPending} loadingError={enrichmentError} notes={dnsWarnings} onCopy={copyValue} />)}
                       {section("price", <PriceSection result={result} pending={pricingPending} loadingError={enrichmentError} />)}
                     </>
                   ) : (
@@ -1129,7 +1164,7 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
                     />,
                   )}
                   {/* Raw evidence (rawWhois / rawRdap) and request diagnostics live in the sources section and the raw drawer. */}
-                  {section("source", <SourcesSection result={result} warnings={warnings} onOpenRaw={(next) => setRawTab(next)} />)}
+                  {section("source", <SourcesSection result={result} warnings={sourceWarnings} onOpenRaw={(next) => setRawTab(next)} />)}
                 </div>
               </div>
             </>

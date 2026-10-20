@@ -134,7 +134,7 @@ model = "..."
 | `GET /api/metrics` | Prometheus 指标 |
 | `/api/admin/*` | 管理面板接口（需管理密码或登录会话） |
 
-查询参数：`query`（域名、IP、CIDR、ASN 或 URL）；`rdap=1` 或 `whois=1` 只使用单一来源；`exact_domain=1` 不缩减到可注册域；`rdap_server`、`whois_server`、`whois_follow` 用于自定义服务器。
+查询参数：`query`（域名、IP、CIDR、ASN 或 URL）；`rdap=1` 或 `whois=1` 只使用单一来源；`exact_domain=1` 不缩减到可注册域；`stream=1` 以 NDJSON 逐个来源返回预览（Web 界面使用此方式）；`rdap_server`、`whois_server`、`whois_follow` 用于自定义服务器。
 
 ```sh
 curl "http://127.0.0.1:18080/api/lookup?query=example.com"

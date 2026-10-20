@@ -62,6 +62,27 @@ function SectionHead({ icon, title, meta, children, id }: { icon: ReactNode; tit
   );
 }
 
+/** Compact warning list: each entry is clamped to two lines, full text on hover. */
+export function WarningList({ warnings }: { warnings: string[] }) {
+  const { t } = useI18n();
+  if (!warnings.length) return null;
+  return (
+    <div className="warning-note warning-panel" role="note">
+      <WarnIcon size={15} />
+      <span>
+        <strong>{t("warningLabel")}</strong>
+        <ul className="warning-items">
+          {warnings.map((warning) => (
+            <li key={warning} title={warning}>
+              {warning}
+            </li>
+          ))}
+        </ul>
+      </span>
+    </div>
+  );
+}
+
 export function SourceTags({ sources }: { sources: string[] }) {
   if (!sources.length) return null;
   return (
@@ -260,12 +281,14 @@ export function DNSSection({
   result,
   pending,
   loadingError,
+  notes = [],
   showHeader = true,
   onCopy,
 }: {
   result: LookupResult;
   pending?: boolean;
   loadingError?: string;
+  notes?: string[];
   showHeader?: boolean;
   onCopy: (value: string) => void;
 }) {
@@ -419,6 +442,7 @@ export function DNSSection({
           <span className="muted">{t("noDns")}</span>
         </RecordRow>
       )}
+      <WarningList warnings={notes} />
     </section>
   );
 }
@@ -719,7 +743,10 @@ export function RegistrantSection({
       ) : (
         <dl className="kv-list">
           {rows.map((row) => {
-            const sources = row.sourceKeys.flatMap((key) => registrant.fieldSources?.[key] || []);
+            // Combined rows (location = province + country) list each source once.
+            const sources = row.sourceKeys
+              .flatMap((key) => registrant.fieldSources?.[key] || [])
+              .filter((item, index, all) => all.findIndex((other) => other.source === item.source) === index);
             const fallback = !sources.length && registrant.source ? [{ label: row.label, value: row.value, source: registrant.source, confidence: registrant.confidence, evidence: registrant.evidence }] : sources;
             return (
               <div className="kv-row" key={row.key}>
@@ -967,21 +994,7 @@ export function SourcesSection({
           </div>
         ))}
       </div>
-      {warnings.length > 0 && (
-        <div className="warning-note warning-panel" role="note">
-          <WarnIcon size={15} />
-          <span>
-            <strong>{t("warningLabel")}</strong>
-            {warnings.length === 1 ? (
-              warnings[0]
-            ) : (
-              <ul>
-                {warnings.map((warning) => <li key={warning}>{warning}</li>)}
-              </ul>
-            )}
-          </span>
-        </div>
-      )}
+      <WarningList warnings={warnings} />
       {(registry.name || registry.rdapServer || registry.whoisServer) && (
         <div className="detail-block narrow-only">
           <strong className="detail-block-title">{t("registryLabel")}</strong>

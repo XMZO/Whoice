@@ -459,3 +459,66 @@ func TestDelegationFirstPrefersWHOISWhenItAnswers(t *testing.T) {
 		t.Fatalf("primary %q raw dns %q", result.Source.Primary, result.Raw.DNS)
 	}
 }
+
+type delayedProvider struct {
+	testProvider
+	delay time.Duration
+}
+
+func (p delayedProvider) Lookup(ctx context.Context, q model.NormalizedQuery, opts model.LookupOptions) (*model.RawResponse, error) {
+	select {
+	case <-time.After(p.delay):
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	return p.testProvider.Lookup(ctx, q, opts)
+}
+
+func TestLookupEmitsRegisteredPreviewBeforeSlowProvider(t *testing.T) {
+	service := NewService(config.Config{LookupTimeout: 5 * time.Second, ProviderTimeout: 5 * time.Second, RDAPEnabled: true, WHOISEnabled: true},
+		[]providerapi.Provider{
+			testProvider{source: model.SourceWHOIS, raw: &model.RawResponse{
+				Source: model.SourceWHOIS, Server: "whois.example.test",
+				Body: "Domain Name: EXAMPLE.TEST\nRegistrar: Example Registrar\nName Server: NS1.EXAMPLE.TEST\n",
+			}},
+			delayedProvider{testProvider: testProvider{source: model.SourceRDAP, err: errors.New("rdap timeout")}, delay: 200 * time.Millisecond},
+		}, parsers.NewRegistry(parsers.WHOISParser{}))
+
+	var previews []*model.LookupResult
+	result, err := service.Lookup(context.Background(), "example.test", model.LookupOptions{
+		UseRDAP: true, UseWHOIS: true,
+		OnPartial: func(preview *model.LookupResult) { previews = append(previews, preview) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(previews) != 1 {
+		t.Fatalf("previews: %d", len(previews))
+	}
+	if previews[0].Status != model.StatusRegistered || previews[0].Registrar.Name != "Example Registrar" || len(previews[0].Meta.Providers) != 1 {
+		t.Fatalf("preview: %#v", previews[0])
+	}
+	if len(result.Meta.Providers) != 2 || len(result.Source.Errors) != 1 {
+		t.Fatalf("final providers %#v errors %#v", result.Meta.Providers, result.Source.Errors)
+	}
+}
+
+func TestLookupDoesNotPreviewAvailability(t *testing.T) {
+	service := NewService(config.Config{LookupTimeout: 5 * time.Second, ProviderTimeout: 5 * time.Second, RDAPEnabled: true, WHOISEnabled: true},
+		[]providerapi.Provider{
+			testProvider{source: model.SourceWHOIS, raw: &model.RawResponse{Source: model.SourceWHOIS, Server: "whois.example.test", Body: "No match for \"FREE.TEST\".\n"}},
+			delayedProvider{testProvider: testProvider{source: model.SourceRDAP, err: errors.New("rdap timeout")}, delay: 100 * time.Millisecond},
+		}, parsers.NewRegistry(parsers.WHOISParser{}))
+
+	calls := 0
+	result, err := service.Lookup(context.Background(), "free.test", model.LookupOptions{
+		UseRDAP: true, UseWHOIS: true,
+		OnPartial: func(*model.LookupResult) { calls++ },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 0 {
+		t.Fatalf("availability must wait for the final result, got %d previews (final status %q)", calls, result.Status)
+	}
+}

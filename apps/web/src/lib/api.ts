@@ -96,6 +96,60 @@ export async function lookup(query: string, options: LookupOptions = {}) {
   return { status: response.status, body };
 }
 
+// lookupStream requests NDJSON previews (stream=1): onPartial receives each
+// merged preview while slower sources are still running. Responses that are
+// plain JSON (guards, older APIs, test mocks) are handled like lookup().
+export async function lookupStream(query: string, options: LookupOptions, onPartial: (result: LookupResult) => void, signal?: AbortSignal) {
+  const params = new URLSearchParams({ query: normalizeLookupInput(query) });
+  appendLookupOptions(params, options);
+  params.set("stream", "1");
+
+  const base = getAPIBase().replace(/\/$/, "");
+  const response = await fetch(`${base}/api/lookup?${params.toString()}`, { cache: "no-store", signal });
+  if (!response.headers.get("content-type")?.includes("ndjson") || !response.body) {
+    const body = await readAPIResponse(response, "Lookup API");
+    normalizeAPIResponse(body);
+    return { status: response.status, body };
+  }
+
+  let final: { status: number; body: APIResponse } | undefined;
+  const handle = (line: string) => {
+    if (!line.trim()) return;
+    let message: { partial?: LookupResult; final?: APIResponse; status?: number };
+    try {
+      message = JSON.parse(line);
+    } catch {
+      return;
+    }
+    if (message.partial) {
+      onPartial(normalizeLookupResult(message.partial));
+    } else if (message.final) {
+      final = { status: message.status || 200, body: normalizeAPIResponse(message.final) };
+    }
+  };
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let index = buffer.indexOf("\n");
+    while (index >= 0) {
+      handle(buffer.slice(0, index));
+      buffer = buffer.slice(index + 1);
+      index = buffer.indexOf("\n");
+    }
+  }
+  handle(buffer + decoder.decode());
+  return (
+    final || {
+      status: 502,
+      body: { ok: false, error: { code: "empty_response", message: diagnostic("Lookup API closed the stream before sending a result.") } },
+    }
+  );
+}
+
 export async function getCapabilities() {
   const base = getAPIBase().replace(/\/$/, "");
   const response = await fetch(`${base}/api/capabilities`, { headers: { accept: "application/json" }, cache: "no-store" });

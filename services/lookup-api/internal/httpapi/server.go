@@ -342,6 +342,12 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLookup(w http.ResponseWriter, r *http.Request) {
+	var stream *lookupStream
+	if parseBool(r.URL.Query().Get("stream")) {
+		stream = newLookupStream(w)
+		defer stream.finish()
+		w = stream
+	}
 	snap := s.snapshotFromRequest(r)
 	traceID := requestTraceID(r)
 	w.Header().Set("X-Trace-ID", traceID)
@@ -415,6 +421,9 @@ func (s *Server) handleLookup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if stream != nil {
+		opts.OnPartial = stream.partial
+	}
 	result, err := snap.service.Lookup(r.Context(), query, opts)
 	if err != nil {
 		if s.stats != nil {

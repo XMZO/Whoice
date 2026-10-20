@@ -134,7 +134,7 @@ When no RDAP server is known for a suffix, the API falls back to the live IANA b
 | `GET /api/metrics` | Prometheus metrics |
 | `/api/admin/*` | Admin panel API (requires the admin password or session) |
 
-Lookup parameters: `query` (domain, IP, CIDR, ASN, or URL), `rdap=1` or `whois=1` to use a single source, `exact_domain=1` to skip registrable-domain reduction, and `rdap_server`, `whois_server`, `whois_follow` for custom servers.
+Lookup parameters: `query` (domain, IP, CIDR, ASN, or URL), `rdap=1` or `whois=1` to use a single source, `exact_domain=1` to skip registrable-domain reduction, `stream=1` for NDJSON previews as each source answers (the web UI uses this), and `rdap_server`, `whois_server`, `whois_follow` for custom servers.
 
 ```sh
 curl "http://127.0.0.1:18080/api/lookup?query=example.com"

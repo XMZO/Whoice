@@ -796,3 +796,20 @@ func dnsQuestionEnd(query []byte) int {
 	}
 	return -1
 }
+
+func TestDoHNXDOMAINIsAnEmptyAnswer(t *testing.T) {
+	msg := dnsmessage.Message{Header: dnsmessage.Header{Response: true, RCode: dnsmessage.RCodeNameError}}
+	body, err := msg.Pack()
+	if err != nil {
+		t.Fatal(err)
+	}
+	addrs, err := parseDNSMessageAddrs(body, "A")
+	if err != nil || len(addrs) != 0 {
+		t.Fatalf("addrs %v err %v", addrs, err)
+	}
+	msg.Header.RCode = dnsmessage.RCodeServerFailure
+	body, _ = msg.Pack()
+	if _, err := parseDNSMessageAddrs(body, "A"); err == nil {
+		t.Fatal("SERVFAIL must stay an error")
+	}
+}

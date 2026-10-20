@@ -137,6 +137,14 @@ func (s *Service) Lookup(ctx context.Context, input string, opts model.LookupOpt
 		opts.UseWHOIS = true
 	}
 
+	if opts.OnPartial != nil {
+		result, err := s.lookupFresh(ctx, *q, opts, start)
+		if result != nil {
+			result.Meta.ElapsedMs = time.Since(start).Milliseconds()
+		}
+		return result, err
+	}
+
 	key := requestKey(*q, opts)
 	return s.inflight.Do(ctx, key, func(ctx context.Context) (*model.LookupResult, error) {
 		result, err := s.lookupFresh(ctx, *q, opts, start)
@@ -162,7 +170,11 @@ func (s *Service) lookupFresh(ctx context.Context, q model.NormalizedQuery, opts
 		})
 	}
 
-	rawResponses, sourceErrors, providerTraces := s.runProviders(providerCtx, q, opts)
+	var onRaw func(model.RawResponse, []model.ProviderTrace, int)
+	if opts.OnPartial != nil {
+		onRaw = s.partialEmitter(ctx, q, opts, start)
+	}
+	rawResponses, sourceErrors, providerTraces := s.runProviders(providerCtx, q, opts, onRaw)
 	if stoppedEarly.Load() {
 		markStoppedEarly(sourceErrors, providerTraces)
 	}
@@ -484,7 +496,33 @@ func hasDeferredEnrichment(result *model.LookupResult) bool {
 	return result.Enrichment.DNS != nil || result.Enrichment.Pricing != nil || result.Enrichment.Moz != nil
 }
 
-func (s *Service) runProviders(ctx context.Context, q model.NormalizedQuery, opts model.LookupOptions) ([]model.RawResponse, []model.SourceError, []model.ProviderTrace) {
+// partialEmitter returns a callback for runProviders that merges the answers
+// received so far and hands them to opts.OnPartial. Only previews that show
+// a registration are sent: a "not found" from one source can still be
+// contradicted by another, so availability waits for the final result.
+func (s *Service) partialEmitter(ctx context.Context, q model.NormalizedQuery, opts model.LookupOptions, start time.Time) func(model.RawResponse, []model.ProviderTrace, int) {
+	var parts []*model.PartialResult
+	return func(raw model.RawResponse, traces []model.ProviderTrace, pending int) {
+		part, err := s.parsers.Parse(ctx, raw, q)
+		if err != nil {
+			return
+		}
+		parts = append(parts, part)
+		if pending == 0 {
+			return
+		}
+		preview := s.merger.Merge(q, parts)
+		if preview.Status != model.StatusRegistered && preview.Status != model.StatusReserved {
+			return
+		}
+		preview.Meta.Providers = append([]model.ProviderTrace(nil), traces...)
+		preview.Meta.ElapsedMs = time.Since(start).Milliseconds()
+		s.fast.Run(ctx, preview)
+		opts.OnPartial(preview)
+	}
+}
+
+func (s *Service) runProviders(ctx context.Context, q model.NormalizedQuery, opts model.LookupOptions, onRaw func(model.RawResponse, []model.ProviderTrace, int)) ([]model.RawResponse, []model.SourceError, []model.ProviderTrace) {
 	type outcome struct {
 		raw   *model.RawResponse
 		err   error
@@ -494,12 +532,14 @@ func (s *Service) runProviders(ctx context.Context, q model.NormalizedQuery, opt
 
 	var wg sync.WaitGroup
 	ch := make(chan outcome, len(s.providers))
+	started := 0
 
 	for _, provider := range s.providers {
 		if !provider.Supports(q) || !s.providerEnabled(provider.Name(), opts) {
 			continue
 		}
 		provider := provider
+		started++
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -533,14 +573,19 @@ func (s *Service) runProviders(ctx context.Context, q model.NormalizedQuery, opt
 		}()
 	}
 
-	wg.Wait()
-	close(ch)
+	go func() {
+		wg.Wait()
+		close(ch)
+	}()
 
 	var raws []model.RawResponse
 	var errs []model.SourceError
 	var traces []model.ProviderTrace
 	for item := range ch {
 		traces = append(traces, item.trace)
+		if onRaw != nil && item.err == nil && item.raw != nil {
+			onRaw(*item.raw, traces, started-len(traces))
+		}
 		if item.err != nil {
 			if providers.IsSkip(item.err) {
 				continue

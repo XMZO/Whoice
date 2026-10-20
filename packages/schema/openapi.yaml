@@ -206,6 +206,15 @@ paths:
           description: Query the full typed domain instead of reducing to the PSL registrable domain.
           schema:
             type: boolean
+        - name: stream
+          in: query
+          required: false
+          description: >-
+            Respond with application/x-ndjson. While slower sources are still running, each source that
+            shows a registration adds a line {"partial": LookupResult}; the last line is
+            {"status": <HTTP status of the plain response>, "final": <response envelope>}.
+          schema:
+            type: boolean
         - name: ai
           in: query
           required: false

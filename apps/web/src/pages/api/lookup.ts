@@ -50,6 +50,8 @@ function sendUpstreamJSON(res: NextApiResponse, status: number, text: string, co
   });
 }
 
+export const config = { api: { responseLimit: false } };
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
@@ -62,7 +64,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (query) target.search = query;
 
   try {
-    const headers: Record<string, string> = { accept: "application/json" };
+    const headers: Record<string, string> = { accept: "application/json, application/x-ndjson" };
     for (const name of ["authorization", "cookie", "x-api-key", "x-whoice-password", "x-request-id"]) {
       const value = firstHeader(req.headers[name]);
       if (value) headers[name] = value;
@@ -78,9 +80,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         res.setHeader(key, value);
       }
     });
+    const contentType = upstream.headers.get("content-type");
+    if (contentType?.includes("ndjson") && upstream.body) {
+      // Streamed previews: pass each chunk through as it arrives.
+      // no-transform keeps compression from buffering the stream.
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Cache-Control", "no-store, no-transform");
+      res.setHeader("X-Accel-Buffering", "no");
+      res.status(upstream.status);
+      const reader = upstream.body.getReader();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        res.write(Buffer.from(value));
+      }
+      res.end();
+      return;
+    }
     const text = await upstream.text();
-    sendUpstreamJSON(res, upstream.status, text, upstream.headers.get("content-type"));
+    sendUpstreamJSON(res, upstream.status, text, contentType);
   } catch (error) {
+    if (res.headersSent) {
+      // The stream broke midway; the client reports the missing final line.
+      res.end();
+      return;
+    }
     res.status(502).json({
       ok: false,
       error: {

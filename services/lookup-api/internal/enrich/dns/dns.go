@@ -916,6 +916,10 @@ func queryDoHJSON(ctx context.Context, parsed url.URL, host, recordType string) 
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return nil, err
 	}
+	// NXDOMAIN (3) is an answer: the name has no addresses.
+	if payload.Status == int(dnsmessage.RCodeNameError) {
+		return nil, nil
+	}
 	if payload.Status != 0 {
 		return nil, fmt.Errorf("DNS status %d", payload.Status)
 	}
@@ -1127,6 +1131,9 @@ func parseDNSMessageAddrs(body []byte, recordType string) ([]net.IPAddr, error) 
 	header, err := parser.Start(body)
 	if err != nil {
 		return nil, err
+	}
+	if header.RCode == dnsmessage.RCodeNameError {
+		return nil, nil
 	}
 	if header.RCode != dnsmessage.RCodeSuccess {
 		return nil, fmt.Errorf("DNS status %d", header.RCode)

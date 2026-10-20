@@ -637,16 +637,6 @@ summary.src-tag::-webkit-details-marker {
   }
 }
 
-@keyframes loading-bar {
-  from {
-    transform: translateX(-100%);
-  }
-
-  to {
-    transform: translateX(260%);
-  }
-}
-
 /* ---------- Detail page: shell and top bar ---------- */
 
 .lookup-workbench {
@@ -783,58 +773,32 @@ summary.src-tag::-webkit-details-marker {
   position: relative;
 }
 
-.stage-loading {
-  align-items: center;
-  background: color-mix(in srgb, var(--panel) 92%, transparent);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-panel);
-  box-shadow: var(--shadow-menu);
+/* Pending lookup: shown until the first source answers. */
+.pending-body {
   display: flex;
+  flex-direction: column;
   gap: 10px;
-  left: 50%;
-  overflow: hidden;
-  padding: 10px 16px 12px;
-  position: absolute;
-  top: 10px;
-  transform: translateX(-50%);
-  z-index: 15;
+  padding: 0 18px 16px;
 }
 
-.loading-panel {
-  animation: fade-in 0.15s ease both;
+.pending-metrics {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-.loading-bar {
-  bottom: 0;
-  height: 2px;
-  left: 0;
-  overflow: hidden;
-  position: absolute;
-  right: 0;
+.pending-metric {
+  animation: soft-pulse 1.2s ease-in-out infinite;
+  background: var(--panel-subtle);
+  border: 1px solid var(--hair);
+  border-radius: 10px;
+  height: 84px;
 }
 
-.loading-bar::after {
-  animation: loading-bar 1s ease-in-out infinite;
-  background: var(--link);
-  content: "";
-  display: block;
-  height: 100%;
-  width: 40%;
-}
-
-.loading-text {
+.pending-note {
   color: var(--muted);
   font-size: 12.5px;
-}
-
-.loading-text .mono {
-  color: var(--text);
-}
-
-.tool-stage[aria-busy="true"] .result-hero,
-.tool-stage[aria-busy="true"] .result-lower {
-  opacity: 0.55;
-  transition: opacity 0.15s ease;
+  margin: 0;
 }
 
 .lookup-footer {
@@ -1829,6 +1793,32 @@ summary.src-tag::-webkit-details-marker {
 .warning-note ul {
   margin: 2px 0 0;
   padding-left: 16px;
+}
+
+.warning-note > span {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* One line of context per warning: long diagnostics are clamped to two
+   lines and shown in full on hover, so cards keep a steady height. */
+.warning-items {
+  display: grid;
+  gap: 3px;
+  list-style: none;
+  padding-left: 0 !important;
+}
+
+.warning-items li {
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  display: -webkit-box;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+.dns-panel > .warning-note {
+  margin-top: 10px;
 }
 
 /* ---------- Error state ---------- */
@@ -3085,6 +3075,24 @@ summary.src-tag::-webkit-details-marker {
   border-color: var(--amber);
 }
 
+/* Tall desktop: both columns end on the same line; the last card in each
+   column absorbs the difference instead of leaving a ragged edge. */
+@media (min-width: 761px) and (min-height: 801px) {
+  .result-lower {
+    align-items: stretch;
+  }
+
+  .lower-col > .result-section:last-child {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+  }
+
+  .lower-col > .result-section:last-child > .result-card {
+    flex: 1 1 auto;
+  }
+}
+
 /* ---------- Short desktop: lower sections become one tabbed card ---------- */
 
 @media (min-width: 761px) and (max-height: 800px) {
@@ -3173,6 +3181,10 @@ summary.src-tag::-webkit-details-marker {
 /* ---------- Mobile: one screen, tabbed result card ---------- */
 
 @media (max-width: 760px) {
+  .pending-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   body {
     font-size: 12.5px;
     line-height: 1.4;
@@ -3306,13 +3318,6 @@ summary.src-tag::-webkit-details-marker {
     border: 0;
     flex: 1 1 auto;
     overflow: auto;
-  }
-
-  .stage-loading {
-    left: 8px;
-    right: 8px;
-    top: 8px;
-    transform: none;
   }
 
   .result-hero {

@@ -56,6 +56,10 @@ type LookupOptions struct {
 	FastResponseSet bool
 	ProviderLimit   time.Duration
 	LookupLimit     time.Duration
+	// OnPartial, when set, receives a merged preview each time a provider
+	// answers while others are still running. Such lookups bypass request
+	// coalescing so every caller gets its own previews.
+	OnPartial func(*LookupResult)
 }
 
 type RawResponse struct {

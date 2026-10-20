@@ -825,3 +825,35 @@ func (r *captureReporter) wait(t *testing.T) observability.LookupEvent {
 		return observability.LookupEvent{}
 	}
 }
+
+func TestLookupStreamWritesNDJSONFinalLine(t *testing.T) {
+	cfg := config.Default()
+	service := lookup.NewService(cfg, nil, parsers.NewRegistry())
+	server := New(cfg, service, nil, observability.NewStats())
+
+	for _, tc := range []struct {
+		url    string
+		status int
+		code   string
+	}{
+		{"/api/lookup?stream=1&query=example_com", http.StatusBadRequest, "invalid_query"},
+		{"/api/lookup?stream=1", http.StatusBadRequest, "query_required"},
+	} {
+		response := httptest.NewRecorder()
+		server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, tc.url, nil))
+		if response.Code != http.StatusOK || !strings.HasPrefix(response.Header().Get("Content-Type"), "application/x-ndjson") {
+			t.Fatalf("%s: status %d content-type %q", tc.url, response.Code, response.Header().Get("Content-Type"))
+		}
+		lines := strings.Split(strings.TrimSpace(response.Body.String()), "\n")
+		var final struct {
+			Status int               `json:"status"`
+			Final  model.APIResponse `json:"final"`
+		}
+		if err := json.Unmarshal([]byte(lines[len(lines)-1]), &final); err != nil {
+			t.Fatalf("%s: %v in %q", tc.url, err, response.Body.String())
+		}
+		if final.Status != tc.status || final.Final.OK || final.Final.Error == nil || final.Final.Error.Code != tc.code {
+			t.Fatalf("%s: final %#v", tc.url, final)
+		}
+	}
+}
