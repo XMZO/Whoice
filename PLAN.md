@@ -2095,8 +2095,8 @@ platforms: linux/amd64, linux/arm64
 
 - 本地开发 Web：`http://localhost:18081`，可用 `WHOICE_WEB_PORT` 覆盖。
 - 本地开发 API：`http://localhost:8080`，保持 Go 服务常规默认。
-- Docker 对外 Web：`0.0.0.0:18081`。
-- Docker 对外 API：`0.0.0.0:18080`。
+- Docker 对外 Web：`127.0.0.1:18081`（仅本机，经反向代理对外）。
+- Docker 对外 API：`127.0.0.1:18080`（仅本机）。
 - Docker 内部 Web/API：`8081` / `8080`，仅供 compose 网络和 healthcheck 使用。
 
 自部署用户在 Debian VPS 上只需要：

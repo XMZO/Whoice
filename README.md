@@ -52,7 +52,7 @@ curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/XMZO/Whoice/m
 docker compose up -d
 ```
 
-`docker-compose.yml` is designed to work as a single downloaded file. First startup creates `./data/whoice.toml` with comments; edit that file while the API is running and most runtime changes hot-reload automatically. If a change is invalid, Whoice keeps using the last valid runtime config, logs the error, and shows the rollback state on `/status` and lookup warnings. Runtime data lives in the same folder under `./data`, mounted into the API container as `/data`. Docker exposes the Web UI on `0.0.0.0:18081` and the direct API on `0.0.0.0:18080`; edit the two `ports` lines in `docker-compose.yml` if you need different host ports.
+`docker-compose.yml` is designed to work as a single downloaded file. First startup creates `./data/whoice.toml` with comments; edit that file while the API is running and most runtime changes hot-reload automatically. If a change is invalid, Whoice keeps using the last valid runtime config, logs the error, and shows the rollback state on `/status` and lookup warnings. Runtime data lives in the same folder under `./data`, mounted into the API container as `/data`. Docker publishes the Web UI on `127.0.0.1:18081` and the direct API on `127.0.0.1:18080`, so they are reachable only from the host itself; put a reverse proxy (Caddy, Nginx) in front, or change `127.0.0.1` to `0.0.0.0` in the two `ports` lines of `docker-compose.yml` to expose them directly. Edit the same lines if you need different host ports.
 
 The compose file uses the published `latest` multi-arch images directly, so no `.env` file or local image build is required.
 If the GHCR packages are private, run `docker login ghcr.io` on the VPS first.

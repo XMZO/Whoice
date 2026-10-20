@@ -154,8 +154,8 @@ async function checkCIAndRelease() {
   await requireText(section, "deploy/compose/docker-compose.yml", [
     "ghcr.io/xmzo/whoice-lookup-api:latest",
     "ghcr.io/xmzo/whoice-web:latest",
-    "0.0.0.0:18080:8080",
-    "0.0.0.0:18081:8081",
+    "127.0.0.1:18080:8080",
+    "127.0.0.1:18081:8081",
     "condition: service_healthy",
     "healthcheck:",
     "restart: unless-stopped",

@@ -1,12 +1,13 @@
 # Whoice: download this file and run `docker compose up -d`.
-# Web UI: http://<host>:18081   Direct API: http://<host>:18080
+# Web UI: http://127.0.0.1:18081   Direct API: http://127.0.0.1:18080 (localhost only;
+# put a reverse proxy in front, or change 127.0.0.1 to 0.0.0.0 to expose them).
 # Config and data live in ./data (whoice.toml is created on first start).
 services:
   lookup-api:
     image: ghcr.io/xmzo/whoice-lookup-api:latest
     pull_policy: always
     ports:
-      - "0.0.0.0:18080:8080"
+      - "127.0.0.1:18080:8080"
     volumes:
       - ./data:/data
     healthcheck:
@@ -18,7 +19,7 @@ services:
     image: ghcr.io/xmzo/whoice-web:latest
     pull_policy: always
     ports:
-      - "0.0.0.0:18081:8081"
+      - "127.0.0.1:18081:8081"
     depends_on:
       lookup-api:
         condition: service_healthy
