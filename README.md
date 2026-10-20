@@ -1,5 +1,7 @@
 # Whoice
 
+English | [简体中文](./README.zh-CN.md)
+
 Whoice is a self-hosted WHOIS and RDAP lookup service for domains, IP addresses, CIDR ranges, and ASNs. It consists of a Go lookup API and a Next.js web interface.
 
 - **Lookup**: RDAP and WHOIS queried in parallel and merged, with an optional WHOIS Web fallback, referral following, non-UTF-8 decoding, and TLD-specific parsers for more than 30 registries.
