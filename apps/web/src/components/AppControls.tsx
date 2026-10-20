@@ -5,12 +5,12 @@ export function AppControls() {
 
   return (
     <div className="app-controls">
-      <select aria-label="Language" value={locale} onChange={(event) => setLocale(event.target.value as Locale)}>
+      <select aria-label={t("languageLabel")} value={locale} onChange={(event) => setLocale(event.target.value as Locale)}>
         <option value="en">EN</option>
         <option value="zh-CN">简体</option>
         <option value="zh-TW">繁體</option>
       </select>
-      <select aria-label="Theme" value={theme} onChange={(event) => setTheme(event.target.value as Theme)}>
+      <select aria-label={t("themeLabel")} value={theme} onChange={(event) => setTheme(event.target.value as Theme)}>
         <option value="system">{t("themeSystem")}</option>
         <option value="light">{t("themeLight")}</option>
         <option value="dark">{t("themeDark")}</option>

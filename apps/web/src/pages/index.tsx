@@ -248,7 +248,7 @@ export default function HomePage() {
     <>
       <Head>
         <title>Whoice</title>
-        <meta name="description" content="Modular WHOIS and RDAP lookup." />
+        <meta name="description" content={t("siteDescription")} />
         <meta property="og:title" content="Whoice" />
         <meta property="og:image" content="/api/og" />
         <meta name="twitter:card" content="summary_large_image" />

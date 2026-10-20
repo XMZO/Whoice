@@ -180,6 +180,7 @@ async function checkPlaywrightAndUX() {
     "touch-friendly",
     "mobile-chrome",
   ]);
+  await requireText(section, "package.json", ["validate-web-i18n.mjs"]);
   await requireText(section, "apps/web/src/styles/globals.css", [
     "@media (max-width: 760px)",
     "@media (hover: none) and (pointer: coarse)",

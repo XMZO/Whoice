@@ -17,6 +17,7 @@ import {
   WarnIcon,
 } from "@/components/Icons";
 import { useI18n } from "@/lib/i18n";
+import { t3, useT3, type T3 } from "@/lib/t3";
 import {
   agreeingProviders,
   countryName,
@@ -134,24 +135,26 @@ export function NetworkMetrics({ result }: { result: LookupResult }) {
   );
 }
 
-const statusHelpZh: Record<string, string> = {
-  clienttransferprohibited: "注册商已锁定域名，禁止转移",
-  clientdeleteprohibited: "注册商已锁定域名，禁止删除",
-  clientupdateprohibited: "注册商已锁定域名，禁止更新",
-  clientrenewprohibited: "注册商已锁定域名，禁止续费",
-  servertransferprohibited: "注册局已锁定域名，禁止转移",
-  serverdeleteprohibited: "注册局已锁定域名，禁止删除",
-  serverupdateprohibited: "注册局已锁定域名，禁止更新",
-  serverrenewprohibited: "注册局已锁定域名，禁止续费",
+// Registrar and registry lock explanations. English falls back to the API's EPP description.
+const LOCK_HELP: Record<string, T3> = {
+  clienttransferprohibited: t3("The registrar has locked the domain against transfer.", "注册商已锁定域名，禁止转移", "註冊商已鎖定網域，禁止轉移"),
+  clientdeleteprohibited: t3("The registrar has locked the domain against deletion.", "注册商已锁定域名，禁止删除", "註冊商已鎖定網域，禁止刪除"),
+  clientupdateprohibited: t3("The registrar has locked the domain against updates.", "注册商已锁定域名，禁止更新", "註冊商已鎖定網域，禁止更新"),
+  clientrenewprohibited: t3("The registrar has locked the domain against renewal.", "注册商已锁定域名，禁止续费", "註冊商已鎖定網域，禁止續費"),
+  servertransferprohibited: t3("The registry has locked the domain against transfer.", "注册局已锁定域名，禁止转移", "註冊局已鎖定網域，禁止轉移"),
+  serverdeleteprohibited: t3("The registry has locked the domain against deletion.", "注册局已锁定域名，禁止删除", "註冊局已鎖定網域，禁止刪除"),
+  serverupdateprohibited: t3("The registry has locked the domain against updates.", "注册局已锁定域名，禁止更新", "註冊局已鎖定網域，禁止更新"),
+  serverrenewprohibited: t3("The registry has locked the domain against renewal.", "注册局已锁定域名，禁止续费", "註冊局已鎖定網域，禁止續費"),
 };
 
-function lockTitle(code: string, description: string | undefined, locked: boolean, locale: string, notSet: string) {
-  const help = locale.startsWith("zh") ? statusHelpZh[code.toLowerCase()] : description;
-  return `${code}：${locked ? help || description || "" : notSet}`.replace(/：$/, "");
+function lockTitle(code: string, locked: boolean, pick: (value: T3) => string, notSet: string) {
+  const help = LOCK_HELP[code.toLowerCase()];
+  return `${code} · ${locked ? (help ? pick(help) : "") : notSet}`.replace(/ · $/, "");
 }
 
 export function LockBar({ result }: { result: LookupResult }) {
-  const { t, tf, locale } = useI18n();
+  const { t, tf } = useI18n();
+  const pick = useT3();
   const statuses = Array.isArray(result.statuses) ? result.statuses : [];
   const model = lockModel(statuses);
   const signed = result.dnssec?.signed ?? /^(signed|yes|true)/i.test(result.dnssec?.text || "");
@@ -168,13 +171,13 @@ export function LockBar({ result }: { result: LookupResult }) {
           {model.registrar.map((item) => {
             const op = lockOpLabel(item.op, t);
             return item.locked ? (
-              <span key={item.op} className="lock-tag locked" title={lockTitle(item.code, item.description, true, locale, t("notSet"))}>
+              <span key={item.op} className="lock-tag locked" title={lockTitle(item.code, true, pick, t("notSet"))}>
                 <LockIcon />
                 <span className="lock-text-long">{tf("lockedOp", { op })}</span>
                 <span className="lock-text-short">{op}</span>
               </span>
             ) : (
-              <span key={item.op} className="lock-tag unlocked" title={lockTitle(item.code, item.description, false, locale, t("notSet"))}>
+              <span key={item.op} className="lock-tag unlocked" title={lockTitle(item.code, false, pick, t("notSet"))}>
                 {tf("unlockedOp", { op })}
               </span>
             );
@@ -191,7 +194,7 @@ export function LockBar({ result }: { result: LookupResult }) {
               .map((item) => {
                 const op = lockOpLabel(item.op, t);
                 return (
-                  <span key={item.op} className="lock-tag locked" title={lockTitle(item.code, item.description, true, locale, t("notSet"))}>
+                  <span key={item.op} className="lock-tag locked" title={lockTitle(item.code, true, pick, t("notSet"))}>
                     <LockIcon />
                     <span className="lock-text-long">{tf("lockedOp", { op })}</span>
                     <span className="lock-text-short">{op}</span>
@@ -450,25 +453,26 @@ export function DNSVizLink({ url }: { url: string }) {
 
 /* ---------- Pricing ---------- */
 
-function formatMoney(value: number | undefined, currency: string) {
+function formatMoney(value: number | undefined, currency: string, locale: string) {
   if (value === undefined || value === null) return undefined;
   try {
-    return new Intl.NumberFormat("en", { currency, style: "currency" }).format(value);
+    return new Intl.NumberFormat(locale, { currency, style: "currency" }).format(value);
   } catch {
     return `${value} ${currency}`;
   }
 }
 
-export function pricingSummary(result: LookupResult) {
+export function pricingSummary(result: LookupResult, locale: string) {
   const pricing = result.enrichment?.pricing;
   if (!pricing) return undefined;
   const currency = pricing.currency || "USD";
   const price = pricing.registerOffer?.price ?? pricing.register;
-  return formatMoney(price, pricing.registerOffer?.currency || currency);
+  return formatMoney(price, pricing.registerOffer?.currency || currency, locale);
 }
 
 function PriceTile({ label, offer, fallbackCurrency }: { label: string; offer?: PricingOffer; fallbackCurrency: string }) {
-  const value = formatMoney(offer?.price, offer?.currency || fallbackCurrency);
+  const { locale } = useI18n();
+  const value = formatMoney(offer?.price, offer?.currency || fallbackCurrency, locale);
   const href = safeExternalURL(offer?.website);
   return (
     <div className="price-tile">
@@ -625,6 +629,7 @@ function linkifyValue(value: string) {
 }
 
 function SourcePopovers({ sources }: { sources?: RegistrationSource[] }) {
+  const pick = useT3();
   const values = Array.isArray(sources) ? sources.filter((source) => source.source || source.confidence !== undefined || source.evidence) : [];
   if (!values.length) return null;
   return (
@@ -636,16 +641,24 @@ function SourcePopovers({ sources }: { sources?: RegistrationSource[] }) {
             {source.confidence !== undefined && source.source?.startsWith("ai") ? ` ${Math.round(source.confidence * 100)}%` : ""}
           </summary>
           <span className="source-popover-body">
-            {source.value && <span><strong>Value</strong>{source.value}</span>}
-            {source.source && <span><strong>Source</strong>{source.source}</span>}
-            {source.confidence !== undefined && <span><strong>Confidence</strong>{Math.round(source.confidence * 100)}%</span>}
-            {source.evidence && <span><strong>Evidence</strong>{source.evidence}</span>}
+            {source.value && <span><strong>{pick(t3("Value", "值", "值"))}</strong>{source.value}</span>}
+            {source.source && <span><strong>{pick(t3("Source", "来源", "來源"))}</strong>{source.source}</span>}
+            {source.confidence !== undefined && <span><strong>{pick(t3("Confidence", "置信度", "信賴度"))}</strong>{Math.round(source.confidence * 100)}%</span>}
+            {source.evidence && <span><strong>{pick(t3("Evidence", "依据", "依據"))}</strong>{source.evidence}</span>}
           </span>
         </details>
       ))}
     </>
   );
 }
+
+const AI_STATUS: Record<string, T3> = {
+  ok: t3("AI ok", "AI 已应用", "AI 已套用"),
+  ignored: t3("AI ignored", "AI 已跳过", "AI 已略過"),
+  error: t3("AI error", "AI 出错", "AI 出錯"),
+};
+
+const CACHED = t3("cached", "缓存", "快取");
 
 export function RegistrantSection({
   result,
@@ -667,6 +680,7 @@ export function RegistrantSection({
   showHeader?: boolean;
 }) {
   const { t, tf, locale } = useI18n();
+  const pick = useT3();
   const registrant = result.registrant || {};
   const rows = registrantRows(result, t, locale);
   const extras = Array.isArray(registrant.extra) ? registrant.extra.filter((field) => field.label && field.value) : [];
@@ -676,10 +690,11 @@ export function RegistrantSection({
   const aiBadge = (
     <>
       {aiLoading && <span className="pill pill-amber pulse">{t("aiAnalyzing")}</span>}
-      {!aiLoading && aiError && <span className="pill pill-red" title={aiError}>AI error</span>}
+      {!aiLoading && aiError && <span className="pill pill-red" title={aiError}>{pick(AI_STATUS.error)}</span>}
       {ai && (
-        <span className={`pill ${ai.status === "error" ? "pill-red" : "pill-accent"}`} title={[ai.provider, ai.model, ai.reason, ai.error, ai.applied?.length ? `applied: ${ai.applied.join(", ")}` : ""].filter(Boolean).join("\n")}>
-          AI {ai.status}{ai.cached ? " cached" : ""}
+        <span className={`pill ${ai.status === "error" ? "pill-red" : "pill-accent"}`} title={[ai.provider, ai.model, ai.reason, ai.error, ai.applied?.length ? ai.applied.join(", ") : ""].filter(Boolean).join("\n")}>
+          {AI_STATUS[ai.status] ? pick(AI_STATUS[ai.status]) : `AI ${ai.status}`}
+          {ai.cached ? ` · ${pick(CACHED)}` : ""}
         </span>
       )}
     </>
@@ -778,6 +793,7 @@ function icpErrorMessage(state: ICPState, t: (key: any) => string) {
 
 function ICPBlock({ domain, state, onLookup }: { domain: string; state: ICPState; onLookup: () => void }) {
   const { t } = useI18n();
+  const pick = useT3();
   const records = state.result?.records || [];
   const found = state.result?.status === "found" && records.length > 0;
   const checked = state.requested && !state.loading;
@@ -793,12 +809,12 @@ function ICPBlock({ domain, state, onLookup }: { domain: string; state: ICPState
   return (
     <div className={`icp-block icp-panel ${state.error ? "is-error" : ""}`}>
       <div className="icp-row">
-        <span className="icp-glyph" aria-hidden="true">备</span>
+        <span className="icp-glyph" aria-hidden="true">{pick(t3("ICP", "备", "備"))}</span>
         <span className="icp-text">
           <strong>
             {t("icpTitle")}
             {found && <span className="pill pill-green">{t("icpFound")}</span>}
-            {state.result?.cached && <span className="pill">cached</span>}
+            {state.result?.cached && <span className="pill">{pick(CACHED)}</span>}
           </strong>
           <span className="icp-summary">{summary}</span>
         </span>

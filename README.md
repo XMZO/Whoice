@@ -156,11 +156,13 @@ pnpm dev:web    # Web UI on :18081
 |---|---|
 | `pnpm test` | All checks below except end-to-end tests |
 | `pnpm test:api` | Go unit tests |
-| `pnpm test:web` | TypeScript and the theme contract guard |
+| `pnpm test:web` | TypeScript, the theme contract guard, and the i18n gate |
 | `pnpm test:schema` | JSON Schema, OpenAPI, and fixture contracts |
 | `pnpm test:data` | Data snapshot manifests, hashes, and routing |
 | `pnpm test:pre5`, `pnpm test:phase5` | Architecture and productionization guardrails |
 | `pnpm test:e2e` | Playwright on desktop and mobile Chrome |
+
+The i18n gate (`pnpm test:i18n`) fails when user-visible text in the web app bypasses translation. Use `t("key")` for shared strings in `lib/i18n.tsx` (all three locales must define every key) and `t3("English", "简体中文", "繁體中文")` for page-specific text.
 
 Live WHOIS checks are skipped by default; run them with `WHOICE_LIVE_WHOIS_SMOKE=1 go test ./services/lookup-api/internal/providers/whois -run TestLiveWHOISSmoke`. After an intentional API shape change, regenerate the runtime fixtures with `WHOICE_UPDATE_RUNTIME_FIXTURES=1`. Refresh the Public Suffix List with `pnpm update:psl`.
 

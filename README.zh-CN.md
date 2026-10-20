@@ -156,11 +156,13 @@ pnpm dev:web    # Web 界面运行在 :18081
 |---|---|
 | `pnpm test` | 除端到端测试外的全部检查 |
 | `pnpm test:api` | Go 单元测试 |
-| `pnpm test:web` | TypeScript 与主题约束检查 |
+| `pnpm test:web` | TypeScript、主题约束检查与 i18n 门禁 |
 | `pnpm test:schema` | JSON Schema、OpenAPI 与 fixture 契约 |
 | `pnpm test:data` | 数据快照清单、哈希与路由 |
 | `pnpm test:pre5`、`pnpm test:phase5` | 架构与生产化约束 |
 | `pnpm test:e2e` | Playwright 桌面与移动端测试 |
+
+i18n 门禁（`pnpm test:i18n`）会在 Web 界面出现未经翻译的可见文字时报错。共用文案用 `lib/i18n.tsx` 的 `t("key")`（三种语言必须都定义），页面专属文案用 `t3("English", "简体中文", "繁體中文")`。
 
 实时 WHOIS 检查默认跳过，可用 `WHOICE_LIVE_WHOIS_SMOKE=1 go test ./services/lookup-api/internal/providers/whois -run TestLiveWHOISSmoke` 运行。API 响应结构有意变更后，用 `WHOICE_UPDATE_RUNTIME_FIXTURES=1` 重新生成 runtime fixture。用 `pnpm update:psl` 更新 Public Suffix List。
 

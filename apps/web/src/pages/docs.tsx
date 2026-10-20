@@ -3,6 +3,139 @@ import Link from "next/link";
 import { AppControls } from "@/components/AppControls";
 import { BrandMark } from "@/components/BrandMark";
 import { useI18n } from "@/lib/i18n";
+import { t3, useT3, type T3 } from "@/lib/t3";
+
+type Row = { name: string; text: T3 };
+type DocSection = { eyebrow: T3 | string; title: T3 | string; intro?: T3; code?: string; columns?: { title?: T3; rows: Row[] }[]; rows?: Row[] };
+
+const SECTIONS: DocSection[] = [
+  {
+    eyebrow: t3("Overview", "概述", "概述"),
+    title: t3("Whoice API and runtime guide", "Whoice API 与运行说明", "Whoice API 與執行說明"),
+    intro: t3(
+      "Whoice returns one stable lookup envelope for RDAP, WHOIS, WHOIS Web fallback, IP, ASN, DNS enrichment, optional AI parsing, and optional ICP lookup. The web app reaches the same API through same-origin proxy routes, so the lookup API can stay private behind the web container.",
+      "Whoice 为 RDAP、WHOIS、WHOIS Web 备用、IP、ASN、DNS 补充、可选的 AI 解析和 ICP 备案查询提供统一的响应结构。Web 界面通过同源代理访问同一套 API，因此查询 API 可以只对 Web 容器开放。",
+      "Whoice 為 RDAP、WHOIS、WHOIS Web 備用、IP、ASN、DNS 補充、可選的 AI 解析和 ICP 備案查詢提供統一的回應結構。Web 介面透過同源代理存取同一套 API，因此查詢 API 可以只對 Web 容器開放。",
+    ),
+    columns: [
+      {
+        rows: [
+          { name: "API", text: t3("Local development: http://localhost:8080; Docker: http://127.0.0.1:18080", "本地开发：http://localhost:8080；Docker：http://127.0.0.1:18080", "本機開發：http://localhost:8080；Docker：http://127.0.0.1:18080") },
+          { name: "Web", text: t3("Local development and Docker: http://localhost:18081", "本地开发与 Docker：http://localhost:18081", "本機開發與 Docker：http://localhost:18081") },
+          { name: "Config", text: t3("data/whoice.toml or the admin panel; changes apply without a restart", "data/whoice.toml 或管理面板；修改后无需重启", "data/whoice.toml 或管理面板；修改後無需重啟") },
+          { name: "Schema", text: t3("OpenAPI and JSON Schema in packages/schema", "OpenAPI 与 JSON Schema 位于 packages/schema", "OpenAPI 與 JSON Schema 位於 packages/schema") },
+        ],
+      },
+      {
+        rows: [
+          { name: "Freshness", text: t3("WHOIS and RDAP results are never cached", "WHOIS 与 RDAP 结果从不缓存", "WHOIS 與 RDAP 結果從不快取") },
+          { name: "Concurrency", text: t3("Identical concurrent lookups share one upstream request", "相同的并发查询共用一次上游请求", "相同的並行查詢共用一次上游請求") },
+          { name: "Plugins", text: t3("/api/version lists providers, parsers, enrichers, auth, and reporters", "/api/version 列出数据源、解析器、补充模块、鉴权与上报插件", "/api/version 列出資料來源、解析器、補充模組、驗證與回報外掛") },
+          { name: "Trace", text: t3("Every response carries X-Trace-ID and result.meta.traceId", "每个响应都带有 X-Trace-ID 和 result.meta.traceId", "每個回應都帶有 X-Trace-ID 和 result.meta.traceId") },
+        ],
+      },
+    ],
+  },
+  {
+    eyebrow: "GET",
+    title: "/api/lookup",
+    intro: t3("Looks up domains, IPv4 and IPv6 addresses, CIDR ranges, and ASNs.", "查询域名、IPv4 与 IPv6 地址、CIDR 网段和 ASN。", "查詢網域、IPv4 與 IPv6 位址、CIDR 網段和 ASN。"),
+    code: `curl "http://localhost:8080/api/lookup?query=example.com"`,
+    columns: [
+      {
+        title: t3("Query parameters", "查询参数", "查詢參數"),
+        rows: [
+          { name: "query", text: t3("Domain, IP, CIDR, ASN, or URL", "域名、IP、CIDR、ASN 或 URL", "網域、IP、CIDR、ASN 或 URL") },
+          { name: "rdap", text: t3("1 to use RDAP only", "设为 1 只用 RDAP", "設為 1 只用 RDAP") },
+          { name: "whois", text: t3("1 to use WHOIS only", "设为 1 只用 WHOIS", "設為 1 只用 WHOIS") },
+          { name: "rdap_server", text: t3("Custom RDAP base URL, if allowed", "自定义 RDAP 地址（需允许）", "自訂 RDAP 位址（需允許）") },
+          { name: "whois_server", text: t3("Custom WHOIS host[:port], if allowed", "自定义 WHOIS 主机[:端口]（需允许）", "自訂 WHOIS 主機[:連接埠]（需允許）") },
+          { name: "whois_follow", text: t3("Referral depth, 0 to 5", "referral 跟随层数，0 到 5", "referral 跟隨層數，0 到 5") },
+          { name: "exact_domain", text: t3("1 to query the typed name without registrable-domain reduction", "设为 1 时按输入的完整域名查询，不缩到可注册域", "設為 1 時按輸入的完整網域查詢，不縮到可註冊網域") },
+        ],
+      },
+      {
+        title: t3("Related endpoints", "相关接口", "相關介面"),
+        rows: [
+          { name: "/api/lookup/enrich", text: t3("Deferred DNS and pricing for a result", "为结果补充 DNS 与价格", "為結果補充 DNS 與價格") },
+          { name: "/api/lookup/ai", text: t3("Background AI registration analysis", "后台 AI 注册信息分析", "背景 AI 註冊資訊分析") },
+          { name: "/api/icp", text: t3("ICP filing lookup", "ICP 备案查询", "ICP 備案查詢") },
+          { name: "/api/health", text: t3("Health check", "健康检查", "健康檢查") },
+          { name: "/api/version", text: t3("Version and plugins", "版本与插件", "版本與外掛") },
+          { name: "/api/capabilities", text: t3("Feature flags", "功能开关", "功能開關") },
+          { name: "/api/metrics", text: t3("Prometheus metrics", "Prometheus 指标", "Prometheus 指標") },
+          { name: "/api/admin/*", text: t3("Admin panel API; requires the admin password", "管理面板接口，需要管理密码", "管理面板介面，需要管理密碼") },
+          { name: "/api/og", text: t3("Share image for a result", "结果分享图片", "結果分享圖片") },
+        ],
+      },
+    ],
+  },
+  {
+    eyebrow: t3("Envelope", "响应结构", "回應結構"),
+    title: t3("Response envelope", "响应结构", "回應結構"),
+    intro: t3(
+      "Every JSON response has an ok flag. Successful lookups return result and meta; failures return error with a code and message. Configuration reload errors appear in config and in result warnings while the previous valid configuration stays active.",
+      "所有 JSON 响应都带有 ok 字段。查询成功时返回 result 和 meta，失败时返回带 code 与 message 的 error。配置重新加载失败时，错误会出现在 config 和结果警告中，同时继续使用上一份有效配置。",
+      "所有 JSON 回應都帶有 ok 欄位。查詢成功時回傳 result 和 meta，失敗時回傳帶 code 與 message 的 error。設定重新載入失敗時，錯誤會出現在 config 和結果警告中，同時繼續使用上一份有效設定。",
+    ),
+    code: `{
+  "ok": true,
+  "result": {
+    "normalizedQuery": "example.com",
+    "type": "domain",
+    "status": "registered",
+    "source": { "primary": "rdap", "used": ["rdap", "whois"] },
+    "raw": { "rdap": "{ ... }", "whois": "..." },
+    "meta": { "elapsedMs": 123, "warnings": [], "traceId": "..." }
+  }
+}`,
+    rows: [
+      { name: "result.source.errors", text: t3("Per-source errors, for example when RDAP succeeds and WHOIS fails", "各数据来源的错误，例如 RDAP 成功而 WHOIS 失败", "各資料來源的錯誤，例如 RDAP 成功而 WHOIS 失敗") },
+      { name: "result.meta.providers", text: t3("Per-source server, status, size, and timing", "各数据来源的服务器、状态、大小与耗时", "各資料來源的伺服器、狀態、大小與耗時") },
+      { name: "result.enrichment", text: t3("DNS, DNSViz, pricing, and Moz data", "DNS、DNSViz、价格与 Moz 数据", "DNS、DNSViz、價格與 Moz 資料") },
+      { name: "result.raw", text: t3("Raw RDAP and WHOIS responses", "RDAP 与 WHOIS 原始响应", "RDAP 與 WHOIS 原始回應") },
+    ],
+  },
+  {
+    eyebrow: "GET",
+    title: "/api/icp",
+    intro: t3("Looks up the ICP filing of a domain. It is separate from the main lookup so WHOIS and RDAP results are never delayed.", "查询域名的 ICP 备案。它与主查询分开，不会拖慢 WHOIS 和 RDAP 结果。", "查詢網域的 ICP 備案。它與主查詢分開，不會拖慢 WHOIS 和 RDAP 結果。"),
+    code: `curl "http://localhost:8080/api/icp?domain=example.cn"`,
+    rows: [
+      { name: "domain", text: t3("Domain or URL; reduced to the registered domain", "域名或 URL，会缩到可注册域", "網域或 URL，會縮到可註冊網域") },
+      { name: "cache", text: t3("Found, empty, and failed results have separate cache durations", "有备案、无备案、出错三种结果分别缓存", "有備案、無備案、出錯三種結果分別快取") },
+    ],
+  },
+  {
+    eyebrow: t3("Runtime configuration", "运行配置", "執行設定"),
+    title: t3("Hot reload and the admin panel", "热加载与管理面板", "熱載入與管理面板"),
+    intro: t3(
+      "Runtime configuration lives in data/whoice.toml and can be edited there or in the admin panel at /admin. Changes apply without a restart; an invalid edit is rejected and the previous configuration stays active.",
+      "运行配置保存在 data/whoice.toml，可以直接编辑，也可以在 /admin 管理面板中修改。修改无需重启即可生效；无效的修改会被拒绝，并继续使用上一份配置。",
+      "執行設定保存在 data/whoice.toml，可以直接編輯，也可以在 /admin 管理面板中修改。修改無需重啟即可生效；無效的修改會被拒絕，並繼續使用上一份設定。",
+    ),
+    code: `[enrichment]
+pricing = true
+
+[rate_limit]
+enabled = true
+anon = "60/min"`,
+    rows: [
+      { name: "server.addr", text: t3("Startup-only; requires a restart", "启动期配置，需要重启", "啟動期設定，需要重啟") },
+      { name: "WHOICE_*", text: t3("Environment variables override the file and appear read-only in the panel", "环境变量优先于配置文件，在面板中显示为只读", "環境變數優先於設定檔，在面板中顯示為唯讀") },
+      { name: "[ai]", text: t3("OpenAI-compatible or Ollama model; caches analysis only, never lookup results", "OpenAI 兼容接口或 Ollama 模型；只缓存分析结果，不缓存查询结果", "OpenAI 相容介面或 Ollama 模型；只快取分析結果，不快取查詢結果") },
+    ],
+  },
+];
+
+const SHORTCUTS: [string, T3][] = [
+  ["/", t3("Focus search", "聚焦搜索框", "聚焦搜尋框")],
+  ["S", t3("Share image menu", "分享图片菜单", "分享圖片選單")],
+  ["C", t3("Copy result link", "复制结果链接", "複製結果連結")],
+  ["R", t3("Copy raw data", "复制原文", "複製原文")],
+  ["J", t3("Download JSON", "下载 JSON", "下載 JSON")],
+  ["O", t3("Download share image", "下载分享图片", "下載分享圖片")],
+];
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -19,11 +152,13 @@ function CodeBlock({ children }: { children: string }) {
 
 export default function DocsPage() {
   const { t } = useI18n();
+  const pick = useT3();
+  const text = (value: T3 | string) => (typeof value === "string" ? value : pick(value));
 
   return (
     <>
       <Head>
-        <title>API Docs | Whoice</title>
+        <title>{`${pick(t3("API documentation", "API 文档", "API 文件"))} | Whoice`}</title>
       </Head>
       <main className="shell docs-shell">
         <nav className="top-nav">
@@ -35,191 +170,40 @@ export default function DocsPage() {
             <AppControls />
           </div>
         </nav>
-        <section className="panel">
-          <p className="eyebrow">Overview</p>
-          <h1>Whoice API and runtime guide</h1>
-          <p>
-            Whoice exposes one stable lookup envelope for RDAP, WHOIS, WHOIS Web fallback,
-            IP, ASN, DNS enrichment, optional AI parsing, and optional ICP lookup. The Web
-            app talks to the same API through same-origin proxy routes, so self-hosted
-            deployments can keep the lookup API private behind the Web container.
-          </p>
-          <div className="docs-grid">
-            <dl className="detail-list">
-              <Row label="Base API" value="Local dev: http://localhost:8080; Docker host port: http://localhost:18080" />
-              <Row label="Web UI" value="Local dev and Docker default: http://localhost:18081" />
-              <Row label="Config" value="data/whoice.toml hot-reloads; invalid runtime edits roll back in memory" />
-              <Row label="Schema" value="OpenAPI plus JSON Schema under packages/schema" />
-            </dl>
-            <dl className="detail-list">
-              <Row label="Freshness" value="WHOIS/RDAP results are fresh-first and not cached" />
-              <Row label="Concurrency" value="Identical live lookups are coalesced with singleflight" />
-              <Row label="Plugins" value="/api/version returns provider, parser, enricher, auth, and reporter descriptors" />
-              <Row label="Trace" value="Every lookup response includes X-Trace-ID and result.meta.traceId" />
-            </dl>
-          </div>
-        </section>
-        <section className="panel">
-          <p className="eyebrow">GET</p>
-          <h1>/api/lookup</h1>
-          <p>Query domains, IPv4, IPv6, ASN, and CIDR values through the Go lookup API.</p>
-          <CodeBlock>{`curl "http://localhost:8080/api/lookup?query=example.com"`}</CodeBlock>
-          <div className="docs-grid">
-            <div>
-              <h2>Query params</h2>
+        {SECTIONS.map((section, index) => (
+          <section className="panel" key={index}>
+            <p className="eyebrow">{text(section.eyebrow)}</p>
+            <h1>{text(section.title)}</h1>
+            {section.intro && <p>{pick(section.intro)}</p>}
+            {section.code && <CodeBlock>{section.code}</CodeBlock>}
+            {section.columns && (
+              <div className="docs-grid">
+                {section.columns.map((column, columnIndex) => (
+                  <div key={columnIndex}>
+                    {column.title && <h2>{pick(column.title)}</h2>}
+                    <dl className="detail-list">
+                      {column.rows.map((row) => <Row key={row.name} label={row.name} value={pick(row.text)} />)}
+                    </dl>
+                  </div>
+                ))}
+              </div>
+            )}
+            {section.rows && (
               <dl className="detail-list">
-                <Row label="query" value="Domain, IP, ASN, CIDR, or URL" />
-                <Row label="rdap" value="1 to force RDAP only" />
-                <Row label="whois" value="1 to force WHOIS only" />
-                <Row label="rdap_server" value="Optional custom RDAP base URL" />
-                <Row label="whois_server" value="Optional custom WHOIS host[:port]" />
-                <Row label="whois_follow" value="0-5 referral follow depth" />
-                <Row label="exact_domain" value="1 to query the full typed domain without PSL reduction" />
-                <Row label="ai" value="1 to let the UI run background AI parsing after the main lookup returns" />
+                {section.rows.map((row) => <Row key={row.name} label={row.name} value={pick(row.text)} />)}
               </dl>
-            </div>
-            <div>
-              <h2>Related endpoints</h2>
-              <dl className="detail-list">
-                <Row label="/api/health" value="Health check" />
-                <Row label="/api/version" value="Version and plugin descriptors" />
-                <Row label="/api/capabilities" value="Runtime feature flags" />
-                <Row label="/api/lookup/ai" value="Optional background AI registration analysis" />
-                <Row label="/api/icp" value="Optional async ICP filing lookup" />
-                <Row label="/api/metrics" value="Prometheus-style metrics" />
-                <Row label="/api/admin/status" value="Authenticated runtime stats and plugin status" />
-                <Row label="/api/admin/config" value="Reserved Web config editor capability endpoint" />
-                <Row label="/api/og" value="Dynamic result image" />
-              </dl>
-            </div>
-          </div>
-        </section>
+            )}
+          </section>
+        ))}
         <section className="panel">
-          <p className="eyebrow">Envelope</p>
-          <h1>Response envelope</h1>
-          <p>
-            All JSON API responses use an `ok` envelope. Successful lookups return `result`
-            plus `meta`; failures return `error`. Config reload errors appear in `config`
-            and in result warnings while the previous valid runtime config is still active.
-          </p>
-          <CodeBlock>{`{
-  "ok": true,
-  "result": {
-    "normalizedQuery": "example.com",
-    "type": "domain",
-    "status": "registered",
-    "source": { "primary": "rdap", "used": ["rdap", "whois"] },
-    "domain": { "registeredDomain": "example.com", "registered": true },
-    "raw": { "rdap": "{ escaped RDAP payload }", "whois": "raw WHOIS payload" },
-    "meta": {
-      "elapsedMs": 123,
-      "warnings": [],
-      "traceId": "trace-id"
-    }
-  },
-  "meta": { "traceId": "trace-id" }
-}`}</CodeBlock>
-          <dl className="detail-list">
-            <Row label="result.source.errors" value="Per-provider errors; useful when RDAP succeeds but WHOIS fails, or the reverse" />
-            <Row label="result.meta.providers" value="Provider trace with source, server, status, elapsed time, and errors" />
-            <Row label="result.enrichment" value="Optional DNS, DNSViz, pricing, Moz, and other plugin output" />
-            <Row label="result.raw" value="Escaped raw evidence for debugging and parser review" />
-          </dl>
-        </section>
-        <section className="panel">
-          <p className="eyebrow">Compatibility</p>
-          <h1>Source and compatibility controls</h1>
-          <p>
-            Phase 3 compatibility features are exposed as explicit controls. Custom RDAP and
-            WHOIS servers are disabled by default for SSRF safety; enable them only on trusted
-            admin deployments.
-          </p>
-          <CodeBlock>{`[server]
-allow_custom_servers = true
-allow_private_servers = false
-
-[lookup]
-rdap_enabled = true
-whois_enabled = true
-whois_web_enabled = false
-whois_follow_limit = 1`}</CodeBlock>
-          <dl className="detail-list">
-            <Row label="WHOIS Web" value="A separate provider for selected stable ccTLD fallbacks; disabled by default" />
-            <Row label="Server data" value="Mounted data/whois-servers and data/rdap-bootstrap files override embedded snapshots" />
-            <Row label="Exact domain" value="Useful for private or unofficial multi-level suffixes that are not in PSL" />
-            <Row label="Fixture rule" value="New TLD parsers should include raw/expected fixtures and schema validation" />
-          </dl>
-        </section>
-        <section className="panel">
-          <p className="eyebrow">GET</p>
-          <h1>/api/icp</h1>
-          <p>Query ICP filing information for a domain. It is intentionally separate from the main lookup endpoint.</p>
-          <CodeBlock>{`curl "http://localhost:8080/api/icp?domain=example.cn"`}</CodeBlock>
-          <dl className="detail-list">
-            <Row label="domain" value="Domain or URL; normalized to the registered domain" />
-            <Row label="cache" value="Positive, empty, and error responses use separate TTLs" />
-            <Row label="ui" value="Manual by default; [icp] auto_query can enable async auto lookup" />
-          </dl>
-        </section>
-        <section className="panel">
-          <p className="eyebrow">Optional</p>
-          <h1>AI parser</h1>
-          <p>AI-assisted parsing can fill missing registrar and public registrant fields from raw RDAP/WHOIS evidence. It runs through POST /api/lookup/ai so the main lookup result is not blocked by model latency.</p>
-          <CodeBlock>{`[ai]
-enabled = true
-base_url = "https://api.cloudflare.com/client/v4/accounts/<ACCOUNT_ID>/ai/v1"
-api_key = "<token>"
-model = "@cf/meta/llama-3.1-8b-instruct"
-temperature = 0
-max_output_tokens = 700
-ignore_suffixes = ["com", "net", "org", "cn"]
-ignore_regex = []`}</CodeBlock>
-          <dl className="detail-list">
-            <Row label="provider" value="OpenAI-compatible by default; set provider = ollama for local Ollama" />
-            <Row label="cache" value="Caches AI analysis only, keyed by raw evidence, model, and prompt" />
-            <Row label="ignore" value="Exact suffixes and regex rules can skip AI for predictable TLDs; ignored results show AI ignored" />
-            <Row label="prompt" value="Built-in English strict JSON prompt; override with prompt" />
-          </dl>
-        </section>
-        <section className="panel">
-          <p className="eyebrow">Runtime configuration</p>
-          <h1>Hot reload and optional plugins</h1>
-          <p>
-            Runtime settings live in `data/whoice.toml`. Most changes hot-reload within the
-            API process. Invalid edits are reported in logs, `/status`, and lookup warnings
-            while Whoice keeps using the last valid runtime snapshot.
-          </p>
-          <CodeBlock>{`[enrichment]
-epp = true
-registrar = true
-brands = false
-pricing = false
-moz = false
-
-[dns]
-enabled = true
-dnsviz_enabled = true
-
-[rate_limit]
-enabled = false
-anon = "60/min"`}</CodeBlock>
-          <dl className="detail-list">
-            <Row label="Startup-only" value="server.addr requires a process/container restart" />
-            <Row label="Base64" value="The config file may contain a base64-encoded TOML document" />
-            <Row label="Pricing/Moz" value="Read local JSON snapshots only; no external API calls during lookup" />
-            <Row label="Admin config" value="/api/admin/config is reserved for future Web editing and does not write files yet" />
-          </dl>
-        </section>
-        <section className="panel">
-          <p className="eyebrow">Workspace</p>
-          <h2>Result shortcuts</h2>
+          <p className="eyebrow">{pick(t3("Keyboard", "键盘", "鍵盤"))}</p>
+          <h2>{pick(t3("Result page shortcuts", "结果页快捷键", "結果頁快捷鍵"))}</h2>
           <div className="shortcut-grid">
-            <span><kbd>/</kbd> Focus search</span>
-            <span><kbd>S</kbd> Toggle share menu</span>
-            <span><kbd>C</kbd> Copy result URL</span>
-            <span><kbd>R</kbd> Copy raw evidence</span>
-            <span><kbd>J</kbd> Download JSON</span>
-            <span><kbd>O</kbd> Download OG image</span>
+            {SHORTCUTS.map(([key, label]) => (
+              <span key={key}>
+                <kbd>{key}</kbd> {pick(label)}
+              </span>
+            ))}
           </div>
         </section>
       </main>

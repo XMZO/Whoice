@@ -313,6 +313,9 @@ const messages = {
     dnsTimeout: "timed out",
     aiLabel: "AI",
     adminPanel: "Admin",
+    languageLabel: "Language",
+    themeLabel: "Theme",
+    siteDescription: "Modular WHOIS and RDAP lookup.",
   },
   "zh-CN": {
     docs: "文档",
@@ -613,6 +616,9 @@ const messages = {
     dnsTimeout: "超时",
     aiLabel: "AI",
     adminPanel: "管理",
+    languageLabel: "语言",
+    themeLabel: "主题",
+    siteDescription: "模块化的 WHOIS 与 RDAP 查询服务。",
   },
   "zh-TW": {
     docs: "文件",
@@ -913,6 +919,9 @@ const messages = {
     dnsTimeout: "逾時",
     aiLabel: "AI",
     adminPanel: "管理",
+    languageLabel: "語言",
+    themeLabel: "主題",
+    siteDescription: "模組化的 WHOIS 與 RDAP 查詢服務。",
   },
 } as const;
 

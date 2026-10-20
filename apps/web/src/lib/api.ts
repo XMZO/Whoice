@@ -1,3 +1,4 @@
+import { diagnostic } from "./diagnostic";
 import type { APIResponse, ICPResponse, LookupResult } from "./types";
 
 export type LookupOptions = {
@@ -65,7 +66,7 @@ async function readAPIResponse(response: Response, context: string): Promise<API
       ok: false,
       error: {
         code: "empty_response",
-        message: `${context} returned an empty response (HTTP ${status}).`,
+        message: diagnostic(`${context} returned an empty response (HTTP ${status}).`),
       },
     };
   }
@@ -77,9 +78,7 @@ async function readAPIResponse(response: Response, context: string): Promise<API
       ok: false,
       error: {
         code: html ? "html_error_response" : "invalid_json_response",
-        message: html
-          ? `${context} returned an HTML error page instead of JSON (HTTP ${status}).`
-          : `${context} returned a non-JSON response (HTTP ${status}).`,
+        message: diagnostic(html ? `${context} returned an HTML error page instead of JSON (HTTP ${status}).` : `${context} returned a non-JSON response (HTTP ${status}).`),
         details: [text.slice(0, 500)],
       },
     };
@@ -144,9 +143,7 @@ export async function lookupICP(domain: string) {
       ok: false,
       error: {
         code: response.status === 404 ? "icp_route_missing" : "icp_invalid_response",
-        message: html
-          ? `ICP endpoint returned an HTML error page (HTTP ${response.status}). Restart the Web dev server after route changes.`
-          : text.slice(0, 300) || `ICP lookup failed with HTTP ${response.status}`,
+        message: diagnostic(html ? `ICP endpoint returned an HTML error page (HTTP ${response.status}).` : text.slice(0, 300) || `ICP lookup failed with HTTP ${response.status}`),
       },
     };
   }

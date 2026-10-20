@@ -28,7 +28,9 @@ import {
 import { analyzeRegistration, appendLookupOptions, enrichLookup, getCapabilities, lookup, lookupICP, normalizeLookupInput, type LookupOptions } from "@/lib/api";
 import { writeHistory } from "@/lib/history";
 import { useI18n, type I18nKey } from "@/lib/i18n";
+import { diagnostic } from "@/lib/diagnostic";
 import { kindLabel, sourceName, sourceTag } from "@/lib/resultModel";
+import { t3, useT3, type T3 } from "@/lib/t3";
 import type { APIResponse, LookupResult } from "@/lib/types";
 
 type SectionTab = "overview" | "dns" | "owner" | "price" | "source" | "network";
@@ -74,8 +76,8 @@ type EnrichmentState = {
 
 type ErrorViewModel = {
   eyebrow: string;
-  title: string;
-  message: string;
+  title: T3;
+  message: T3;
   detail?: string;
 };
 
@@ -165,7 +167,7 @@ export const getServerSideProps: GetServerSideProps<Props> = async (context) => 
         icpAutoQuery,
         response: {
           ok: false,
-          error: { code: "query_required", message: "Query is required." },
+          error: { code: "query_required", message: diagnostic("Query is required.") },
         },
       },
     };
@@ -186,7 +188,7 @@ export const getServerSideProps: GetServerSideProps<Props> = async (context) => 
           ok: false,
           error: {
             code: "api_unreachable",
-            message: error instanceof Error ? error.message : "Lookup API is unreachable.",
+            message: error instanceof Error ? error.message : diagnostic("Lookup API is unreachable."),
           },
         },
       },
@@ -256,22 +258,45 @@ function mergeEnrichmentResult(current: LookupResult, incoming: LookupResult): L
   };
 }
 
+const GATEWAY_ERROR: { title: T3; message: T3 } = {
+  title: t3("Lookup API unavailable", "查询 API 不可用", "查詢 API 無法使用"),
+  message: t3(
+    "Whoice could not reach the lookup API or received a gateway error page instead of JSON.",
+    "无法连接查询 API，或收到了网关错误页而不是 JSON。",
+    "無法連線查詢 API，或收到了閘道錯誤頁而不是 JSON。",
+  ),
+};
+
+// Titles for API error codes; the raw API message is shown underneath as a diagnostic.
+const ERROR_TITLES: Record<string, T3> = {
+  query_required: t3("Enter something to look up", "请输入查询内容", "請輸入查詢內容"),
+  invalid_query: t3("This query is not a domain, IP, CIDR, or ASN", "无法识别的查询内容", "無法辨識的查詢內容"),
+  invalid_domain: t3("This domain name is not valid", "域名格式无效", "網域格式無效"),
+  option_not_allowed: t3("Custom servers are not allowed on this instance", "此实例不允许自定义服务器", "此實例不允許自訂伺服器"),
+  rate_limited: t3("Too many lookups, try again shortly", "查询过于频繁，请稍后再试", "查詢過於頻繁，請稍後再試"),
+  unauthorized: t3("Sign-in is required for lookups", "查询需要登录", "查詢需要登入"),
+  ip_not_allowed: t3("Your address is not allowed to use the API", "当前地址不允许使用 API", "目前位址不允許使用 API"),
+  api_disabled: t3("The lookup API is disabled", "查询 API 已关闭", "查詢 API 已關閉"),
+  api_endpoint_disabled: t3("The lookup API is disabled", "查询 API 已关闭", "查詢 API 已關閉"),
+  service_unavailable: t3("The lookup service is not ready", "查询服务尚未就绪", "查詢服務尚未就緒"),
+};
+
+const GENERIC_ERROR: { title: T3; message: T3 } = {
+  title: t3("Lookup failed", "查询失败", "查詢失敗"),
+  message: t3("Switch source mode or check whether the lookup API is running.", "可以切换数据来源，或检查查询 API 是否在运行。", "可以切換資料來源，或檢查查詢 API 是否在執行。"),
+};
+
 function errorView(response: APIResponse, status: number): ErrorViewModel {
   const code = response.error?.code || "";
   const message = response.error?.message || "";
   if (status === 502 || code === "api_unreachable" || code === "invalid_json_response" || code === "html_error_response") {
-    return {
-      eyebrow: `HTTP ${status || 502}`,
-      title: "Lookup API unavailable",
-      message: "Whoice could not reach the lookup API or received a gateway error page instead of JSON.",
-      detail: message,
-    };
+    return { eyebrow: `HTTP ${status || 502}`, ...GATEWAY_ERROR, detail: message };
   }
   return {
-    eyebrow: status ? `HTTP ${status}` : "Lookup error",
-    title: message || "Lookup failed",
-    message: "Switch source mode or check whether the lookup API is running.",
-    detail: code,
+    eyebrow: status ? `HTTP ${status}` : code,
+    title: ERROR_TITLES[code] || GENERIC_ERROR.title,
+    message: GENERIC_ERROR.message,
+    detail: [code, message].filter(Boolean).join(": "),
   };
 }
 
@@ -345,6 +370,7 @@ function TabButton({
 
 function LookupErrorPanel({ response, status, onRetry }: { response: APIResponse; status: number; onRetry?: () => void }) {
   const { t } = useI18n();
+  const pick = useT3();
   const view = errorView(response, status);
   return (
     <section className="error-panel">
@@ -352,8 +378,8 @@ function LookupErrorPanel({ response, status, onRetry }: { response: APIResponse
         <WarnIcon size={13} />
         {view.eyebrow}
       </span>
-      <h1>{view.title}</h1>
-      <p className="muted">{view.message}</p>
+      <h1>{pick(view.title)}</h1>
+      <p className="muted">{pick(view.message)}</p>
       {view.detail && <pre className="error-detail">{view.detail}</pre>}
       {onRetry && (
         <button type="button" className="btn btn-primary" onClick={onRetry}>
@@ -387,7 +413,8 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
   const [icpState, setICPState] = useState<ICPState>({ domain: "", loading: false, requested: false });
   const [aiState, setAIState] = useState<AIState>({ key: "", loading: false, requested: false });
   const [enrichmentState, setEnrichmentState] = useState<EnrichmentState>({ key: "", loading: false, requested: false });
-  const { t, tf } = useI18n();
+  const { t, tf, locale } = useI18n();
+  const pick = useT3();
   const [tab, setTab] = useState<SectionTab>("overview");
   const [rawTab, setRawTab] = useState<RawTab | null>(null);
   const pageURL = useMemo(() => lookupUrl(state.query, state.sourceMode, state.options), [state.options, state.query, state.sourceMode]);
@@ -615,7 +642,7 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
           ok: false,
           error: {
             code: "api_unreachable",
-            message: error instanceof Error ? error.message : "Lookup API is unreachable.",
+            message: error instanceof Error ? error.message : diagnostic("Lookup API is unreachable."),
           },
         },
       });
@@ -871,7 +898,7 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
       case "owner":
         return { label: t("registrant"), meta: ownerFields ? tf("fieldsShort", { n: ownerFields }) : undefined };
       case "price":
-        return { label: t("priceScore"), meta: pricingSummary(result) };
+        return { label: t("priceScore"), meta: pricingSummary(result, locale) };
       case "network":
         return { label: t("networkInfo") };
       default:
@@ -1003,7 +1030,7 @@ export default function LookupPage({ query, response, httpStatus, sourceMode, op
                 </div>
 
                 <div className="hero-actions">
-                  <section className="action-bar" aria-label="Result actions">
+                  <section className="action-bar" aria-label={pick(t3("Result actions", "结果操作", "結果操作"))}>
                     <button type="button" className="btn action-btn" onClick={shareResult}>
                       <LinkIcon size={15} className="btn-icon" />
                       {t("share")}

@@ -1,14 +1,21 @@
 import { useEffect, useState } from "react";
 import { adminApi, readPath, type AdminConfig, type AdminStatus } from "@/lib/admin/api";
 import { useAdminText } from "@/lib/admin/text";
+import { t3, useT3, type T3 } from "@/lib/t3";
 
-function formatUptime(seconds: number) {
-  const days = Math.floor(seconds / 86400);
-  const hours = Math.floor((seconds % 86400) / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  if (days) return `${days}d ${hours}h`;
-  if (hours) return `${hours}h ${minutes}m`;
-  return `${minutes}m`;
+const UPTIME = {
+  days: t3("{d}d {h}h", "{d} 天 {h} 小时", "{d} 天 {h} 小時"),
+  hours: t3("{h}h {m}m", "{h} 小时 {m} 分", "{h} 小時 {m} 分"),
+  minutes: t3("{m}m", "{m} 分钟", "{m} 分鐘"),
+};
+
+function formatUptime(seconds: number, pick: (value: T3, vars?: Record<string, string | number>) => string) {
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (d) return pick(UPTIME.days, { d, h });
+  if (h) return pick(UPTIME.hours, { h, m });
+  return pick(UPTIME.minutes, { m });
 }
 
 function formatTime(value?: string) {
@@ -16,7 +23,8 @@ function formatTime(value?: string) {
 }
 
 export function OverviewSection({ config }: { config: AdminConfig }) {
-  const { at } = useAdminText();
+  const { at, errorText, locale } = useAdminText();
+  const pick = useT3();
   const [status, setStatus] = useState<AdminStatus | null>(null);
   const [error, setError] = useState("");
 
@@ -26,7 +34,7 @@ export function OverviewSection({ config }: { config: AdminConfig }) {
       adminApi
         .status()
         .then((next) => active && (setStatus(next), setError("")))
-        .catch((reason: Error) => active && setError(reason.message));
+        .catch((reason: Error) => active && setError(errorText(reason)));
     load();
     const timer = window.setInterval(load, 10000);
     return () => {
@@ -50,8 +58,8 @@ export function OverviewSection({ config }: { config: AdminConfig }) {
         <h3 className="adm-group-title">{at("service")}</h3>
         <div className="adm-stats">
           <div className="adm-stat"><span>{at("version")}</span><strong className="mono">{status?.version || "—"}</strong></div>
-          <div className="adm-stat"><span>{at("uptime")}</span><strong>{status ? formatUptime(status.stats.uptimeSec) : "—"}</strong></div>
-          <div className="adm-stat"><span>{at("lookups")}</span><strong>{lookups ? lookups.total.toLocaleString() : "—"}</strong></div>
+          <div className="adm-stat"><span>{at("uptime")}</span><strong>{status ? formatUptime(status.stats.uptimeSec, pick) : "—"}</strong></div>
+          <div className="adm-stat"><span>{at("lookups")}</span><strong>{lookups ? lookups.total.toLocaleString(locale) : "—"}</strong></div>
           <div className="adm-stat"><span>{at("successRate")}</span><strong>{rate}</strong></div>
           <div className="adm-stat"><span>{at("avgLatency")}</span><strong>{latency}</strong></div>
           <div className="adm-stat"><span>{at("plugins")}</span><strong>{status ? at("pluginsEnabled", { n: plugins.filter((plugin) => plugin.enabled).length, total: plugins.length }) : "—"}</strong></div>

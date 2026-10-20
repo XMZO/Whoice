@@ -1,9 +1,9 @@
 import { FormEvent, useState } from "react";
-import { adminApi, AdminError } from "@/lib/admin/api";
+import { adminApi } from "@/lib/admin/api";
 import { useAdminText } from "@/lib/admin/text";
 
 export function AccountSection({ passwordFromEnv, onSignOut }: { passwordFromEnv: boolean; onSignOut: () => void }) {
-  const { at } = useAdminText();
+  const { at, errorText } = useAdminText();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -28,7 +28,7 @@ export function AccountSection({ passwordFromEnv, onSignOut }: { passwordFromEnv
       setConfirm("");
       setMessage({ ok: true, text: at("passwordChanged") });
     } catch (error) {
-      setMessage({ ok: false, text: error instanceof AdminError ? error.message : String(error) });
+      setMessage({ ok: false, text: errorText(error) });
     } finally {
       setBusy(false);
     }

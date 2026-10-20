@@ -29,7 +29,7 @@ function sameValue(left: unknown, right: unknown) {
 }
 
 export function AdminPanel({ passwordFromEnv, onSignedOut }: { passwordFromEnv: boolean; onSignedOut: () => void }) {
-  const { pick, at } = useAdminText();
+  const { pick, at, errorText } = useAdminText();
   const [config, setConfig] = useState<AdminConfig | null>(null);
   const [loadError, setLoadError] = useState("");
   const [active, setActive] = useState<SectionId>("overview");
@@ -42,7 +42,7 @@ export function AdminPanel({ passwordFromEnv, onSignedOut }: { passwordFromEnv: 
     adminApi
       .config()
       .then(setConfig)
-      .catch((error: AdminError) => (error.status === 401 ? onSignedOut() : setLoadError(error.message)));
+      .catch((error: AdminError) => (error.status === 401 ? onSignedOut() : setLoadError(errorText(error))));
   }, [onSignedOut]);
 
   useEffect(load, [load]);
@@ -86,7 +86,7 @@ export function AdminPanel({ passwordFromEnv, onSignedOut }: { passwordFromEnv: 
         onSignedOut();
         return;
       }
-      setNotice({ ok: false, text: error instanceof Error ? error.message : String(error) });
+      setNotice({ ok: false, text: errorText(error) });
     } finally {
       setSaving(false);
     }

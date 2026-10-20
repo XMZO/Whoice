@@ -2,11 +2,11 @@ import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { BrandMark } from "@/components/BrandMark";
 import { PadlockIcon } from "@/components/Icons";
-import { adminApi, AdminError } from "@/lib/admin/api";
+import { adminApi } from "@/lib/admin/api";
 import { useAdminText } from "@/lib/admin/text";
 
 export function AdminLogin({ onSignedIn }: { onSignedIn: () => void }) {
-  const { at } = useAdminText();
+  const { at, errorText } = useAdminText();
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -19,7 +19,7 @@ export function AdminLogin({ onSignedIn }: { onSignedIn: () => void }) {
       await adminApi.login(password);
       onSignedIn();
     } catch (reason) {
-      setError(reason instanceof AdminError ? reason.message : String(reason));
+      setError(errorText(reason));
       setBusy(false);
     }
   }

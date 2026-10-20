@@ -8,14 +8,14 @@ import { useAdminText } from "@/lib/admin/text";
 type View = { state: "loading" } | { state: "signed-out" } | { state: "signed-in"; passwordFromEnv: boolean } | { state: "error"; message: string };
 
 export default function AdminPage() {
-  const { at } = useAdminText();
+  const { at, errorText } = useAdminText();
   const [view, setView] = useState<View>({ state: "loading" });
 
   const check = useCallback(() => {
     adminApi
       .session()
       .then((session) => setView(session.authenticated ? { state: "signed-in", passwordFromEnv: session.passwordFromEnv } : { state: "signed-out" }))
-      .catch((error: Error) => setView({ state: "error", message: error.message }));
+      .catch((error: Error) => setView({ state: "error", message: errorText(error) }));
   }, []);
 
   useEffect(check, [check]);
