@@ -90,8 +90,8 @@ func (p *Provider) Lookup(ctx context.Context, q model.NormalizedQuery, opts mod
 	// nothing about the domain itself.
 	// A registry that refuses the query answers with a notice, not a record;
 	// treat it as a failure so it is not read as registration data.
-	if refusal := refusalPattern.FindString(body); refusal != "" {
-		return nil, fmt.Errorf("%s refused the query: %s", server.Host, strings.TrimSpace(refusal))
+	if refusal := findRefusal(body); refusal != "" {
+		return nil, fmt.Errorf("%s refused the query: %s", server.Host, refusal)
 	}
 	if opts.WHOISServer == "" && isBareIANATLDRecord(q, usedServers) {
 		if referral := findReferral(body); referral != "" {
@@ -178,6 +178,31 @@ func containsServer(servers []string, server string) bool {
 // refusalPattern matches registry notices that decline to answer: blocked
 // clients, rate limits, or a server that rejects the query format.
 var refusalPattern = regexp.MustCompile(`(?im)^.*(?:requests of this client are not permitted|solo acepta consultas|(?:query|request|rate|connection) ?limit (?:exceeded|reached)|maximum (?:number of )?(?:queries|requests|query rate)|too many (?:queries|requests|connections)|access (?:has been )?denied|you have exceeded|temporarily (?:blocked|denied|unavailable)|try again later).*$`)
+
+var recordFieldPattern = regexp.MustCompile(`(?im)^\s*(?:domain name|domain|domainname)\s*[.:]`)
+
+// findRefusal returns a short refusal notice, or "" when the reply is a
+// record. Only short lines count: terms-of-use paragraphs (.mu, Identity
+// Digital) mention "too many queries" in a 2,700-character line of an
+// ordinary record.
+func findRefusal(body string) string {
+	if recordFieldPattern.MatchString(body) {
+		return ""
+	}
+	for _, line := range strings.Split(body, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || len(line) > 300 {
+			continue
+		}
+		if refusalPattern.MatchString(line) {
+			if len(line) > 160 {
+				line = line[:160] + "…"
+			}
+			return line
+		}
+	}
+	return ""
+}
 
 func tldOf(q model.NormalizedQuery) string {
 	name := strings.Trim(q.Query, ".")

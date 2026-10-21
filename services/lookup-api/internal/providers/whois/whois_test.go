@@ -1,6 +1,7 @@
 package whois
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/xmzo/whoice/services/lookup-api/internal/model"
@@ -66,5 +67,19 @@ func TestRateLimitNoticesAreRefusals(t *testing.T) {
 		if refusalPattern.FindString(body) == "" {
 			t.Fatalf("not recognized: %q", body)
 		}
+	}
+}
+
+func TestRefusalIgnoresRecordsAndTermsParagraphs(t *testing.T) {
+	terms := "Terms of Use: Access to WHOIS information is provided ... " + strings.Repeat("lawful purposes only, ", 60) + "and if you submit too many queries your access may be limited."
+	record := "Domain Name: google.mu\nRegistrar URL: http://www.markmonitor.com\nCreation Date: 2000-12-20T13:00:00Z\n" + terms + "\n"
+	if got := findRefusal(record); got != "" {
+		t.Fatalf("a record with a terms paragraph is not a refusal: %q", got)
+	}
+	if got := findRefusal(terms + "\n"); got != "" {
+		t.Fatalf("a long terms line alone is not a refusal: %q", got)
+	}
+	if got := findRefusal("Error: ratelimit exceeded\r\n"); got != "Error: ratelimit exceeded" {
+		t.Fatalf("short refusals still count: %q", got)
 	}
 }
