@@ -6,7 +6,7 @@ import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "reac
 import packageInfo from "../../package.json";
 import { AppControls } from "@/components/AppControls";
 import { BrandMark } from "@/components/BrandMark";
-import { BanIcon, CheckCircleIcon, CopyIcon, HelpIcon, DownloadIcon, ExternalIcon, FileIcon, LinkIcon, SearchIcon, WarnIcon } from "@/components/Icons";
+import { BanIcon, CalendarIcon, CheckCircleIcon, CopyIcon, HelpIcon, DownloadIcon, ExternalIcon, FileIcon, LinkIcon, SearchIcon, WarnIcon } from "@/components/Icons";
 import { RawDrawer, type RawTab } from "@/components/RawDrawer";
 import {
   DNSSection,
@@ -406,12 +406,96 @@ function lifecycleStage(statuses: LookupResult["statuses"] | undefined): "redemp
   return null;
 }
 
+// An all-day calendar event on the expiry date with reminders 30, 7 and 1
+// day before: a reminder that works in any calendar app, nothing to sign up.
+function expiryCalendarDate(value?: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value || "");
+  if (!match) return null;
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function icsDate(date: Date) {
+  return date.toISOString().slice(0, 10).replace(/-/g, "");
+}
+
+function icsText(value: string) {
+  return value.replace(/\\/g, "\\\\").replace(/\r?\n/g, "\\n").replace(/([,;])/g, "\\$1");
+}
+
+// RFC 5545 folds content lines longer than 75 octets.
+function icsFold(line: string) {
+  const encoder = new TextEncoder();
+  const parts: string[] = [];
+  let current = "";
+  for (const char of line) {
+    if (encoder.encode(current + char).length > (parts.length ? 74 : 75)) {
+      parts.push(current);
+      current = char;
+    } else {
+      current += char;
+    }
+  }
+  parts.push(current);
+  return parts.join("\r\n ");
+}
+
+function expiryCalendar(uid: string, expires: Date, summary: string, description: string, alarm: (days: number) => string, pageURL: string) {
+  const next = new Date(expires.getTime() + 86_400_000);
+  const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+  const lines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Whoice//Domain expiry//EN",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    "BEGIN:VEVENT",
+    `UID:${uid}-${icsDate(expires)}@whoice`,
+    `DTSTAMP:${stamp}`,
+    `DTSTART;VALUE=DATE:${icsDate(expires)}`,
+    `DTEND;VALUE=DATE:${icsDate(next)}`,
+    `SUMMARY:${icsText(summary)}`,
+    `DESCRIPTION:${icsText(description)}`,
+    ...(pageURL ? [`URL:${pageURL}`] : []),
+    ...[30, 7, 1].flatMap((days) => ["BEGIN:VALARM", "ACTION:DISPLAY", `TRIGGER:-P${days}D`, `DESCRIPTION:${icsText(alarm(days))}`, "END:VALARM"]),
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ];
+  return lines.map(icsFold).join("\r\n") + "\r\n";
+}
+
 function MarketTags({ result }: { result: LookupResult }) {
   const pick = useT3();
   const sale = result.enrichment?.forSale;
   const stage = lifecycleStage(result.statuses);
+  // The registry's own deletion stage says more than the expiry date, so the
+  // date only speaks when no such stage is set.
+  const remaining = result.status === "registered" && !stage ? result.dates?.remainingDays : undefined;
+  const expiresOn = (result.dates?.expiresAt || "").slice(0, 10);
   return (
     <>
+      {remaining !== undefined && remaining !== null && remaining < 0 && (
+        <span
+          className="pill pill-amber"
+          title={pick(
+            t3(
+              `The registry's expiry date (${expiresOn}) has passed; the domain may still be in its renewal grace period.`,
+              `注册局记录的到期日（${expiresOn}）已过，可能仍在续费宽限期内`,
+              `註冊局記錄的到期日（${expiresOn}）已過，可能仍在續費寬限期內`,
+            ),
+          )}
+        >
+          {pick(t3("Expired", "已过期", "已過期"))}
+        </span>
+      )}
+      {remaining !== undefined && remaining !== null && remaining >= 0 && remaining <= 30 && (
+        <span
+          className="pill pill-amber"
+          title={pick(t3(`Expires on ${expiresOn}, in ${remaining} days`, `${expiresOn} 到期，还剩 ${remaining} 天`, `${expiresOn} 到期，還剩 ${remaining} 天`))}
+        >
+          {pick(t3("Expiring soon", "即将过期", "即將過期"))}
+        </span>
+      )}
       {sale && (
         <span
           className="pill pill-accent"
@@ -1030,6 +1114,35 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
     void copy(absolutePageURL, t("copied"));
   }
 
+  function downloadExpiryReminder() {
+    if (!result || typeof window === "undefined") return;
+    const expires = expiryCalendarDate(result.dates?.expiresAt);
+    if (!expires) return;
+    const name = domainNames(result).display;
+    const date = icsDate(expires).replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3");
+    const registrar = result.registrar?.name || "";
+    const body = expiryCalendar(
+      result.normalizedQuery,
+      expires,
+      pick(t3(`${name} expires`, `${name} 到期`, `${name} 到期`)),
+      [
+        pick(t3(`${name} expires on ${date}.`, `${name} 将于 ${date} 到期。`, `${name} 將於 ${date} 到期。`)),
+        registrar ? `${t("registrar")}: ${registrar}` : "",
+        pick(t3("Renew it at the registrar before then.", "请在此之前到注册商续费。", "請在此之前到註冊商續費。")),
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      (days) => pick(t3(`${name} expires in ${days} days`, `${name} 还有 ${days} 天到期`, `${name} 還有 ${days} 天到期`)),
+      window.location.href,
+    );
+    const url = URL.createObjectURL(new Blob([body], { type: "text/calendar;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${result.normalizedQuery}-expiry.ics`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
   function downloadResult() {
     if (!result || typeof window === "undefined") return;
     const blob = new Blob([JSON.stringify(result, null, 2)], { type: "application/json" });
@@ -1269,6 +1382,17 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
                     <button type="button" className="btn action-btn" disabled={skeleton} onClick={downloadResult}>
                       <DownloadIcon size={15} className="btn-icon" />
                       {t("downloadJson")}
+                    </button>
+                    {/* Always present so the bar keeps its shape; enabled once there is an expiry date. */}
+                    <button
+                      type="button"
+                      className="btn action-btn"
+                      disabled={skeleton || view.status !== "registered" || !expiryCalendarDate(view.dates?.expiresAt)}
+                      onClick={downloadExpiryReminder}
+                      title={pick(t3("Add the expiry date to your calendar, with reminders 30, 7 and 1 day before", "把到期日加入日历，提前 30、7、1 天提醒", "把到期日加入行事曆，提前 30、7、1 天提醒"))}
+                    >
+                      <CalendarIcon size={15} className="btn-icon" />
+                      {pick(t3("Expiry reminder", "到期提醒", "到期提醒"))}
                     </button>
                   </section>
                 </div>

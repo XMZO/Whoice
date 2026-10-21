@@ -957,3 +957,39 @@ test("an internationalized name is titled in Unicode with its punycode beside it
   await expect(page.locator(".hero-ascii")).toHaveText(ascii);
   await expect(page).toHaveTitle(/中国\.我爱你/);
 });
+
+test("expiry badges and the calendar reminder", async ({ page }, testInfo) => {
+  // The badge row only: the time-remaining card says "Expired ... ago" on its own.
+  const hero = page.locator(".hero-badges");
+  await seedLookup(page, "soon.test", lookupFixture("soon.test", { dates: { expiresAt: "2026-11-01T08:05:19Z", remainingDays: 10 }, registrar: { name: "Fixture Registrar" } }));
+  await expect(hero).toContainText("Expiring soon");
+  await expect(hero).not.toContainText("Expired");
+
+  if (testInfo.project.name !== "mobile-chrome") {
+    const download = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Expiry reminder" }).click();
+    const file = await download;
+    expect(file.suggestedFilename()).toBe("soon.test-expiry.ics");
+    const body = (await import("node:fs")).readFileSync(await file.path(), "utf8");
+    expect(body).toContain("BEGIN:VCALENDAR");
+    expect(body).toContain("DTSTART;VALUE=DATE:20261101");
+    expect(body).toContain("DTEND;VALUE=DATE:20261102");
+    expect(body).toContain("TRIGGER:-P30D");
+    expect(body).toContain("SUMMARY:soon.test expires");
+    for (const line of body.split("\r\n")) expect(Buffer.byteLength(line, "utf8")).toBeLessThanOrEqual(75);
+  }
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+
+  await seedLookup(page, "lapsed.test", lookupFixture("lapsed.test", { dates: { expiresAt: "2026-10-01", remainingDays: -3 } }));
+  await expect(hero).toContainText("Expired");
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+
+  // The registry's deletion stage takes precedence over the date.
+  await seedLookup(page, "redeem2.test", lookupFixture("redeem2.test", { dates: { expiresAt: "2026-09-01", remainingDays: -40 }, statuses: [{ code: "redemptionPeriod" }] }));
+  await expect(hero).toContainText("Redemption period");
+  await expect(hero).not.toContainText("Expired");
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+
+  await seedLookup(page, "free.test", lookupFixture("free.test", { status: "unregistered" }));
+  await expect(page.getByRole("button", { name: "Expiry reminder" })).toBeDisabled();
+});
