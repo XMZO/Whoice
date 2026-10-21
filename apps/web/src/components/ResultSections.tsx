@@ -921,7 +921,11 @@ export function RegistrantSection({
       )}
       {hasAIStatus && <div className="section-inline-badges">{aiBadge}</div>}
       {rows.length === 0 && extras.length === 0 ? (
-        <p className="section-note">{aiLoading ? t("aiChecking") : t("noRegistration")}</p>
+        aiLoading ? (
+          <p className="section-note">{t("aiChecking")}</p>
+        ) : (
+          <RegistrarContact result={result} />
+        )
       ) : (
         <dl className="kv-list">
           {rows.map((row) => {
@@ -952,8 +956,58 @@ export function RegistrantSection({
         </dl>
       )}
       {icpDomain && <ICPBlock domain={icpDomain} state={icpState} onLookup={onICPLookup} />}
-      <RegistrarDetails result={result} />
+      {/* The contact block above already names the registrar when no registrant is public. */}
+      {!(rows.length === 0 && extras.length === 0 && (result.registrar?.email || result.registrar?.phone || result.registrar?.address)) && <RegistrarDetails result={result} />}
     </section>
+  );
+}
+
+/**
+ * Shown when no registrant field is public: many registries (CoCCA's .sb,
+ * GDPR-redacted gTLDs) only publish the registrar, who is the way to reach
+ * the holder.
+ */
+function RegistrarContact({ result }: { result: LookupResult }) {
+  const { t, locale } = useI18n();
+  const pick = useT3();
+  const registrar = result.registrar || {};
+  const hasContact = Boolean(registrar.email || registrar.phone || registrar.address);
+  if (!registrar.name || !hasContact) return <p className="section-note">{t("noRegistration")}</p>;
+  const website = safeExternalURL(registrar.url || registrar.brand?.website);
+  return (
+    <div className="registrar-contact">
+      <p className="section-note">
+        {pick(t3(
+          "The registry does not publish the registrant. Reach the holder through the registrar:",
+          "注册局未公开注册人信息，可通过注册商联系持有人：",
+          "註冊局未公開註冊人資訊，可透過註冊商聯絡持有人：",
+        ))}
+      </p>
+      <dl className="kv-list compact">
+        <div className="kv-row">
+          <dt>{t("registrar")}</dt>
+          <dd className="strong">{website ? <a href={website} target="_blank" rel="noopener noreferrer">{registrar.name}</a> : registrar.name}</dd>
+        </div>
+        {registrar.email && (
+          <div className="kv-row">
+            <dt>{pick(t3("Email", "邮箱", "電子郵件"))}</dt>
+            <dd><a href={`mailto:${registrar.email}`}>{registrar.email}</a></dd>
+          </div>
+        )}
+        {registrar.phone && (
+          <div className="kv-row">
+            <dt>{pick(t3("Phone", "电话", "電話"))}</dt>
+            <dd className="mono">{registrar.phone}</dd>
+          </div>
+        )}
+        {registrar.address && (
+          <div className="kv-row">
+            <dt>{pick(t3("Address", "地址", "地址"))}</dt>
+            <dd>{[registrar.address, countryName(registrar.country, locale)].filter(Boolean).join(", ")}</dd>
+          </div>
+        )}
+      </dl>
+    </div>
   );
 }
 

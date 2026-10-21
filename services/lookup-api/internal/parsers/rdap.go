@@ -218,6 +218,10 @@ func parseEntities(doc map[string]any) (model.RegistrarInfo, model.RegistrantInf
 			vcard := vcardMap(entity)
 			registrar.Name = firstNonEmpty(registrar.Name, vcard["fn"], vcard["org"], nestedEntityVCardValue(entity, "abuse", "fn", "org"), stringField(entity, "handle"))
 			registrar.URL = firstNonEmpty(registrar.URL, registrarEntityURL(entity, vcard["url"]))
+			registrar.Email = firstNonEmpty(registrar.Email, vcard["email"])
+			registrar.Phone = firstNonEmpty(registrar.Phone, strings.TrimPrefix(vcard["tel"], "tel:"))
+			registrar.Address = firstNonEmpty(registrar.Address, joinNonEmpty(", ", vcard["street-address"], vcard["locality"], vcard["region"], vcard["postal-code"]))
+			registrar.Country = firstNonEmpty(registrar.Country, vcard["country-name"])
 			for _, publicID := range anySlice(entity["publicIds"]) {
 				item, ok := publicID.(map[string]any)
 				if !ok {
@@ -513,4 +517,14 @@ func contains(values []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func joinNonEmpty(sep string, values ...string) string {
+	var parts []string
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			parts = append(parts, value)
+		}
+	}
+	return strings.Join(parts, sep)
 }

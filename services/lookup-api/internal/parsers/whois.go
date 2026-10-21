@@ -134,6 +134,14 @@ func (WHOISParser) Parse(_ context.Context, raw model.RawResponse, q model.Norma
 		partial.Domain.Reserved = true
 	}
 	partial.Registrar.IANAID = firstValue(fields, "registrar iana id", "iana id")
+	partial.Registrar.Email = firstValue(fields, "registrar email", "registrar contact email")
+	partial.Registrar.Phone = firstValue(fields, "registrar phone", "registrar contact phone")
+	partial.Registrar.Address = joinNonEmpty(", ",
+		firstValue(fields, "registrar street address", "registrar street", "registrar address"),
+		firstValue(fields, "registrar city"),
+		firstValue(fields, "registrar state", "registrar state/province"),
+		firstValue(fields, "registrar postal code"))
+	partial.Registrar.Country = firstValue(fields, "registrar country")
 	partial.Registrar.WHOISServer = firstValue(fields, "registrar whois server")
 	partial.Dates.CreatedAt = firstValue(fields, "creation date", "created", "created on", "registered on")
 	partial.Dates.ExpiresAt = firstValue(fields, "registry expiry date", "expiration date", "expiry date", "expires", "paid-till")

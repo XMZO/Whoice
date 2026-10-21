@@ -107,10 +107,14 @@ type RegistryInfo struct {
 }
 
 type RegistrarInfo struct {
-	Name        string   `json:"name,omitempty"`
-	URL         string   `json:"url,omitempty"`
-	IANAID      string   `json:"ianaId,omitempty"`
-	Country     string   `json:"country,omitempty"`
+	Name    string `json:"name,omitempty"`
+	URL     string `json:"url,omitempty"`
+	IANAID  string `json:"ianaId,omitempty"`
+	Country string `json:"country,omitempty"`
+	// Registrar contact details, shown when the registrant is not public.
+	Email       string   `json:"email,omitempty"`
+	Phone       string   `json:"phone,omitempty"`
+	Address     string   `json:"address,omitempty"`
 	WHOISServer string   `json:"whoisServer,omitempty"`
 	RDAPServer  string   `json:"rdapServer,omitempty"`
 	Brand       *Brand   `json:"brand,omitempty"`

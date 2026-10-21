@@ -161,3 +161,19 @@ func TestRDAPPlaceholderNameserversAreDropped(t *testing.T) {
 		t.Fatalf("nameservers: %#v", part.Nameservers)
 	}
 }
+
+func TestWHOISRegistrarContact(t *testing.T) {
+	body := "Domain Name: linux.sb\nRegistrar: DNS11 GROUP\nRegistrar Street Address: 6th Floor, No. 2 Jinfeng Road\nRegistrar City: Yunfu\nRegistrar State: GD\nRegistrar Postal Code: 527300\nRegistrar Country: CN\nRegistrar Phone: +86.400 788 4688\nRegistrar Email: domains@dns11.net\nRegistrar Abuse Contact Email: \n"
+	raw := model.RawResponse{Source: model.SourceWHOIS, Server: "whois.nic.net.sb", Query: "linux.sb", Body: body}
+	part, err := (WHOISParser{}).Parse(context.Background(), raw, model.NormalizedQuery{Type: model.QueryDomain, Query: "linux.sb"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := part.Registrar
+	if r.Email != "domains@dns11.net" || r.Phone != "+86.400 788 4688" || r.Address != "6th Floor, No. 2 Jinfeng Road, Yunfu, GD, 527300" || r.Country != "CN" {
+		t.Fatalf("registrar contact: %#v", r)
+	}
+	if part.Registrant.Email != "" || part.Registrant.Name != "" {
+		t.Fatalf("registrar details must not become registrant data: %#v", part.Registrant)
+	}
+}

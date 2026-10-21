@@ -92,6 +92,9 @@ export interface RegistrarInfo {
   url?: string;
   ianaId?: string;
   country?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
   whoisServer?: string;
   rdapServer?: string;
   brand?: Brand;

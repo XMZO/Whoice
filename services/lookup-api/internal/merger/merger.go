@@ -119,6 +119,13 @@ func mergeRegistrar(result *model.LookupResult, part *model.PartialResult) {
 	result.Registrar.URL = pick(result.Registrar.URL, part.Registrar.URL)
 	result.Registrar.IANAID = pick(result.Registrar.IANAID, part.Registrar.IANAID)
 	result.Registrar.Country = pick(result.Registrar.Country, part.Registrar.Country)
+	result.Registrar.Email = pick(result.Registrar.Email, cleanContactValue(part.Registrar.Email))
+	result.Registrar.Phone = pick(result.Registrar.Phone, contactPhoneValue(cleanContactValue(part.Registrar.Phone)))
+	// Sources answer in any order and RDAP addresses often lack the city:
+	// keep the more complete address.
+	if address := cleanContactValue(part.Registrar.Address); len(address) > len(result.Registrar.Address) {
+		result.Registrar.Address = address
+	}
 	result.Registrar.WHOISServer = pick(result.Registrar.WHOISServer, part.Registrar.WHOISServer)
 	result.Registrar.RDAPServer = pick(result.Registrar.RDAPServer, part.Registrar.RDAPServer)
 	result.Registrar.Source = pick(result.Registrar.Source, part.Registrar.Source)

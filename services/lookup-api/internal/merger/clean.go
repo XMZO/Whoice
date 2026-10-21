@@ -75,3 +75,16 @@ func cleanContactValue(value string) string {
 	}
 	return value
 }
+
+// contactPhoneValue drops all-zero placeholder numbers ("+000000000").
+func contactPhoneValue(value string) string {
+	if strings.Trim(strings.Map(func(r rune) rune {
+		if r >= '0' && r <= '9' {
+			return r
+		}
+		return -1
+	}, value), "0") == "" {
+		return ""
+	}
+	return value
+}
