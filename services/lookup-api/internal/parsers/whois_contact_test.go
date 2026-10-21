@@ -43,3 +43,17 @@ func TestWHOISQueriedObjectDoesNotExistIsUnregistered(t *testing.T) {
 		t.Fatalf("status: %q", part.Status)
 	}
 }
+
+func TestWHOISNoObjectFoundIsUnregistered(t *testing.T) {
+	raw := model.RawResponse{Source: model.SourceWHOIS, Server: "registry.ps", Query: "adadaw.ps", Body: "Domain Name: adadaw.ps\nDomain Status: No Object Found\nURL of the ICANN Whois Inaccuracy Complaint Form: https://www.icann.org/wicf/\n"}
+	part, err := (WHOISParser{}).Parse(context.Background(), raw, model.NormalizedQuery{Type: model.QueryDomain, Query: "adadaw.ps"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if part.Status != model.StatusUnregistered {
+		t.Fatalf("status: %q", part.Status)
+	}
+	for _, status := range part.Statuses {
+		t.Fatalf("a miss should not report domain statuses, got %#v", status)
+	}
+}

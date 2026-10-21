@@ -31,6 +31,8 @@ var unregisteredPatterns = []*regexp.Regexp{
 	// "The queried object does not exist: no matching objects found".
 	regexp.MustCompile(`(?i)\bqueried object does not exist\b`),
 	regexp.MustCompile(`(?i)\bno matching objects? found\b`),
+	// PNINA (.ps): "Domain Status: No Object Found".
+	regexp.MustCompile(`(?i)\bno object found\b`),
 }
 
 var reservedPatterns = []*regexp.Regexp{
@@ -155,6 +157,12 @@ func (WHOISParser) Parse(_ context.Context, raw model.RawResponse, q model.Norma
 	partial.Network.Type = firstValue(fields, "nettype")
 	partial.Network.OriginAS = firstValue(fields, "originas", "origin as")
 	partial.Network.Country = firstValue(fields, "country")
+
+	// A miss can still carry a "Domain Status:" line ("No Object Found");
+	// it is not an EPP status of a registration.
+	if partial.Status == model.StatusUnregistered {
+		partial.Statuses = nil
+	}
 
 	return partial, nil
 }
