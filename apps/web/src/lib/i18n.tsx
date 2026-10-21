@@ -904,6 +904,22 @@ const messages = {
   },
 } as const;
 
+/**
+ * Picks the UI language from the browser's preferences: Traditional Chinese
+ * for zh-TW/HK/MO or a Hant script tag, Simplified Chinese for other zh, and
+ * English otherwise. The first preference Whoice supports wins.
+ */
+export function detectLocale(preferences: readonly string[]): Locale {
+  for (const preference of preferences) {
+    const tag = (preference || "").toLowerCase();
+    if (tag.startsWith("zh")) {
+      return /hant|-tw|-hk|-mo/.test(tag) ? "zh-TW" : "zh-CN";
+    }
+    if (tag.startsWith("en")) return "en";
+  }
+  return "en";
+}
+
 const I18nContext = createContext<I18nContextValue | null>(null);
 
 export function I18nProvider({ children }: { children: ReactNode }) {
@@ -911,8 +927,10 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>("system");
 
   useEffect(() => {
+    // A language picked in the UI wins; otherwise follow the browser, without
+    // storing it, so a later change of browser language is followed too.
     const storedLocale = localStorage.getItem("whoice.locale") as Locale | null;
-    if (storedLocale && storedLocale in messages) setLocaleState(storedLocale);
+    setLocaleState(storedLocale && storedLocale in messages ? storedLocale : detectLocale(navigator.languages?.length ? navigator.languages : [navigator.language]));
     const storedTheme = localStorage.getItem("whoice.theme") as Theme | null;
     if (storedTheme === "system" || storedTheme === "light" || storedTheme === "dark") {
       setThemeState(storedTheme);

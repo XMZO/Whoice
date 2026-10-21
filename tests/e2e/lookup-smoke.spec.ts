@@ -784,3 +784,22 @@ test("admin panel signs in, saves a setting, and fits one screen", async ({ page
     expect(verticalOverflow).toBeLessThanOrEqual(2);
   }
 });
+
+test("first visit follows the browser language until one is picked", async ({ browser }) => {
+  for (const [locale, lang] of [["zh-CN", "zh-CN"], ["zh-TW", "zh-TW"], ["zh-HK", "zh-TW"], ["fr-FR", "en"]] as const) {
+    const context = await browser.newContext({ locale });
+    const page = await context.newPage();
+    await page.goto("/");
+    await expect(page.locator("html")).toHaveAttribute("lang", lang);
+    await context.close();
+  }
+
+  // A language picked in the UI is remembered over the browser's.
+  const context = await browser.newContext({ locale: "zh-CN" });
+  const page = await context.newPage();
+  await page.goto("/");
+  await page.locator('select[aria-label="语言"]:visible').first().selectOption("en");
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  await context.close();
+});
