@@ -1,7 +1,9 @@
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
 
-export type Locale = "en" | "zh-CN" | "zh-TW";
-export type Theme = "system" | "light" | "dark";
+import { LOCALE_COOKIE, THEME_COOKIE, detectLocale, isLocale, isTheme, rememberPreference, type Locale, type Theme } from "./preferences";
+
+export type { Locale, Theme };
+export { detectLocale };
 export type I18nKey = keyof typeof messages.en;
 
 type I18nContextValue = {
@@ -904,39 +906,32 @@ const messages = {
   },
 } as const;
 
-/**
- * Picks the UI language from the browser's preferences: Traditional Chinese
- * for zh-TW/HK/MO or a Hant script tag, Simplified Chinese for other zh, and
- * English otherwise. The first preference Whoice supports wins.
- */
-export function detectLocale(preferences: readonly string[]): Locale {
-  for (const preference of preferences) {
-    const tag = (preference || "").toLowerCase();
-    if (tag.startsWith("zh")) {
-      return /hant|-tw|-hk|-mo/.test(tag) ? "zh-TW" : "zh-CN";
-    }
-    if (tag.startsWith("en")) return "en";
-  }
-  return "en";
-}
-
 const I18nContext = createContext<I18nContextValue | null>(null);
 
-export function I18nProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>("en");
-  const [theme, setThemeState] = useState<Theme>("system");
+// initialLocale/initialTheme come from the server render (cookie or
+// Accept-Language), so the first paint is already right.
+export function I18nProvider({ children, initialLocale, initialTheme }: { children: ReactNode; initialLocale?: Locale; initialTheme?: Theme }) {
+  const [locale, setLocaleState] = useState<Locale>(initialLocale ?? "en");
+  const [theme, setThemeState] = useState<Theme>(initialTheme ?? "system");
 
   useEffect(() => {
-    // A language picked in the UI wins; otherwise follow the browser, without
-    // storing it, so a later change of browser language is followed too.
-    const storedLocale = localStorage.getItem("whoice.locale") as Locale | null;
-    setLocaleState(storedLocale && storedLocale in messages ? storedLocale : detectLocale(navigator.languages?.length ? navigator.languages : [navigator.language]));
-    const storedTheme = localStorage.getItem("whoice.theme") as Theme | null;
-    if (storedTheme === "system" || storedTheme === "light" || storedTheme === "dark") {
+    // A choice made before cookies were used lives only in localStorage:
+    // adopt it once and copy it to the cookie so the server renders it next
+    // time. Without any choice the server already picked the browser language.
+    const storedLocale = localStorage.getItem(LOCALE_COOKIE);
+    if (isLocale(storedLocale)) {
+      setLocaleState(storedLocale);
+      rememberPreference(LOCALE_COOKIE, storedLocale);
+    } else if (!initialLocale) {
+      setLocaleState(detectLocale(navigator.languages?.length ? navigator.languages : [navigator.language]));
+    }
+    const storedTheme = localStorage.getItem(THEME_COOKIE);
+    if (isTheme(storedTheme)) {
       setThemeState(storedTheme);
       applyTheme(storedTheme);
+      rememberPreference(THEME_COOKIE, storedTheme);
     } else {
-      applyTheme("system");
+      applyTheme(initialTheme ?? "system");
     }
     if (process.env.NODE_ENV === "production" && "serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js").catch(() => undefined);
@@ -952,11 +947,13 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     theme,
     setLocale(next) {
       setLocaleState(next);
-      localStorage.setItem("whoice.locale", next);
+      localStorage.setItem(LOCALE_COOKIE, next);
+      rememberPreference(LOCALE_COOKIE, next);
     },
     setTheme(next) {
       setThemeState(next);
-      localStorage.setItem("whoice.theme", next);
+      localStorage.setItem(THEME_COOKIE, next);
+      rememberPreference(THEME_COOKIE, next);
       applyTheme(next);
     },
     t(key) {
