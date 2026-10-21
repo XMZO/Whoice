@@ -85,8 +85,9 @@ func (n Normalizer) NormalizeWithOptions(input string, opts model.LookupOptions)
 		}, nil
 	}
 
-	host := extractHost(input)
+	host := extractHost(mailboxDomain(trimWrapping(input)))
 	host = normalizeDomainSeparators(host)
+	host = cleanDomainTypos(host)
 	host = strings.Trim(strings.ToLower(host), ".")
 	host = strings.TrimSuffix(host, ":")
 	if host == "" {
@@ -126,6 +127,50 @@ func (n Normalizer) NormalizeWithOptions(input string, opts model.LookupOptions)
 		Suffix:           suffix,
 		RegisteredDomain: registeredDomain,
 	}, nil
+}
+
+var repeatedDots = regexp.MustCompile(`\.{2,}`)
+
+// wrappingPairs are quotes and brackets people paste around a name.
+var wrappingPairs = map[rune]rune{
+	'"': '"', '\'': '\'', '`': '`', '“': '”', '‘': '’', '「': '」', '『': '』',
+	'<': '>', '(': ')', '（': '）', '《': '》', '【': '】', '{': '}',
+}
+
+// trimWrapping strips matching quotes or brackets around the whole input
+// and trailing sentence punctuation ("example.com," or "example.com。").
+func trimWrapping(input string) string {
+	for {
+		runes := []rune(input)
+		if len(runes) < 2 {
+			break
+		}
+		closing, ok := wrappingPairs[runes[0]]
+		if !ok || runes[len(runes)-1] != closing {
+			break
+		}
+		input = string(runes[1 : len(runes)-1])
+	}
+	return strings.TrimRight(input, ",;!?，；！？、")
+}
+
+// mailboxDomain turns an e-mail address ("admin@example.com", optionally
+// with "mailto:") into its domain. URLs and paths are left to extractHost.
+func mailboxDomain(input string) string {
+	if strings.Contains(input, "/") {
+		return input
+	}
+	if at := strings.LastIndex(input, "@"); at >= 0 {
+		return input[at+1:]
+	}
+	return input
+}
+
+// cleanDomainTypos fixes common slips in a host name: repeated dots
+// ("suki..com") and a wildcard label ("*.example.com").
+func cleanDomainTypos(host string) string {
+	host = strings.TrimPrefix(host, "*.")
+	return repeatedDots.ReplaceAllString(host, ".")
 }
 
 func cleanInput(input string) string {

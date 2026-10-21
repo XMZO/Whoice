@@ -18,7 +18,8 @@ export function normalizeLookupInput(value: string) {
     if (/\s/.test(char) || /[\u0000-\u001f\u007f]/.test(char)) continue;
     output += ",，。．｡".includes(char) ? "." : char;
   }
-  return output.trim();
+  // "suki..com" → "suki.com"; the API applies the same and further cleanup.
+  return output.replace(/\.{2,}/g, ".").trim();
 }
 
 export function normalizeLookupOptions(options: LookupOptions = {}): LookupOptions {

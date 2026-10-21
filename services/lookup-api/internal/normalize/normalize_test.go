@@ -137,3 +137,34 @@ func TestNormalizeDomainInputError(t *testing.T) {
 		t.Fatalf("error type: got %T want InputError", err)
 	}
 }
+
+func TestNormalizeCleansCommonDomainSlips(t *testing.T) {
+	n := New()
+	for input, want := range map[string]string{
+		"suki..com":                       "suki.com",
+		"suki...com.":                     "suki.com",
+		".suki.com":                       "suki.com",
+		`"example.com"`:                   "example.com",
+		"<example.com>":                   "example.com",
+		"（example.com）":                   "example.com",
+		"“example.com”":                   "example.com",
+		"example.com,":                    "example.com",
+		"example.com。":                    "example.com",
+		"admin@example.com":               "example.com",
+		"mailto:admin@example.com":        "example.com",
+		"*.example.com":                   "example.com",
+		"https://user@www..example.com/a": "www.example.com",
+	} {
+		q, err := n.Normalize(input)
+		if err != nil {
+			t.Fatalf("%q: %v", input, err)
+		}
+		if q.Query != want {
+			t.Fatalf("%q: got %q want %q", input, q.Query, want)
+		}
+	}
+	// IPv6 in brackets keeps working.
+	if q, err := n.Normalize("[2001:db8::1]"); err != nil || q.Type != model.QueryIPv6 {
+		t.Fatalf("bracketed IPv6: %#v %v", q, err)
+	}
+}

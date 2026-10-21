@@ -271,6 +271,21 @@ const ERROR_TITLES: Record<string, T3> = {
   service_unavailable: t3("The lookup service is not ready", "查询服务尚未就绪", "查詢服務尚未就緒"),
 };
 
+// Explanations for errors caused by the input itself; other errors get the
+// generic source/API hint.
+const INPUT_HINT = t3(
+  "Check the spelling. Enter a domain (example.com), an IP address, a CIDR range, or an ASN (AS13335).",
+  "请检查拼写。可以输入域名（example.com）、IP 地址、CIDR 网段或 ASN（AS13335）。",
+  "請檢查拼寫。可以輸入網域（example.com）、IP 位址、CIDR 網段或 ASN（AS13335）。",
+);
+
+const ERROR_MESSAGES: Record<string, T3> = {
+  query_required: INPUT_HINT,
+  invalid_query: INPUT_HINT,
+  invalid_domain: INPUT_HINT,
+  rate_limited: t3("Wait for the rate-limit window to reset, then search again.", "请等待限流窗口重置后再查询。", "請等待限流視窗重置後再查詢。"),
+};
+
 const GENERIC_ERROR: { title: T3; message: T3 } = {
   title: t3("Lookup failed", "查询失败", "查詢失敗"),
   message: t3("Switch source mode or check whether the lookup API is running.", "可以切换数据来源，或检查查询 API 是否在运行。", "可以切換資料來源，或檢查查詢 API 是否在執行。"),
@@ -285,7 +300,7 @@ function errorView(response: APIResponse, status: number): ErrorViewModel {
   return {
     eyebrow: status ? `HTTP ${status}` : code,
     title: ERROR_TITLES[code] || GENERIC_ERROR.title,
-    message: GENERIC_ERROR.message,
+    message: ERROR_MESSAGES[code] || GENERIC_ERROR.message,
     detail: [code, message].filter(Boolean).join(": "),
   };
 }
