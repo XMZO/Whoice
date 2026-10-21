@@ -507,12 +507,18 @@ export function pricingSummary(result: LookupResult, locale: string) {
 
 function PriceTile({ label, offer, fallbackCurrency }: { label: string; offer?: PricingOffer; fallbackCurrency: string }) {
   const { locale } = useI18n();
-  const value = formatMoney(offer?.price, offer?.currency || fallbackCurrency, locale);
+  // Intl joins a currency code with a no-break space; a plain space lets a
+  // long amount ("IDR 987,654,322") wrap between code and number.
+  const value = formatMoney(offer?.price, offer?.currency || fallbackCurrency, locale)?.replace(/\u00a0/g, " ");
   const href = safeExternalURL(offer?.website);
+  const longestPart = Math.max(...(value || "—").split(/\s+/).map((part) => part.length), 1);
   return (
     <div className="price-tile">
       <span className="price-label">{label}</span>
-      <strong className="price-value">{value || "—"}</strong>
+      {/* --chars lets CSS shrink long amounts (e.g. ₫1.234.567) to the tile width. */}
+      <strong className="price-value" title={value || undefined} style={{ "--chars": longestPart } as CSSProperties}>
+        {value || "—"}
+      </strong>
       {offer?.registrar ? (
         href ? (
           <a className="price-registrar" href={href} target="_blank" rel="noreferrer">{offer.registrar}</a>

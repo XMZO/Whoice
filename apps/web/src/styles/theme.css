@@ -54,6 +54,9 @@
   --focus-ring: var(--link);
   /* Per-element entrance delay; components set it inline for staggered animations. */
   --rise-delay: 0s;
+  /* Price tiles: base amount size and character count (set per tile). */
+  --price-size: 18px;
+  --chars: 8;
   --raw-bg: var(--panel-subtle);
   --raw-text: var(--text);
 

@@ -1526,6 +1526,7 @@ button.src-tag {
 .price-tile {
   background: var(--panel-subtle);
   border-radius: 9px;
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -1544,10 +1545,16 @@ button.src-tag {
   font-size: 12px;
 }
 
+/* The amount is monospaced (0.6em per character), so dividing the tile
+   width by the longest word's length gives the largest size that fits;
+   short amounts keep the base size. A currency code may wrap above a long
+   number; overflow-wrap is the last resort for extreme amounts. */
 .price-value {
   font-family: var(--mono);
-  font-size: 18px;
+  font-size: clamp(10px, calc(100cqi / (var(--chars) * 0.6)), var(--price-size));
   font-weight: 600;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .price-registrar {
@@ -3625,6 +3632,7 @@ button.src-tag {
   }
 
   .result-lower {
+    align-items: stretch;
     display: flex;
     flex: 1 1 auto;
     flex-direction: column;
@@ -3794,7 +3802,7 @@ button.src-tag {
   }
 
   .price-value {
-    font-size: 19px;
+    --price-size: 19px;
   }
 
   .moz-tile {
