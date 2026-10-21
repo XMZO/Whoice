@@ -4565,13 +4565,52 @@ button.src-tag {
   font-size: 11.5px;
 }
 
-.adm-suffix-view {
-  display: grid;
-  gap: 8px;
-  margin-top: 12px;
+.adm-suffix-line {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 10px;
 }
 
-.adm-suffix-head {
+.adm-link-button {
+  background: none;
+  border: 0;
+  color: var(--link);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0;
+}
+
+.adm-link-button:hover {
+  text-decoration: underline;
+}
+
+/* Sized to its content: the whole list shows at once, without an inner
+   scrollbar, on any screen it fits. */
+.adm-dialog {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-popover);
+  color: var(--text);
+  max-width: min(920px, calc(100vw - 32px));
+  padding: 0;
+  width: 100%;
+}
+
+.adm-dialog::backdrop {
+  background: rgb(0 0 0 / 0.35);
+}
+
+.adm-dialog-body {
+  display: grid;
+  gap: 12px;
+  padding: 16px 18px 18px;
+}
+
+.adm-dialog-head {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
@@ -4579,21 +4618,16 @@ button.src-tag {
 }
 
 .adm-suffix-filter {
-  margin-left: auto;
-  max-width: 200px;
+  max-width: 180px;
 }
 
 .adm-suffix-list {
-  border: 1px solid var(--hair);
-  border-radius: var(--radius-control);
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
   list-style: none;
   margin: 0;
-  max-height: 168px;
-  overflow: auto;
-  padding: 8px;
+  padding: 0;
 }
 
 .adm-suffix-list li {

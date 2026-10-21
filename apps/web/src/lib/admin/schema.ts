@@ -183,19 +183,6 @@ export const SETTINGS_SECTIONS: Section[] = [
         ],
       },
       {
-        title: t3("Fileable suffixes", "可备案后缀", "可備案後綴"),
-        view: "icp-suffixes",
-        fields: [
-          {
-            type: "list",
-            path: "icp.extra_suffixes",
-            label: t3("Extra fileable suffixes", "额外的可备案后缀", "額外的可備案後綴"),
-            hint: t3("Newly approved TLDs missing from the built-in list", "内置名单里还没有的新批复顶级域", "內建名單裡還沒有的新批覆頂級域"),
-            placeholder: "io",
-          },
-        ],
-      },
-      {
         title: t3("Caching", "缓存", "快取"),
         fields: [
           duration("icp.timeout", t3("Timeout", "超时", "逾時")),
@@ -206,8 +193,16 @@ export const SETTINGS_SECTIONS: Section[] = [
       },
       {
         title: t3("Advanced", "高级", "進階"),
+        view: "icp-suffixes",
         fields: [
           { type: "list", path: "icp.blocklist", label: t3("Hidden domains", "隐藏的域名", "隱藏的網域"), hint: t3("Exact names or *.example.com", "精确域名或 *.example.com", "精確網域或 *.example.com"), placeholder: "*.example.com" },
+          {
+            type: "list",
+            path: "icp.extra_suffixes",
+            label: t3("Extra fileable suffixes", "额外的可备案后缀", "額外的可備案後綴"),
+            hint: t3("Newly approved TLDs missing from the built-in list", "内置名单里还没有的新批复顶级域", "內建名單裡還沒有的新批覆頂級域"),
+            placeholder: "io",
+          },
           { type: "text", path: "icp.base_url", label: t3("MIIT API URL", "工信部接口地址", "工信部介面位址"), mono: true },
           { type: "number", path: "icp.page_size", label: t3("Page size", "每页条数", "每頁筆數"), min: 1 },
         ],
