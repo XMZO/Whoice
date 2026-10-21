@@ -784,7 +784,7 @@ func nameserversFromValues(values []string) []model.Nameserver {
 	var out []model.Nameserver
 	for _, value := range values {
 		host := strings.ToLower(strings.TrimSuffix(firstToken(value), "."))
-		if host == "" || !strings.Contains(host, ".") {
+		if host == "" || !strings.Contains(host, ".") || isPlaceholderNameserver(host) {
 			continue
 		}
 		if !hasNameserver(out, host) {
@@ -792,6 +792,16 @@ func nameserversFromValues(values []string) []model.Nameserver {
 		}
 	}
 	return out
+}
+
+// isPlaceholderNameserver matches slot fillers registries print for unused
+// nameserver lines (.uz: "Name Server: not.defined."), which are not hosts.
+func isPlaceholderNameserver(host string) bool {
+	switch strings.Trim(strings.ToLower(host), ". ") {
+	case "not.defined", "not-defined", "notdefined", "none", "n/a", "no.nameserver", "not.set", "undefined", "-":
+		return true
+	}
+	return false
 }
 
 func kzNameservers(fields map[string][]string) []model.Nameserver {

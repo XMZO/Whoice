@@ -158,7 +158,7 @@ func (WHOISParser) Parse(_ context.Context, raw model.RawResponse, q model.Norma
 			continue
 		}
 		host := strings.ToLower(strings.TrimSuffix(nsFields[0], "."))
-		if host != "" && !hasNameserver(partial.Nameservers, host) {
+		if host != "" && !isPlaceholderNameserver(host) && !hasNameserver(partial.Nameservers, host) {
 			partial.Nameservers = append(partial.Nameservers, model.Nameserver{Host: host})
 		}
 	}

@@ -131,3 +131,21 @@ func TestShortUnrecognizedWHOISReplyIsAnError(t *testing.T) {
 		}
 	}
 }
+
+func TestPlaceholderNameserversAreDropped(t *testing.T) {
+	body := "Domain Name: kun.uz\nName Server: daniella.ns.cloudflare.com.\nName Server: jeremy.ns.cloudflare.com.\nName Server: not.defined.\nName Server: not.defined.\n"
+	raw := model.RawResponse{Source: model.SourceWHOIS, Server: "whois.cctld.uz", Query: "kun.uz", Body: body}
+	for _, parser := range []Parser{WHOISParser{}, UZWHOISParser{}} {
+		part, err := parser.Parse(context.Background(), raw, model.NormalizedQuery{Type: model.QueryDomain, Query: "kun.uz"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var hosts []string
+		for _, ns := range part.Nameservers {
+			hosts = append(hosts, ns.Host)
+		}
+		if len(hosts) != 2 || hosts[0] != "daniella.ns.cloudflare.com" || hosts[1] != "jeremy.ns.cloudflare.com" {
+			t.Fatalf("%T nameservers: %v", parser, hosts)
+		}
+	}
+}
