@@ -1,35 +1,20 @@
-const STATIC_CACHE = "whoice-static-v3";
-const OLD_CACHES = ["whoice-shell-v1", "whoice-static-v2"];
-const STATIC_ASSETS = ["/", "/docs", "/status", "/manifest.webmanifest", "/icon.svg"];
-
-self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(STATIC_CACHE).then((cache) => cache.addAll(STATIC_ASSETS)));
+// Whoice no longer uses a service worker. Earlier versions cached "/", "/docs"
+// and "/status" cache-first, so browsers kept showing the pre-redesign pages.
+// This replacement (a changed file, so browsers install it on their next
+// visit) deletes those caches, unregisters itself and reloads open tabs; it
+// never intercepts requests.
+self.addEventListener("install", () => {
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches
-      .keys()
-      .then((names) =>
-        Promise.all(
-          names
-            .filter((name) => OLD_CACHES.includes(name) || (name.startsWith("whoice-") && name !== STATIC_CACHE))
-            .map((name) => caches.delete(name))
-        )
-      )
-      .then(() => self.clients.claim())
-  );
-});
-
-self.addEventListener("fetch", (event) => {
-  const request = event.request;
-  if (request.method !== "GET") return;
-  const url = new URL(request.url);
-  if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith("/api/lookup") || url.pathname.startsWith("/api/og")) return;
-  if (!STATIC_ASSETS.includes(url.pathname)) return;
-  event.respondWith(
-    caches.match(request).then((cached) => cached || fetch(request))
+    (async () => {
+      const names = await caches.keys();
+      await Promise.all(names.filter((name) => name.startsWith("whoice-")).map((name) => caches.delete(name)));
+      await self.registration.unregister();
+      const windows = await self.clients.matchAll({ type: "window" });
+      await Promise.all(windows.map((client) => client.navigate(client.url).catch(() => undefined)));
+    })(),
   );
 });

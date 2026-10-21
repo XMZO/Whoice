@@ -22,8 +22,9 @@ export default function App({ Component, pageProps, initialLocale, initialTheme 
     <I18nProvider initialLocale={initialLocale} initialTheme={initialTheme}>
       <Head>
         <meta name="theme-color" content="#edf1f2" />
-        <link rel="manifest" href="/manifest.webmanifest" />
-        <link rel="icon" href="/icon.svg" />
+        {/* Versioned so browsers drop icons and manifests cached before the redesign. */}
+        <link rel="manifest" href="/manifest.webmanifest?v=2" />
+        <link rel="icon" href="/icon.svg?v=2" />
       </Head>
       <Component {...pageProps} />
     </I18nProvider>

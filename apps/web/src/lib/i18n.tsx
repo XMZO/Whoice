@@ -933,12 +933,15 @@ export function I18nProvider({ children, initialLocale, initialTheme }: { childr
     } else {
       applyTheme(initialTheme ?? "system");
     }
-    if (process.env.NODE_ENV === "production" && "serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js").catch(() => undefined);
-    } else if (process.env.NODE_ENV !== "production" && "serviceWorker" in navigator) {
+    // Earlier versions registered a cache-first service worker that pinned
+    // old pages; remove any that is left, together with its caches.
+    if ("serviceWorker" in navigator) {
       navigator.serviceWorker.getRegistrations().then((registrations) => {
         registrations.forEach((registration) => void registration.unregister());
       }).catch(() => undefined);
+    }
+    if ("caches" in window) {
+      caches.keys().then((names) => Promise.all(names.filter((name) => name.startsWith("whoice-")).map((name) => caches.delete(name)))).catch(() => undefined);
     }
   }, []);
 
