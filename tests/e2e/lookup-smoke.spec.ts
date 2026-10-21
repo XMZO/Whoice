@@ -803,3 +803,25 @@ test("first visit follows the browser language until one is picked", async ({ br
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await context.close();
 });
+
+test("a failed provider is greyed out without a warning while another one answered", async ({ page }) => {
+  const query = "quiet-provider.test";
+  await seedLookup(
+    page,
+    query,
+    lookupFixture(query, {
+      source: { primary: "rdap", used: ["rdap"], errors: [{ source: "whois", error: "connection refused" }] },
+      meta: {
+        elapsedMs: 9,
+        warnings: ["empty WHOIS response"],
+        providers: [
+          { source: "rdap", status: "ok", elapsedMs: 5, server: "https://rdap.example/" },
+          { source: "whois", status: "error", elapsedMs: 4, server: "whois.example", error: "connection refused" },
+        ],
+      },
+    }),
+  );
+  await expect(page.locator(".warn-pill")).toHaveCount(0);
+  await showSection(page, /Sources/);
+  await expect(page.locator(".trace-row.trace-quiet")).toContainText("connection refused");
+});

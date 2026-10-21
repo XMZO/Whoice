@@ -189,6 +189,11 @@ function isDNSWarning(warning: string) {
   return warning.startsWith("DNS ") || warning.startsWith("Registry/WHOIS nameservers differ");
 }
 
+// Parser notes about a single provider's reply; the provider row already shows them.
+function isProviderWarning(warning: string) {
+  return /^(RDAP returned HTTP \d+|empty (RDAP|WHOIS) response|invalid RDAP JSON)$/.test(warning);
+}
+
 function rawText(result: LookupResult) {
   return [result.raw.whois, result.raw.whoisWeb, result.raw.rdap, result.raw.dns].filter(Boolean).join("\n\n");
 }
@@ -478,18 +483,24 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
   const enrichmentError = enrichmentState.identity === currentEnrichmentIdentity ? enrichmentState.error : undefined;
   const dnsPending = Boolean(result && pendingEnrichments.includes("dns"));
   const pricingPending = Boolean(result && !result.enrichment?.pricing && visibleEnrichments.includes("pricing") && (enrichmentLoading || pendingEnrichments.includes("pricing")));
-  const warnings = [
-    ...(enrichmentError ? [`enrichment: ${enrichmentError}`] : []),
-    ...metaWarnings,
-    ...sourceErrors.map((error) => `${error.source}: ${error.error}`),
-  ];
   // Each warning is shown once, next to what it is about: DNS warnings in the
   // DNS card, provider failures in their source row, the rest under sources.
+  // RDAP/WHOIS servers fail often; while another source answered, a failed one
+  // only greys out its row instead of raising a warning.
   const dnsWarnings = metaWarnings.filter(isDNSWarning);
-  const failedProviders = new Set((result?.meta?.providers || []).filter((provider) => provider.status === "error").map((provider) => provider.source));
+  const providers = result?.meta?.providers || [];
+  const quietProviders = providers.some((provider) => provider.status === "ok" && provider.source !== "dns");
+  const failedProviders = new Set(providers.filter((provider) => provider.status === "error").map((provider) => provider.source));
+  const loudMetaWarnings = metaWarnings.filter((warning) => !(quietProviders && isProviderWarning(warning)));
+  const loudSourceErrors = sourceErrors.filter((error) => !(quietProviders && failedProviders.has(error.source)));
+  const warnings = [
+    ...(enrichmentError ? [`enrichment: ${enrichmentError}`] : []),
+    ...loudMetaWarnings,
+    ...loudSourceErrors.map((error) => `${error.source}: ${error.error}`),
+  ];
   const sourceWarnings = [
     ...(enrichmentError ? [`enrichment: ${enrichmentError}`] : []),
-    ...metaWarnings.filter((warning) => !isDNSWarning(warning)),
+    ...loudMetaWarnings.filter((warning) => !isDNSWarning(warning)),
     ...sourceErrors.filter((error) => !failedProviders.has(error.source)).map((error) => `${error.source}: ${error.error}`),
   ];
 

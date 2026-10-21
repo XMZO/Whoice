@@ -1169,6 +1169,8 @@ export function SourcesSection({
   const missing = (["rdap", "whois", "whoisWeb", "dns"] as const).filter((source) => !listed.has(source) && (used.includes(source) || rawFor(source)));
   const unused = (["rdap", "whois", "whoisWeb"] as const).filter((source) => !listed.has(source) && !used.includes(source) && !rawFor(source));
   const registry = result.registry || {};
+  // A failed source is only greyed out while another registry source answered.
+  const quiet = providers.some((item) => item.status === "ok" && item.source !== "dns");
   return (
     <section id="evidence" className="result-card sources-panel" aria-labelledby="h-evidence">
       {showHeader ? (
@@ -1186,9 +1188,9 @@ export function SourcesSection({
           const raw = rawFor(provider.source);
           const meta = [provider.statusCode ? `HTTP ${provider.statusCode}` : "", formatBytes(provider.bytes), `${provider.elapsedMs} ms`].filter(Boolean).join(" · ");
           return (
-            <div className={`trace-row trace-${provider.status}`} key={`${provider.source}-${provider.server || provider.elapsedMs}`}>
+            <div className={`trace-row trace-${provider.status}${quiet && provider.status === "error" ? " trace-quiet" : ""}`} key={`${provider.source}-${provider.server || provider.elapsedMs}`}>
               <span className="trace-name">
-                <span className={`dot ${provider.status === "ok" ? "dot-ok" : provider.status === "error" ? "dot-error" : provider.status === "stopped" ? "dot-stopped" : "dot-hollow"}`} aria-hidden="true" />
+                <span className={`dot ${provider.status === "ok" ? "dot-ok" : provider.status === "error" ? (quiet ? "dot-hollow" : "dot-error") : provider.status === "stopped" ? "dot-stopped" : "dot-hollow"}`} aria-hidden="true" />
                 {sourceName(provider.source)}
                 {provider.source === primary && <span className="pill pill-accent pill-xs">{t("primarySource")}</span>}
               </span>

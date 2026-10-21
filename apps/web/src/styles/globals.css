@@ -1828,6 +1828,11 @@ button.src-tag {
   overflow-wrap: anywhere;
 }
 
+/* A failed source while another one answered: greyed out, not a warning. */
+.trace-quiet {
+  color: var(--muted);
+}
+
 .trace-unused .trace-meta {
   font-family: var(--sans);
   font-size: 12.5px;
