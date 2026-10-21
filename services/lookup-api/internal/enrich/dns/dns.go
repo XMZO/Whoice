@@ -924,7 +924,7 @@ func queryDoHJSON(ctx context.Context, parsed url.URL, host, recordType string) 
 		return nil, nil
 	}
 	if payload.Status != 0 {
-		return nil, fmt.Errorf("DNS status %d", payload.Status)
+		return nil, dnsStatusError(payload.Status)
 	}
 	wantType := 1
 	if strings.EqualFold(recordType, "AAAA") {
@@ -1139,7 +1139,7 @@ func parseDNSMessageAddrs(body []byte, recordType string) ([]net.IPAddr, error) 
 		return nil, nil
 	}
 	if header.RCode != dnsmessage.RCodeSuccess {
-		return nil, fmt.Errorf("DNS status %d", header.RCode)
+		return nil, dnsStatusError(int(header.RCode))
 	}
 	if err := parser.SkipAllQuestions(); err != nil {
 		return nil, err
@@ -1210,4 +1210,14 @@ func netipMustPrefix(value string) netip.Prefix {
 		panic(err)
 	}
 	return prefix
+}
+
+// dnsStatusError names the response code: "SERVFAIL" says more in the
+// resolver tooltip than "DNS status 2".
+func dnsStatusError(code int) error {
+	names := map[int]string{1: "FORMERR", 2: "SERVFAIL", 4: "NOTIMP", 5: "REFUSED"}
+	if name, ok := names[code]; ok {
+		return errors.New(name)
+	}
+	return fmt.Errorf("DNS status %d", code)
 }

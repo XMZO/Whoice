@@ -880,3 +880,26 @@ test("marketplace listings and registry deletion stages get their own badges", a
   await seedLookup(page, "dropping.test", lookupFixture("dropping.test", { statuses: [{ code: "pending delete" }] }));
   await expect(hero).toContainText("Pending delete");
 });
+
+test("a resolver tooltip stays on screen and never widens the DNS card", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile-chrome", "hover tooltips are a pointer feature");
+  const resolvers = ["Cloudflare", "Google", "Tencent", "Ali"].map((resolver) => ({
+    source: "doh",
+    resolver,
+    status: "error",
+    error: "A: SERVFAIL; AAAA: SERVFAIL",
+  }));
+  await seedLookup(page, "tooltip.test", lookupFixture("tooltip.test", { enrichment: { dns: { a: [], aaaa: [], mx: [], resolvers, elapsedMs: 12 } } }));
+  await showSection(page, /^DNS/);
+  const dots = page.locator(".dns-panel .resolver-dot").filter({ visible: true });
+  await dots.last().hover();
+  const tip = page.locator(".resolver-tooltip");
+  await expect(tip).toContainText("SERVFAIL");
+  const box = await tip.boundingBox();
+  const viewport = page.viewportSize();
+  expect(box && viewport && box.x >= 0 && box.x + box.width <= viewport.width).toBeTruthy();
+  const overflowing = await page.evaluate(() =>
+    [...document.querySelectorAll(".dns-panel, .dns-panel *")].filter((el) => el.scrollWidth > el.clientWidth + 1 && /(auto|scroll)/.test(getComputedStyle(el).overflowX)).length,
+  );
+  expect(overflowing).toBe(0);
+});

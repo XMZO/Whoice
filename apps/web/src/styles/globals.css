@@ -1520,28 +1520,19 @@ button.src-tag {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
-  bottom: calc(100% + 6px);
   box-shadow: var(--shadow-popover);
   color: var(--text);
   font-family: var(--mono);
   font-size: 11px;
   font-weight: 400;
-  left: 0;
-  max-width: min(420px, 80vw);
+  max-width: min(420px, calc(100vw - 24px));
   min-width: 180px;
-  opacity: 0;
   overflow-wrap: anywhere;
   padding: 6px 8px;
   pointer-events: none;
-  position: absolute;
-  transition: opacity 0.12s ease;
+  position: fixed;
   white-space: pre-line;
-  z-index: 30;
-}
-
-.resolver-group:hover .resolver-tooltip,
-.resolver-group:focus-within .resolver-tooltip {
-  opacity: 1;
+  z-index: 60;
 }
 
 /* Pricing */
@@ -4298,14 +4289,6 @@ button.src-tag {
     max-width: none;
     overflow: auto;
     right: 12px;
-  }
-
-  .resolver-group:hover .resolver-tooltip {
-    opacity: 0;
-  }
-
-  .resolver-group:focus-within .resolver-tooltip {
-    opacity: 1;
   }
 
   .lift:hover {

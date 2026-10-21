@@ -492,9 +492,24 @@ const RESOLVER_EMPTY_HINT = t3(
   "已正常回答，但該名稱沒有對應記錄",
 );
 
+const RESOLVER_RCODE_HINT: Record<string, T3> = {
+  SERVFAIL: t3(
+    "SERVFAIL: the resolver could not get an answer from the domain's nameservers (common right after a nameserver change)",
+    "SERVFAIL：解析器没能从域名的权威服务器拿到回答（刚更换服务器时很常见）",
+    "SERVFAIL：解析器沒能從網域的權威伺服器取得回答（剛更換伺服器時很常見）",
+  ),
+  REFUSED: t3("REFUSED: the server refused the query", "REFUSED：服务器拒绝了查询", "REFUSED：伺服器拒絕了查詢"),
+};
+
+// The tooltip is portaled and fixed to the viewport, and only exists while
+// shown, so it can never widen the card it belongs to.
 function ResolverDot({ label, status, source, detail }: { label: string; status: string; source?: string; detail?: string }) {
   const { t } = useI18n();
   const pick = useT3();
+  const anchorRef = useRef<HTMLSpanElement>(null);
+  const tipRef = useRef<HTMLSpanElement>(null);
+  const [open, setOpen] = useState(false);
+  const [style, setStyle] = useState<CSSProperties>({ visibility: "hidden" });
   const failed = status === "error";
   const empty = status === "empty";
   const suffix = failed
@@ -504,17 +519,57 @@ function ResolverDot({ label, status, source, detail }: { label: string; status:
     : empty
       ? pick(source === "doh" ? RESOLVER_EMPTY_DOH : RESOLVER_EMPTY_UDP)
       : "";
-  const tooltip = empty ? [pick(RESOLVER_EMPTY_HINT), detail].filter(Boolean).join("\n") : detail;
+  const rcodeHints = Object.keys(RESOLVER_RCODE_HINT)
+    .filter((code) => (detail || "").includes(code))
+    .map((code) => pick(RESOLVER_RCODE_HINT[code]));
+  const tooltip = empty ? [pick(RESOLVER_EMPTY_HINT), detail].filter(Boolean).join("\n") : [detail, ...rcodeHints].filter(Boolean).join("\n");
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setStyle({ visibility: "hidden" });
+      return;
+    }
+    const anchor = anchorRef.current?.getBoundingClientRect();
+    const tip = tipRef.current?.getBoundingClientRect();
+    if (!anchor || !tip) return;
+    const above = anchor.top - POPOVER_GAP - tip.height;
+    const top = above >= POPOVER_MARGIN ? above : anchor.bottom + POPOVER_GAP;
+    const left = Math.max(POPOVER_MARGIN, Math.min(anchor.left, window.innerWidth - tip.width - POPOVER_MARGIN));
+    setStyle({ left, top });
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [open]);
+
   return (
-    <span className={`resolver-group resolver-dot ${failed ? "is-failed" : empty ? "is-empty" : ""}`} tabIndex={tooltip ? 0 : undefined}>
+    <span
+      ref={anchorRef}
+      className={`resolver-group resolver-dot ${failed ? "is-failed" : empty ? "is-empty" : ""}`}
+      tabIndex={tooltip ? 0 : undefined}
+      onMouseEnter={() => tooltip && setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+      onFocus={() => tooltip && setOpen(true)}
+      onBlur={() => setOpen(false)}
+    >
       <span className="dot" aria-hidden="true" />
       {label}
       {suffix && ` ${suffix}`}
-      {tooltip && (
-        <span className="resolver-tooltip" role="tooltip">
-          {tooltip}
-        </span>
-      )}
+      {open &&
+        tooltip &&
+        createPortal(
+          <span ref={tipRef} className="resolver-tooltip" role="tooltip" style={style}>
+            {tooltip}
+          </span>,
+          document.body,
+        )}
     </span>
   );
 }
