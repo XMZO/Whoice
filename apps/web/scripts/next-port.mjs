@@ -22,6 +22,12 @@ const child = spawn(process.execPath, finalArgs, {
   stdio: "inherit",
 });
 
+// Forward stop signals: as PID 1 in the container this wrapper would
+// otherwise ignore SIGTERM and Docker waits 10s before killing it.
+for (const signal of ["SIGTERM", "SIGINT"]) {
+  process.on(signal, () => child.kill(signal));
+}
+
 child.on("exit", (code, signal) => {
   if (signal) {
     process.kill(process.pid, signal);

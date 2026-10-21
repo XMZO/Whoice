@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/xmzo/whoice/services/lookup-api/internal/admin"
@@ -66,8 +69,21 @@ func main() {
 	}
 	runtimecfg.StartConfigWatcher(context.Background(), server, runtimecfg.Builder{Addr: cfg.Addr, ConfigPath: cfg.ConfigPath}, runtimecfg.DefaultWatchInterval)
 
+	// As PID 1 in a container the process ignores SIGTERM unless it handles
+	// it, which made `docker compose up` wait 10s before killing it.
+	httpServer := &http.Server{Addr: cfg.Addr, Handler: server.Handler()}
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
+	go func() {
+		<-stop
+		log.Printf("shutting down")
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = httpServer.Shutdown(ctx)
+	}()
+
 	log.Printf("whoice lookup-api listening on %s", cfg.Addr)
-	if err := http.ListenAndServe(cfg.Addr, server.Handler()); err != nil {
+	if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
 }
