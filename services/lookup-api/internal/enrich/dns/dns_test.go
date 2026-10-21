@@ -822,3 +822,29 @@ func TestDoHNXDOMAINIsAnEmptyAnswer(t *testing.T) {
 		t.Fatal("SERVFAIL must stay an error")
 	}
 }
+
+func TestNoRecordsWarningOnlyForRegisteredDomains(t *testing.T) {
+	for status, wantWarning := range map[model.ResultStatus]bool{
+		model.StatusRegistered:   true,
+		model.StatusUnknown:      true,
+		model.StatusUnregistered: false,
+		model.StatusReserved:     false,
+	} {
+		result := &model.LookupResult{NormalizedQuery: "awd.ec", Type: model.QueryDomain, Status: status}
+		ApplyWithResolver(context.Background(), result, 0, emptyResolver{})
+		warned := false
+		for _, warning := range result.Meta.Warnings {
+			warned = warned || warning == "DNS enrichment returned no records"
+		}
+		if warned != wantWarning {
+			t.Fatalf("status %q: warned=%v, want %v (%v)", status, warned, wantWarning, result.Meta.Warnings)
+		}
+	}
+}
+
+type emptyResolver struct{}
+
+func (emptyResolver) LookupIPAddr(context.Context, string) ([]net.IPAddr, error) { return nil, nil }
+func (emptyResolver) LookupCNAME(context.Context, string) (string, error)        { return "", nil }
+func (emptyResolver) LookupMX(context.Context, string) ([]*net.MX, error)        { return nil, nil }
+func (emptyResolver) LookupNS(context.Context, string) ([]*net.NS, error)        { return nil, nil }

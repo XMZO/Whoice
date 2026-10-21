@@ -142,7 +142,11 @@ func ApplyWithResolverOptions(ctx context.Context, result *model.LookupResult, o
 	info.Resolvers = recorder.list()
 	info.ElapsedMs = time.Since(start).Milliseconds()
 	if len(info.A) == 0 && len(info.AAAA) == 0 && info.CNAME == "" && len(info.MX) == 0 && len(info.NS) == 0 {
-		result.Meta.Warnings = append(result.Meta.Warnings, "DNS enrichment returned no records")
+		// No records is expected for names that are not registered (or are
+		// reserved); only a registered domain without DNS is worth a warning.
+		if result.Status != model.StatusUnregistered && result.Status != model.StatusReserved {
+			result.Meta.Warnings = append(result.Meta.Warnings, "DNS enrichment returned no records")
+		}
 		return
 	}
 	result.Enrichment.DNS = info
