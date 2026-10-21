@@ -395,7 +395,7 @@
       "required": ["source", "status", "elapsedMs"],
       "properties": {
         "source": { "enum": ["rdap", "whois", "whoisWeb", "dns"] },
-        "status": { "enum": ["ok", "error", "skipped"] },
+        "status": { "enum": ["ok", "error", "skipped", "stopped"] },
         "server": { "type": "string" },
         "query": { "type": "string" },
         "statusCode": { "type": "integer" },

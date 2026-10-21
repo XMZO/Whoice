@@ -51,6 +51,17 @@ export const SETTINGS_SECTIONS: Section[] = [
           duration("lookup.timeout", t3("Total timeout", "总超时", "總逾時")),
           duration("lookup.provider_timeout", t3("Per-source timeout", "单个来源超时", "單一來源逾時")),
           { type: "number", path: "lookup.whois_follow_limit", label: t3("WHOIS referral depth", "WHOIS 跟随层数", "WHOIS 跟隨層數"), hint: t3("0 disables referral follow", "0 表示不跟随", "0 表示不跟隨"), min: 0, max: 5 },
+          {
+            type: "list",
+            path: "lookup.dns_first_suffixes",
+            label: t3("DNS-first suffixes", "DNS 优先的后缀", "DNS 優先的後綴"),
+            hint: t3(
+              "Registry WHOIS unreachable: stop waiting 1s after DNS answers (shown as truncated)",
+              "注册局 WHOIS 连不上：DNS 有结果后最多再等 1 秒（显示为已截断）",
+              "註冊局 WHOIS 連不上：DNS 有結果後最多再等 1 秒（顯示為已截斷）",
+            ),
+            placeholder: "uy",
+          },
         ],
       },
       {

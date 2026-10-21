@@ -176,7 +176,7 @@ func (s *Service) lookupFresh(ctx context.Context, q model.NormalizedQuery, opts
 	var stoppedEarly atomic.Bool
 	if s.delegationEligible(q, opts) {
 		stop := func() {}
-		if delegationFirstTLDs[suffixTLD(q.Query)] {
+		if s.cfg.DNSFirstSuffix(q.Query) {
 			stop = func() {
 				stoppedEarly.Store(true)
 				stopProviders()
@@ -188,7 +188,7 @@ func (s *Service) lookupFresh(ctx context.Context, q model.NormalizedQuery, opts
 	rawResponses, sourceErrors, providerTraces := s.runProviders(providerCtx, q, opts, onRaw)
 	previews.finish()
 	if stoppedEarly.Load() {
-		markStoppedEarly(sourceErrors, providerTraces)
+		sourceErrors = markStoppedEarly(sourceErrors, providerTraces)
 	}
 	parts := make([]*model.PartialResult, 0, len(rawResponses))
 	for _, raw := range rawResponses {
@@ -706,13 +706,6 @@ const (
 	delegationGrace = time.Second
 )
 
-// delegationFirstTLDs lists TLDs whose registry WHOIS is unreachable from
-// most networks and that have no RDAP service. Their delegation check runs
-// in parallel with the providers instead of after them timing out.
-var delegationFirstTLDs = map[string]bool{
-	"uy": true, // whois.nic.org.uy:43 does not accept connections
-}
-
 type delegationOutcome struct {
 	part  *model.PartialResult
 	trace *model.ProviderTrace
@@ -747,17 +740,27 @@ func (s *Service) startDelegation(ctx context.Context, q model.NormalizedQuery, 
 
 const stoppedEarlyMessage = "no reply before the DNS delegation check finished"
 
-func markStoppedEarly(errs []model.SourceError, traces []model.ProviderTrace) {
-	for i := range errs {
-		if isCanceled(errs[i].Error) {
-			errs[i].Error = stoppedEarlyMessage
-		}
-	}
+// markStoppedEarly relabels providers cancelled because the DNS check of a
+// lookup.dns_first_suffixes name answered first: their trace becomes
+// "stopped" (shown as truncated, not as a failure) and they leave the
+// source errors.
+func markStoppedEarly(errs []model.SourceError, traces []model.ProviderTrace) []model.SourceError {
+	stopped := map[model.SourceName]bool{}
 	for i := range traces {
 		if traces[i].Status == "error" && isCanceled(traces[i].Error) {
+			traces[i].Status = "stopped"
 			traces[i].Error = stoppedEarlyMessage
+			stopped[traces[i].Source] = true
 		}
 	}
+	kept := errs[:0]
+	for _, item := range errs {
+		if stopped[item.Source] && isCanceled(item.Error) {
+			continue
+		}
+		kept = append(kept, item)
+	}
+	return kept
 }
 
 // isCanceled matches provider errors caused by context cancellation; net
@@ -765,14 +768,6 @@ func markStoppedEarly(errs []model.SourceError, traces []model.ProviderTrace) {
 // error.
 func isCanceled(message string) bool {
 	return strings.Contains(message, context.Canceled.Error()) || strings.Contains(message, "operation was canceled")
-}
-
-func suffixTLD(domain string) string {
-	domain = strings.ToLower(strings.Trim(domain, "."))
-	if index := strings.LastIndex(domain, "."); index >= 0 {
-		return domain[index+1:]
-	}
-	return domain
 }
 
 // whoisUnavailable reports whether WHOIS ran and failed, or was skipped
@@ -790,7 +785,7 @@ func whoisUnreadable(errs []model.SourceError) bool {
 
 func whoisUnavailable(traces []model.ProviderTrace) bool {
 	for _, trace := range traces {
-		if trace.Source == model.SourceWHOIS && (trace.Status == "error" || trace.Status == "skipped") {
+		if trace.Source == model.SourceWHOIS && (trace.Status == "error" || trace.Status == "skipped" || trace.Status == "stopped") {
 			return true
 		}
 	}

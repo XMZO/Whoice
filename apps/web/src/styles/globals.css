@@ -131,6 +131,11 @@ kbd {
   border: 1.5px solid var(--muted);
 }
 
+/* A source the lookup stopped waiting for (truncated), not a failure. */
+.dot-stopped {
+  border: 1.5px solid var(--amber);
+}
+
 /* ---------- Shared controls ---------- */
 
 .brand {

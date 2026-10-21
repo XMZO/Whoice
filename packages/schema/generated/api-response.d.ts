@@ -318,7 +318,7 @@ export interface ResultMeta {
  */
 export interface ProviderTrace {
   source: 'rdap' | 'whois' | 'whoisWeb' | 'dns';
-  status: 'ok' | 'error' | 'skipped';
+  status: 'ok' | 'error' | 'skipped' | 'stopped';
   server?: string;
   query?: string;
   statusCode?: number;

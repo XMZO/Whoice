@@ -970,7 +970,7 @@ components:
           $ref: "#/components/schemas/SourceName"
         status:
           type: string
-          enum: [ok, error, skipped]
+          enum: [ok, error, skipped, stopped]
         server:
           type: string
         query:

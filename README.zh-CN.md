@@ -69,7 +69,7 @@ docker compose exec lookup-api /app/whoice-api reset-admin-password
 | `[server]` | 监听地址、数据目录、`trust_proxy`、自定义与内网查询服务器 |
 | `[api]` | 各接口开关与 IP 白名单 |
 | `[auth]` | `none`、`password`（站点密码）或 `token`（API Token） |
-| `[lookup]` | 超时、RDAP / WHOIS / WHOIS Web 开关、referral 层数 |
+| `[lookup]` | 超时、RDAP / WHOIS / WHOIS Web 开关、referral 层数、DNS 优先的后缀（WHOIS 连不上的注册局） |
 | `[dns]` | 解析器池（IPv4、IPv6、DoH）、fake-IP 过滤、DNSViz 链接 |
 | `[enrichment]` | EPP、注册商、服务商识别、价格（按后缀缓存，默认 7 天）、Moz |
 | `[ai]` | OpenAI 兼容接口或 Ollama 地址、模型、提示词、缓存 |

@@ -1000,6 +1000,13 @@ export function NetworkSection({ result, showHeader = true }: { result: LookupRe
 
 /* ---------- Sources ---------- */
 
+export const TRUNCATED = t3("Truncated", "已截断", "已截斷");
+export const TRUNCATED_DETAIL = t3(
+  "Truncated: DNS confirmed the result first, so the lookup stopped waiting for this server (its suffix is on the DNS-first list).",
+  "已截断：DNS 已先确认结果，不再等待该服务器（后缀在“DNS 优先”名单中）。",
+  "已截斷：DNS 已先確認結果，不再等待該伺服器（後綴在「DNS 優先」名單中）。",
+);
+
 const rawLabelKey: Partial<Record<string, "rawRdap" | "rawWhois">> = { rdap: "rawRdap", whois: "rawWhois", whoisWeb: "rawWhois" };
 
 export function SourcesSection({
@@ -1014,6 +1021,7 @@ export function SourcesSection({
   showHeader?: boolean;
 }) {
   const { t } = useI18n();
+  const pick = useT3();
   const providers = Array.isArray(result.meta?.providers) ? result.meta.providers : [];
   const primary = result.source?.primary;
   const ordered = providers.slice().sort((a, b) => (a.source === primary ? -1 : b.source === primary ? 1 : 0));
@@ -1042,13 +1050,21 @@ export function SourcesSection({
           return (
             <div className={`trace-row trace-${provider.status}`} key={`${provider.source}-${provider.server || provider.elapsedMs}`}>
               <span className="trace-name">
-                <span className={`dot ${provider.status === "ok" ? "dot-ok" : provider.status === "error" ? "dot-error" : "dot-hollow"}`} aria-hidden="true" />
+                <span className={`dot ${provider.status === "ok" ? "dot-ok" : provider.status === "error" ? "dot-error" : provider.status === "stopped" ? "dot-stopped" : "dot-hollow"}`} aria-hidden="true" />
                 {sourceName(provider.source)}
                 {provider.source === primary && <span className="pill pill-accent pill-xs">{t("primarySource")}</span>}
               </span>
               <span className="trace-detail">
                 <span className="trace-server">{displayServer(provider.server) || "—"}</span>
-                <span className="trace-meta">{provider.status === "error" ? `${t("providerFailed")} · ${provider.error || meta}` : provider.status === "skipped" ? provider.error || t("notUsed") : meta}</span>
+                <span className="trace-meta" title={provider.status === "stopped" ? provider.error : undefined}>
+                  {provider.status === "error"
+                    ? `${t("providerFailed")} · ${provider.error || meta}`
+                    : provider.status === "stopped"
+                      ? pick(TRUNCATED_DETAIL)
+                      : provider.status === "skipped"
+                        ? provider.error || t("notUsed")
+                        : meta}
+                </span>
               </span>
               {raw ? (
                 <button type="button" className="btn btn-sm" onClick={() => onOpenRaw(provider.source as RawTab)} title={rawLabelKey[provider.source] ? t(rawLabelKey[provider.source]!) : undefined}>

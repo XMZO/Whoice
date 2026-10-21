@@ -135,6 +135,7 @@ var envBindings = map[string]string{
 	"WHOICE_LOOKUP_TIMEOUT": "lookup.timeout", "WHOICE_PROVIDER_TIMEOUT": "lookup.provider_timeout",
 	"WHOICE_RDAP_ENABLED": "lookup.rdap_enabled", "WHOICE_WHOIS_ENABLED": "lookup.whois_enabled",
 	"WHOICE_WHOIS_WEB_ENABLED": "lookup.whois_web_enabled", "WHOICE_WHOIS_FOLLOW_LIMIT": "lookup.whois_follow_limit",
+	"WHOICE_DNS_FIRST_SUFFIXES": "lookup.dns_first_suffixes",
 	"WHOICE_LOOKUP_FAST_RESPONSE": "lookup.fast_response",
 	"WHOICE_ENRICH_DNS": "dns.enabled", "WHOICE_DNS_TIMEOUT": "dns.timeout",
 	"WHOICE_DNS_IPV4_RESOLVERS": "dns.ipv4_resolvers", "WHOICE_DNS_IPV6_RESOLVERS": "dns.ipv6_resolvers",
@@ -230,6 +231,7 @@ func SettingsView(cfg Config) FileConfig {
 			Timeout: str(FormatDuration(cfg.LookupTimeout)), ProviderTimeout: str(FormatDuration(cfg.ProviderTimeout)),
 			RDAPEnabled: boolean(cfg.RDAPEnabled), WHOISEnabled: boolean(cfg.WHOISEnabled),
 			WHOISWebEnabled: boolean(cfg.WHOISWebEnabled), WHOISFollowLimit: integer(cfg.WHOISFollowLimit),
+			DNSFirstSuffixes: list(cfg.DNSFirstSuffixes),
 			FastResponse: boolean(cfg.LookupFastResponse),
 		},
 		DNS: &DNSConfig{

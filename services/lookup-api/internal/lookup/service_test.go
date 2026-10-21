@@ -423,7 +423,7 @@ func TestDelegationFirstTLDDoesNotWaitForWHOISTimeout(t *testing.T) {
 		Zone: "uy", Server: "a.nic.uy (200.40.30.254)", Status: model.StatusRegistered,
 		Nameservers: []string{"jeff.ns.cloudflare.com"}, Body: "; delegated\n",
 	}}
-	service := NewService(config.Config{LookupTimeout: 20 * time.Second, ProviderTimeout: 10 * time.Second, WHOISEnabled: true},
+	service := NewService(config.Config{LookupTimeout: 20 * time.Second, ProviderTimeout: 10 * time.Second, WHOISEnabled: true, DNSFirstSuffixes: []string{"uy"}},
 		[]providerapi.Provider{hangingProvider{source: model.SourceWHOIS}}, parsers.NewRegistry(parsers.WHOISParser{}))
 	service.delegation = checker
 
@@ -438,14 +438,17 @@ func TestDelegationFirstTLDDoesNotWaitForWHOISTimeout(t *testing.T) {
 	if result.Status != model.StatusRegistered || result.Source.Primary != model.SourceDNS {
 		t.Fatalf("status %q primary %q", result.Status, result.Source.Primary)
 	}
-	if len(result.Source.Errors) != 1 || result.Source.Errors[0].Error != stoppedEarlyMessage {
-		t.Fatalf("source errors: %#v", result.Source.Errors)
+	if len(result.Source.Errors) != 0 {
+		t.Fatalf("a truncated WHOIS is not a source error: %#v", result.Source.Errors)
+	}
+	if len(result.Meta.Providers) == 0 || result.Meta.Providers[0].Status != "stopped" || result.Meta.Providers[0].Error != stoppedEarlyMessage {
+		t.Fatalf("WHOIS trace should be marked stopped: %#v", result.Meta.Providers)
 	}
 }
 
 func TestDelegationFirstPrefersWHOISWhenItAnswers(t *testing.T) {
 	checker := &fakeDelegation{result: &delegation.Result{Zone: "uy", Status: model.StatusRegistered, Body: "; delegated\n"}}
-	service := NewService(config.Config{LookupTimeout: 5 * time.Second, ProviderTimeout: 5 * time.Second, WHOISEnabled: true},
+	service := NewService(config.Config{LookupTimeout: 5 * time.Second, ProviderTimeout: 5 * time.Second, WHOISEnabled: true, DNSFirstSuffixes: []string{"uy"}},
 		[]providerapi.Provider{testProvider{source: model.SourceWHOIS, raw: &model.RawResponse{
 			Source: model.SourceWHOIS, Server: "whois.nic.org.uy",
 			Body: "Domain Name: KA.UY\nRegistrar: Example Registrar\nName Server: NS1.EXAMPLE.UY\n",

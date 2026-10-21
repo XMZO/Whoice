@@ -123,6 +123,9 @@ whois_web_enabled = ` + tomlBool(cfg.WHOISWebEnabled) + `
 # Number of registrar WHOIS referral hops to follow by default. 0 disables referral follow.
 # 默认跟随 registrar WHOIS referral 的次数；0 表示不跟随。
 whois_follow_limit = ` + tomlInt(cfg.WHOISFollowLimit) + `
+# Suffixes whose registry WHOIS is unreachable: once the DNS delegation check answers, stop waiting for WHOIS after one second.
+# 注册局 WHOIS 无法连接的后缀：DNS 委派检查有结果后，最多再等 WHOIS 一秒。
+dns_first_suffixes = ` + tomlList(cfg.DNSFirstSuffixes) + `
 # Return the parsed RDAP/WHOIS result first and let the Web UI call /api/lookup/enrich for slower DNS/pricing/Moz data.
 # This makes first paint much faster when DNS/DoH or external enrichment is slow. Set false to wait for all enrichment in /api/lookup.
 # 先返回 RDAP/WHOIS 主结果，再由 Web 调 /api/lookup/enrich 补 DNS/价格/Moz 等较慢数据。

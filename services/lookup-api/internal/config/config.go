@@ -44,6 +44,7 @@ type Config struct {
 	WHOISEnabled           bool
 	WHOISWebEnabled        bool
 	WHOISFollowLimit       int
+	DNSFirstSuffixes       []string
 	LookupFastResponse     bool
 	AllowCustomServers     bool
 	AllowPrivateServers    bool
@@ -200,6 +201,7 @@ func Default() Config {
 		RDAPEnabled:            true,
 		WHOISEnabled:           true,
 		WHOISFollowLimit:       1,
+		DNSFirstSuffixes:       []string{"uy"},
 		LookupFastResponse:     true,
 		EnrichEPP:              true,
 		EnrichRegistrar:        true,
@@ -347,6 +349,11 @@ func (c Config) Validate() error {
 	if c.AIMaxAttempts < 1 || c.AIMaxAttempts > 3 {
 		problems = append(problems, "ai.max_attempts must be between 1 and 3")
 	}
+	for _, suffix := range cleanList(c.DNSFirstSuffixes) {
+		if normalizeAIIgnoreSuffix(suffix) == "" {
+			problems = append(problems, "lookup.dns_first_suffixes entries must be domain suffixes")
+		}
+	}
 	for _, suffix := range cleanList(c.AIIgnoreSuffixes) {
 		if normalizeAIIgnoreSuffix(suffix) == "" {
 			problems = append(problems, "ai.ignore_suffixes entries must be domain suffixes")
@@ -421,6 +428,19 @@ func (c Config) AIIgnoreReasonForSuffix(suffix string) string {
 		}
 	}
 	return ""
+}
+
+// DNSFirstSuffix reports whether a domain falls under one of the
+// lookup.dns_first_suffixes entries ("uy" matches ka.uy and ka.com.uy).
+func (c Config) DNSFirstSuffix(domain string) bool {
+	domain = strings.ToLower(strings.Trim(strings.TrimSpace(domain), "."))
+	for _, entry := range cleanList(c.DNSFirstSuffixes) {
+		suffix := normalizeAIIgnoreSuffix(entry)
+		if suffix != "" && strings.HasSuffix(domain, "."+suffix) {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeAIIgnoreSuffix(value string) string {
@@ -508,6 +528,9 @@ type LookupConfig struct {
 	WHOISWebEnabled  *bool   `toml:"whois_web_enabled" json:"whois_web_enabled,omitempty"`
 	WHOISFollowLimit *int    `toml:"whois_follow_limit" json:"whois_follow_limit,omitempty"`
 	FastResponse     *bool   `toml:"fast_response" json:"fast_response,omitempty"`
+	// DNSFirstSuffixes stop waiting for WHOIS one second after the DNS
+	// delegation check answers (registry WHOIS known to be unreachable).
+	DNSFirstSuffixes []string `toml:"dns_first_suffixes" json:"dns_first_suffixes,omitempty"`
 }
 
 type DNSConfig struct {
@@ -710,6 +733,7 @@ func (f FileConfig) Apply(cfg *Config) error {
 		setBool(&cfg.WHOISEnabled, f.Lookup.WHOISEnabled)
 		setBool(&cfg.WHOISWebEnabled, f.Lookup.WHOISWebEnabled)
 		setInt(&cfg.WHOISFollowLimit, f.Lookup.WHOISFollowLimit)
+		setList(&cfg.DNSFirstSuffixes, f.Lookup.DNSFirstSuffixes)
 		setBool(&cfg.LookupFastResponse, f.Lookup.FastResponse)
 	}
 	if f.DNS != nil {
@@ -826,6 +850,7 @@ func applyEnv(cfg *Config) {
 	envBoolInto(&cfg.WHOISEnabled, "WHOICE_WHOIS_ENABLED")
 	envBoolInto(&cfg.WHOISWebEnabled, "WHOICE_WHOIS_WEB_ENABLED")
 	envIntInto(&cfg.WHOISFollowLimit, "WHOICE_WHOIS_FOLLOW_LIMIT")
+	envListInto(&cfg.DNSFirstSuffixes, "WHOICE_DNS_FIRST_SUFFIXES")
 	envBoolInto(&cfg.LookupFastResponse, "WHOICE_LOOKUP_FAST_RESPONSE")
 	envBoolInto(&cfg.AllowCustomServers, "WHOICE_ALLOW_CUSTOM_SERVERS")
 	envBoolInto(&cfg.AllowPrivateServers, "WHOICE_ALLOW_PRIVATE_SERVERS")

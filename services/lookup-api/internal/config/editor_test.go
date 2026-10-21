@@ -128,3 +128,18 @@ func assertSameConfig(t *testing.T, got, want Config) {
 		}
 	}
 }
+
+func TestDNSFirstSuffixes(t *testing.T) {
+	cfg := Default()
+	if !cfg.DNSFirstSuffix("ka.uy") || !cfg.DNSFirstSuffix("google.com.uy") || cfg.DNSFirstSuffix("uy") || cfg.DNSFirstSuffix("example.com") {
+		t.Fatal("default list should cover .uy names only")
+	}
+	cfg.DNSFirstSuffixes = []string{".COM.UY", "es"}
+	if cfg.DNSFirstSuffix("ka.uy") || !cfg.DNSFirstSuffix("google.com.uy") || !cfg.DNSFirstSuffix("google.es") {
+		t.Fatal("entries match by suffix, case-insensitively")
+	}
+	cfg.DNSFirstSuffixes = []string{"bad suffix"}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("invalid entries must fail validation")
+	}
+}

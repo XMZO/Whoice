@@ -139,7 +139,7 @@ export type LookupResult = {
     pendingEnrichments?: string[];
     providers?: {
       source: SourceName;
-      status: "ok" | "error" | "skipped";
+      status: "ok" | "error" | "skipped" | "stopped";
       server?: string;
       query?: string;
       statusCode?: number;

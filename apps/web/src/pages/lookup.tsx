@@ -20,6 +20,8 @@ import {
   SourceTags,
   SourcesSection,
   StatusList,
+  TRUNCATED,
+  TRUNCATED_DETAIL,
   pricingSummary,
   registrantFieldCount,
   type ICPState,
@@ -883,6 +885,7 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
   const expectedSources: string[] = state.sourceMode === "rdap" ? ["rdap"] : state.sourceMode === "whois" ? ["whois"] : ["rdap", "whois"];
   const answeredSources = new Set((result?.meta?.providers || []).map((provider) => provider.source));
   const pendingSources = state.pending ? expectedSources.filter((source) => !answeredSources.has(source as never)) : [];
+  const truncatedSources = (result?.meta?.providers || []).filter((provider) => provider.status === "stopped").map((provider) => provider.source);
   const isDomain = result?.type === "domain";
   const lowerTabs: SectionTab[] = isDomain ? ["dns", "owner", "price", "source"] : ["network", "owner", "source"];
   const activeLower: SectionTab = lowerTabs.includes(tab) ? tab : lowerTabs[0];
@@ -1030,6 +1033,11 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
                 <div className="hero-head">
                   <div className="hero-badges">
                     <StatusBadge status={result.status} />
+                    {truncatedSources.length > 0 && (
+                      <span className="pill pill-amber" title={`${truncatedSources.map(sourceName).join(" · ")}: ${pick(TRUNCATED_DETAIL)}`}>
+                        {pick(TRUNCATED)} · {truncatedSources.map(sourceName).join(" · ")}
+                      </span>
+                    )}
                     {state.pending && (
                       <span className="pill pill-amber pulse" role="status" title={pendingSources.map(sourceName).join(" · ")}>
                         {pick(t3("Updating", "正在补全", "正在補全"))} · {pendingSources.map(sourceName).join(" · ")}
