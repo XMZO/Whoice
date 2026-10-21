@@ -372,6 +372,68 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+// Registry lifecycle stage worth a badge. Per RFC 3915 a domain in redemption
+// carries redemptionPeriod (with pendingDelete); pendingDelete alone means the
+// redemption window is over and the registry is about to release the name.
+function lifecycleStage(statuses: LookupResult["statuses"] | undefined): "redemption" | "pendingDelete" | null {
+  const codes = new Set((Array.isArray(statuses) ? statuses : []).map((status) => (status.label || status.code || "").toLowerCase().replace(/^.*#/, "").replace(/[\s_-]/g, "")));
+  if (codes.has("redemptionperiod")) return "redemption";
+  if (codes.has("pendingdelete")) return "pendingDelete";
+  return null;
+}
+
+function MarketTags({ result }: { result: LookupResult }) {
+  const pick = useT3();
+  const sale = result.enrichment?.forSale;
+  const stage = lifecycleStage(result.statuses);
+  return (
+    <>
+      {sale && (
+        <span
+          className="pill pill-accent"
+          title={pick(
+            t3(
+              `Every nameserver points to ${sale.market}'s for-sale page: the owner has it listed there. Price and availability are on ${sale.market}.`,
+              `全部域名服务器指向 ${sale.market} 的出售页，持有人已在该平台挂牌出售；价格和能否购买以平台为准`,
+              `全部網域伺服器指向 ${sale.market} 的出售頁，持有人已在該平台掛牌出售；價格和能否購買以平台為準`,
+            ),
+          )}
+        >
+          {pick(t3(`For sale · ${sale.market}`, `出售中 · ${sale.market}`, `出售中 · ${sale.market}`))}
+        </span>
+      )}
+      {stage === "redemption" && (
+        <span
+          className="pill pill-red"
+          title={pick(
+            t3(
+              "Expired and deleted by the registrar (registry status redemptionPeriod); the previous owner can still restore it before it is released.",
+              "已过期并被注册商删除（注册局状态 redemptionPeriod），原持有人仍可赎回；期满后进入待删除",
+              "已過期並被註冊商刪除（註冊局狀態 redemptionPeriod），原持有人仍可贖回；期滿後進入待刪除",
+            ),
+          )}
+        >
+          {pick(t3("Redemption period", "赎回期", "贖回期"))}
+        </span>
+      )}
+      {stage === "pendingDelete" && (
+        <span
+          className="pill pill-red"
+          title={pick(
+            t3(
+              "The registry is about to delete this name (status pendingDelete, usually within 5 days); it can then be registered again.",
+              "注册局即将删除此域名（状态 pendingDelete，通常在 5 天内），删除后可重新注册",
+              "註冊局即將刪除此網域（狀態 pendingDelete，通常在 5 天內），刪除後可重新註冊",
+            ),
+          )}
+        >
+          {pick(t3("Pending delete", "待删除", "待刪除"))}
+        </span>
+      )}
+    </>
+  );
+}
+
 function TabButton({
   id,
   active,
@@ -1088,6 +1150,7 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
                         {pick(TRUNCATED)} · {truncatedSources.map(sourceName).join(" · ")}
                       </span>
                     )}
+                    <MarketTags result={view} />
                     {state.pending && (
                       <span className="pill pill-amber pulse" role="status" title={pendingSources.map(sourceName).join(" · ")}>
                         {skeleton ? "" : `${pick(t3("Updating", "正在补全", "正在補全"))} · `}

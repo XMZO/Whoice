@@ -322,7 +322,10 @@ export function DNSSection({
   onCopy: (value: string) => void;
 }) {
   const { t, tf } = useI18n();
+  const pick = useT3();
   const dns = result.enrichment?.dns;
+  // Every nameserver serves a marketplace's for-sale page (see enrichment.forSale).
+  const saleTag = result.enrichment?.forSale ? ` · ${pick(t3(`${result.enrichment.forSale.market} for-sale page`, `${result.enrichment.forSale.market} 出售页`, `${result.enrichment.forSale.market} 出售頁`))}` : "";
   const nameservers = Array.isArray(result.nameservers) ? result.nameservers : [];
   const registryNs = dns?.registryNs?.length ? dns.registryNs : nameservers.map((ns) => ns.host).filter(Boolean);
   const liveNs = Array.isArray(dns?.ns) ? dns.ns : [];
@@ -378,7 +381,7 @@ export function DNSSection({
             <div className="ns-groups">
               {groups.map((group) => (
                 <div className="ns-group" key={group.key}>
-                  <GroupTitle color={group.color} name={group.name} meta={tf("unitHosts", { n: group.hosts.length })} />
+                  <GroupTitle color={group.color} name={group.name} meta={tf("unitHosts", { n: group.hosts.length }) + saleTag} />
                   {group.heads && group.tail ? (
                     <span className="host-line">
                       {group.heads.map((head, index) => (

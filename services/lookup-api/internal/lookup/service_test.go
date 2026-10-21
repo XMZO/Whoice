@@ -45,7 +45,7 @@ func TestServiceRegistersPhase4EnrichmentPipeline(t *testing.T) {
 	}, nil, parsers.NewRegistry())
 
 	got := service.enrichers.Names()
-	want := []string{"epp", "dns", "dnsviz", "registrar", "brand", "icp_filing", "pricing", "moz"}
+	want := []string{"epp", "dns", "dnsviz", "registrar", "brand", "icp_filing", "for_sale", "pricing", "moz"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("pipeline names: got %#v want %#v", got, want)
 	}

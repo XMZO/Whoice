@@ -38,6 +38,7 @@ export interface LookupResult {
     pricing?: PricingInfo;
     moz?: MozInfo;
     icpFiling?: ICPFilingInfo;
+    forSale?: ForSaleInfo;
     [k: string]: unknown;
   };
   raw: RawData;
@@ -320,6 +321,16 @@ export interface ICPFilingInfo {
    * The listed entry that matched, or the domain's own suffix when none did.
    */
   suffix: string;
+}
+/**
+ * Set when every nameserver of a registered domain serves one marketplace's for-sale landing page.
+ *
+ * This interface was referenced by `WhoiceAPIResponse`'s JSON-Schema
+ * via the `definition` "ForSaleInfo".
+ */
+export interface ForSaleInfo {
+  market: string;
+  website?: string;
 }
 /**
  * This interface was referenced by `WhoiceAPIResponse`'s JSON-Schema

@@ -160,7 +160,8 @@
             "dnsviz": { "$ref": "#/$defs/DNSVizInfo" },
             "pricing": { "$ref": "#/$defs/PricingInfo" },
             "moz": { "$ref": "#/$defs/MozInfo" },
-            "icpFiling": { "$ref": "#/$defs/ICPFilingInfo" }
+            "icpFiling": { "$ref": "#/$defs/ICPFilingInfo" },
+            "forSale": { "$ref": "#/$defs/ForSaleInfo" }
           },
           "additionalProperties": true
         },
@@ -464,6 +465,16 @@
           "items": { "$ref": "#/$defs/DNSResolverInfo" }
         },
         "elapsedMs": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+    "ForSaleInfo": {
+      "type": "object",
+      "description": "Set when every nameserver of a registered domain serves one marketplace's for-sale landing page.",
+      "required": ["market"],
+      "properties": {
+        "market": { "type": "string" },
+        "website": { "type": "string", "format": "uri" }
       },
       "additionalProperties": false
     },

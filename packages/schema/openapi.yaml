@@ -776,6 +776,18 @@ components:
           $ref: "#/components/schemas/MozInfo"
         icpFiling:
           $ref: "#/components/schemas/ICPFilingInfo"
+        forSale:
+          $ref: "#/components/schemas/ForSaleInfo"
+    ForSaleInfo:
+      type: object
+      description: Set when every nameserver of a registered domain serves one marketplace's for-sale landing page.
+      required: [market]
+      properties:
+        market:
+          type: string
+        website:
+          type: string
+          format: uri
     ICPFilingInfo:
       type: object
       description: Whether the domain's suffix is on MIIT's list of ICP-fileable suffixes; a suffix check, not a filing lookup.

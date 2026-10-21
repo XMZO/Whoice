@@ -201,6 +201,14 @@ type EnrichmentInfo struct {
 	DNS       *DNSInfo       `json:"dns,omitempty"`
 	DNSViz    *DNSVizInfo    `json:"dnsviz,omitempty"`
 	ICPFiling *ICPFilingInfo `json:"icpFiling,omitempty"`
+	ForSale   *ForSaleInfo   `json:"forSale,omitempty"`
+}
+
+// ForSaleInfo is set when every nameserver of a registered domain serves a
+// marketplace's for-sale landing page: the owner has it listed there.
+type ForSaleInfo struct {
+	Market  string `json:"market"`
+	Website string `json:"website,omitempty"`
 }
 
 // ICPFilingInfo says whether the domain's suffix is one MIIT approves for ICP

@@ -863,3 +863,20 @@ test("the ICP block says whether the suffix can be filed", async ({ page }) => {
     await page.unrouteAll({ behavior: "ignoreErrors" });
   }
 });
+
+test("marketplace listings and registry deletion stages get their own badges", async ({ page }) => {
+  const hero = page.locator(".result-hero");
+  await seedLookup(page, "listed.test", lookupFixture("listed.test", { enrichment: { forSale: { market: "Atom", website: "https://www.atom.com" } } }));
+  await expect(hero).toContainText("For sale · Atom");
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+
+  // RFC 3915: redemption carries redemptionPeriod alongside pendingDelete.
+  await seedLookup(page, "redeem.test", lookupFixture("redeem.test", { statuses: [{ code: "pendingDelete" }, { code: "redemptionPeriod" }] }));
+  await expect(hero).toContainText("Redemption period");
+  await expect(hero).not.toContainText("Pending delete");
+  await expect(hero).not.toContainText("For sale");
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+
+  await seedLookup(page, "dropping.test", lookupFixture("dropping.test", { statuses: [{ code: "pending delete" }] }));
+  await expect(hero).toContainText("Pending delete");
+});

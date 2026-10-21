@@ -134,6 +134,11 @@ export type LookupResult = {
       eligible: boolean;
       suffix: string;
     };
+    /** Every nameserver serves this marketplace's for-sale landing page. */
+    forSale?: {
+      market: string;
+      website?: string;
+    };
   };
   raw: {
     whois?: string;

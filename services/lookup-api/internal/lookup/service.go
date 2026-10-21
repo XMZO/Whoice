@@ -19,6 +19,7 @@ import (
 	dnsenrich "github.com/xmzo/whoice/services/lookup-api/internal/enrich/dns"
 	"github.com/xmzo/whoice/services/lookup-api/internal/enrich/dnsviz"
 	"github.com/xmzo/whoice/services/lookup-api/internal/enrich/epp"
+	"github.com/xmzo/whoice/services/lookup-api/internal/enrich/forsale"
 	"github.com/xmzo/whoice/services/lookup-api/internal/enrich/fx"
 	"github.com/xmzo/whoice/services/lookup-api/internal/enrich/moz"
 	"github.com/xmzo/whoice/services/lookup-api/internal/enrich/pipeline"
@@ -449,6 +450,7 @@ func (s *Service) buildFastPipeline() pipeline.Pipeline {
 			},
 		},
 		s.icpFilingStep(),
+		forSaleStep(),
 	}, s.brandEnrichers()...)...)
 }
 
@@ -526,6 +528,7 @@ func (s *Service) staticEnrichers() []pipeline.Enricher {
 	enrichers = append(enrichers, s.brandEnrichers()...)
 	enrichers = append(enrichers,
 		s.icpFilingStep(),
+		forSaleStep(),
 		pricing.NewEnricher(s.cfg.EnrichPricing, s.pricing),
 		pipeline.Step{
 			NameValue:    "moz",
@@ -540,6 +543,22 @@ func (s *Service) staticEnrichers() []pipeline.Enricher {
 		},
 	)
 	return enrichers
+}
+
+// forSaleStep marks a registered domain whose nameservers all serve one
+// marketplace's for-sale landing page.
+func forSaleStep() pipeline.Enricher {
+	return pipeline.Step{
+		NameValue:    "for_sale",
+		EnabledValue: true,
+		SupportsFunc: func(result *model.LookupResult) bool {
+			return result != nil && result.Type == model.QueryDomain
+		},
+		EnrichFunc: func(_ context.Context, result *model.LookupResult) error {
+			forsale.Apply(result)
+			return nil
+		},
+	}
 }
 
 // icpFilingStep marks whether the domain's suffix is on MIIT's list of
