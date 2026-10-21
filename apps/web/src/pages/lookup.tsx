@@ -575,17 +575,24 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
   const loudMetaWarnings = metaWarnings.filter((warning) => !(quietProviders && isProviderWarning(warning)));
   const loudSourceErrors = sourceErrors.filter((error) => !(quietProviders && failedProviders.has(error.source)));
   // DNS notes stay in the DNS card (with each resolver's status); like a
-  // failed registry source, they do not raise the header warning.
-  const warnings = [
-    ...(enrichmentError ? [`enrichment: ${enrichmentError}`] : []),
-    ...loudMetaWarnings.filter((warning) => !isDNSWarning(warning)),
-    ...loudSourceErrors.map((error) => `${error.source}: ${error.error}`),
-  ];
-  const sourceWarnings = [
-    ...(enrichmentError ? [`enrichment: ${enrichmentError}`] : []),
-    ...loudMetaWarnings.filter((warning) => !isDNSWarning(warning)),
-    ...sourceErrors.filter((error) => !failedProviders.has(error.source)).map((error) => `${error.source}: ${error.error}`),
-  ];
+  // failed registry source, they do not raise the header warning. While the
+  // lookup streams, a preview's notes ("status inferred from DNS", the first
+  // source failing) are provisional, so warnings wait for the final result.
+  const settled = !state.pending;
+  const warnings = settled
+    ? [
+        ...(enrichmentError ? [`enrichment: ${enrichmentError}`] : []),
+        ...loudMetaWarnings.filter((warning) => !isDNSWarning(warning)),
+        ...loudSourceErrors.map((error) => `${error.source}: ${error.error}`),
+      ]
+    : [];
+  const sourceWarnings = settled
+    ? [
+        ...(enrichmentError ? [`enrichment: ${enrichmentError}`] : []),
+        ...loudMetaWarnings.filter((warning) => !isDNSWarning(warning)),
+        ...sourceErrors.filter((error) => !failedProviders.has(error.source)).map((error) => `${error.source}: ${error.error}`),
+      ]
+    : [];
 
   useEffect(() => {
     const propsURL = lookupUrl(query, sourceMode, options);

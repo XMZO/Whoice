@@ -1289,8 +1289,9 @@ export function SourcesSection({
     return index < 0 ? SOURCE_ORDER.length : index;
   };
   const registry = result.registry || {};
-  // A failed source is only greyed out while another registry source answered.
-  const quiet = providers.some((item) => item.status === "ok" && item.source !== "dns");
+  // A failed source is only greyed out while another registry source answered,
+  // or may still answer.
+  const quiet = pendingSources.length > 0 || providers.some((item) => item.status === "ok" && item.source !== "dns");
   return (
     <section id="evidence" className="result-card sources-panel" aria-labelledby="h-evidence">
       {showHeader ? (
