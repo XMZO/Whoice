@@ -149,3 +149,15 @@ func TestPlaceholderNameserversAreDropped(t *testing.T) {
 		}
 	}
 }
+
+func TestRDAPPlaceholderNameserversAreDropped(t *testing.T) {
+	body := `{"objectClassName":"domain","ldhName":"kun.uz","nameservers":[{"objectClassName":"nameserver","ldhName":"daniella.ns.cloudflare.com"},{"objectClassName":"nameserver","ldhName":"not.defined"}]}`
+	raw := model.RawResponse{Source: model.SourceRDAP, Server: "https://rdap.cctld.uz", Query: "kun.uz", Body: body, StatusCode: 200}
+	part, err := (RDAPParser{}).Parse(context.Background(), raw, model.NormalizedQuery{Type: model.QueryDomain, Query: "kun.uz"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(part.Nameservers) != 1 || part.Nameservers[0].Host != "daniella.ns.cloudflare.com" {
+		t.Fatalf("nameservers: %#v", part.Nameservers)
+	}
+}

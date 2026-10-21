@@ -162,7 +162,7 @@ func parseNameservers(doc map[string]any) []model.Nameserver {
 			continue
 		}
 		host = strings.ToLower(strings.TrimSuffix(hostFields[0], "."))
-		if host == "" || seen[host] {
+		if host == "" || seen[host] || isPlaceholderNameserver(host) {
 			continue
 		}
 		seen[host] = true
