@@ -693,3 +693,19 @@ func TestLookupDoesNotWaitForSlowDNSWhenWHOISAnswers(t *testing.T) {
 		t.Fatalf("lookup waited %s for the DNS check", elapsed)
 	}
 }
+
+func TestWildcardVerdictOnlyForRegistryZones(t *testing.T) {
+	for _, private := range []bool{false, true} {
+		checker := &fakeDelegation{result: &delegation.Result{Zone: "github.io", Status: model.StatusUnregistered, Wildcard: true, Body: "; wildcard\n"}}
+		service := delegationTestService(checker, providerapi.Skip("no WHOIS server for names under github.io"))
+		q := model.NormalizedQuery{Type: model.QueryDomain, Query: "foo.github.io", Suffix: "github.io", RegisteredDomain: "foo.github.io", PrivateSuffix: private}
+		part, _ := service.delegationFallback(context.Background(), q, model.LookupOptions{})
+		want := model.StatusUnregistered
+		if private {
+			want = model.StatusUnknown
+		}
+		if part == nil || part.Status != want {
+			t.Fatalf("private=%v: %#v", private, part)
+		}
+	}
+}

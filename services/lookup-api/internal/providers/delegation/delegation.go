@@ -51,6 +51,9 @@ type Result struct {
 	Status      model.ResultStatus
 	Nameservers []string
 	Body        string
+	// Wildcard is set when the "not registered" verdict rests on the zone
+	// answering every name the same way.
+	Wildcard bool
 }
 
 // Check looks up the delegation of domain in its parent zone.
@@ -100,6 +103,7 @@ func (c Checker) resolveWildcard(ctx context.Context, result *Result, domain str
 		return
 	}
 	result.Status = model.StatusUnregistered
+	result.Wildcard = true
 	result.Body += fmt.Sprintf("\n; Wildcard zone: the random name %s gets the same answer, so the\n; missing delegation means %s is most likely available.\n", probe, domain)
 }
 

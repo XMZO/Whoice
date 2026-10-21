@@ -495,19 +495,22 @@ button.src-tag {
   width: 7px;
 }
 
+/* Status hues are kept far apart: available green, registered blue,
+   reserved red, unknown grey (the base style). Amber stays reserved for
+   warnings and truncation so it never reads as a status. */
 .status-badge-registered {
+  background: var(--blue-bg);
+  color: var(--blue);
+}
+
+.status-badge-unregistered {
   background: var(--green-bg);
   color: var(--green);
 }
 
-.status-badge-unregistered {
-  background: var(--accent-bg);
-  color: var(--link);
-}
-
 .status-badge-reserved {
-  background: var(--amber-bg);
-  color: var(--amber);
+  background: var(--red-bg);
+  color: var(--red);
 }
 
 .status-badge-error {
@@ -1109,9 +1112,9 @@ button.src-tag {
 }
 
 .available-note {
-  background: var(--accent-bg);
+  background: var(--green-bg);
   border-radius: 10px;
-  color: var(--link);
+  color: var(--green);
   font-weight: 600;
   margin: 0 18px 14px;
   padding: 12px 14px;

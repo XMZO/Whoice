@@ -59,7 +59,6 @@ export default async function handler(req: Request) {
   const panel = isDark ? "#191d1f" : "#fffdf8";
   const border = isDark ? "#33403c" : "#d8d0c4";
   const accent = isDark ? "#62d2a2" : "#0f766e";
-  const warn = "#d97706";
 
   const displayQuery = result?.normalizedQuery || query || "Whoice";
   const type = result?.type || detectType(query);
@@ -68,7 +67,10 @@ export default async function handler(req: Request) {
   const expires = dateOnly(result?.dates?.expiresAt);
   const nameservers = result?.nameservers?.slice(0, 3).map((ns) => ns.brand?.name || ns.host) || [];
   const source = result?.source?.used?.join(" + ") || "rdap + whois";
-  const statusColor = status === "registered" ? accent : status === "unregistered" ? warn : muted;
+  // Same status hues as the result page: available green, registered blue,
+  // reserved red, anything else muted.
+  const statusColor =
+    status === "unregistered" ? (isDark ? "#6fe0a6" : "#0e6b45") : status === "registered" ? (isDark ? "#8fb4ff" : "#1d4fc4") : status === "reserved" ? (isDark ? "#ff9a90" : "#a8322c") : muted;
 
   return new ImageResponse(
     (

@@ -38,6 +38,23 @@ export const CheckCircleIcon = (props: IconProps) => (
   </Svg>
 );
 
+/** Circle with a slash: not allowed (reserved names). */
+export const BanIcon = (props: IconProps) => (
+  <Svg {...props} strokeWidth={1.8}>
+    <circle cx="8" cy="8" r="6.25" />
+    <path d="m3.6 12.4 8.8-8.8" />
+  </Svg>
+);
+
+/** Circle with a question mark: undetermined. */
+export const HelpIcon = (props: IconProps) => (
+  <Svg {...props} strokeWidth={1.6}>
+    <circle cx="8" cy="8" r="6.25" />
+    <path d="M6.25 6.4a1.85 1.85 0 1 1 2.6 1.7c-.55.25-.85.7-.85 1.3v.3" />
+    <path d="M8 11.6v.01" />
+  </Svg>
+);
+
 export const WarnIcon = (props: IconProps) => (
   <Svg {...props} strokeWidth={1.6}>
     <path d="M8 2.25 14.25 13.5H1.75z" />

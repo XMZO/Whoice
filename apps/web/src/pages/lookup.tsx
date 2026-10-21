@@ -6,7 +6,7 @@ import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "reac
 import packageInfo from "../../package.json";
 import { AppControls } from "@/components/AppControls";
 import { BrandMark } from "@/components/BrandMark";
-import { CheckCircleIcon, CopyIcon, DownloadIcon, ExternalIcon, FileIcon, LinkIcon, SearchIcon, WarnIcon } from "@/components/Icons";
+import { BanIcon, CheckCircleIcon, CopyIcon, HelpIcon, DownloadIcon, ExternalIcon, FileIcon, LinkIcon, SearchIcon, WarnIcon } from "@/components/Icons";
 import { RawDrawer, type RawTab } from "@/components/RawDrawer";
 import {
   DNSSection,
@@ -340,11 +340,26 @@ const statusLabelKey: Record<string, I18nKey> = {
   error: "statusError",
 };
 
+// Each status has its own hue and icon so it reads at a glance:
+// available = green check (go), registered = blue dot (taken, plain fact),
+// reserved = red slash (cannot be registered), unknown = grey question.
 function StatusBadge({ status }: { status: string }) {
   const { t } = useI18n();
+  const icon =
+    status === "unregistered" ? (
+      <CheckCircleIcon size={14} />
+    ) : status === "registered" ? (
+      <span className="status-badge-dot" aria-hidden="true" />
+    ) : status === "reserved" ? (
+      <BanIcon size={14} />
+    ) : status === "error" ? (
+      <WarnIcon size={13} />
+    ) : (
+      <HelpIcon size={14} />
+    );
   return (
-    <span className={`status-badge status-badge-${status}`}>
-      {status === "registered" ? <CheckCircleIcon size={14} /> : status === "error" || status === "reserved" ? <WarnIcon size={13} /> : <span className="status-badge-dot" aria-hidden="true" />}
+    <span className={`status-badge status-badge-${statusLabelKey[status] ? status : "unknown"}`}>
+      {icon}
       {t(statusLabelKey[status] || "statusUnknown")}
     </span>
   );

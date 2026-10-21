@@ -816,6 +816,12 @@ func (s *Service) delegationFallback(ctx context.Context, q model.NormalizedQuer
 	}
 	trace.Server = result.Server
 	trace.Bytes = len(result.Body)
+	// In a private wildcard zone (*.github.io) a missing delegation says
+	// nothing about whether the name can be had; only registry zones
+	// (*.com.ph) delegate every registration.
+	if result.Wildcard && q.PrivateSuffix {
+		result.Status = model.StatusUnknown
+	}
 	part := &model.PartialResult{
 		Source: model.SourceDNS,
 		Status: result.Status,
