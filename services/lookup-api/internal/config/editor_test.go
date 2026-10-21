@@ -131,8 +131,8 @@ func assertSameConfig(t *testing.T, got, want Config) {
 
 func TestDNSFirstSuffixes(t *testing.T) {
 	cfg := Default()
-	if !cfg.DNSFirstSuffix("ka.uy") || !cfg.DNSFirstSuffix("google.com.uy") || cfg.DNSFirstSuffix("uy") || cfg.DNSFirstSuffix("example.com") {
-		t.Fatal("default list should cover .uy names only")
+	if !cfg.DNSFirstSuffix("ka.uy") || !cfg.DNSFirstSuffix("google.com.uy") || !cfg.DNSFirstSuffix("google.es") || cfg.DNSFirstSuffix("uy") || cfg.DNSFirstSuffix("example.com") {
+		t.Fatal("default list should cover .uy and .es names only")
 	}
 	cfg.DNSFirstSuffixes = []string{".COM.UY", "es"}
 	if cfg.DNSFirstSuffix("ka.uy") || !cfg.DNSFirstSuffix("google.com.uy") || !cfg.DNSFirstSuffix("google.es") {
