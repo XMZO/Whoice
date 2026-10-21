@@ -959,8 +959,19 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
                 name="query"
                 value={searchValue}
                 onChange={(event) => setSearchValue(event.target.value)}
+                onKeyDown={(event) => {
+                  // Mobile keyboards turn Enter into "next" when another form
+                  // field (the source select) follows, so submit explicitly.
+                  if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                    event.preventDefault();
+                    event.currentTarget.form?.requestSubmit();
+                  }
+                }}
                 aria-label={t("searchQuery")}
                 autoComplete="off"
+                autoCapitalize="none"
+                autoCorrect="off"
+                enterKeyHint="search"
                 spellCheck={false}
               />
               <select className="source-select" aria-label={t("source")} value={state.sourceMode} onChange={(event) => switchSource(event.target.value as SourceMode)}>

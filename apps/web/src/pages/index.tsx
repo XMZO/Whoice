@@ -283,6 +283,9 @@ export default function HomePage() {
                       ref={inputRef}
                       autoFocus
                       autoComplete="off"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      enterKeyHint="search"
                       value={query}
                       onChange={(event) => updateQuery(event.target.value)}
                       aria-label={t("placeholder")}
