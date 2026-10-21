@@ -215,6 +215,13 @@ func (s *Service) lookupFresh(ctx context.Context, q model.NormalizedQuery, opts
 				Server: raw.Server,
 				Error:  err.Error(),
 			})
+			// The source answered but said nothing usable: show it as failed.
+			for i := range providerTraces {
+				if providerTraces[i].Source == raw.Source && providerTraces[i].Status == "ok" {
+					providerTraces[i].Status = "error"
+					providerTraces[i].Error = err.Error()
+				}
+			}
 			continue
 		}
 		parts = append(parts, part)

@@ -13,6 +13,8 @@ type WHOISParser struct{}
 
 var unregisteredPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\bno match\b`),
+	// CONAC (.政务, .公益).
+	regexp.MustCompile(`(?i)\bnot find matching ?record\b`),
 	regexp.MustCompile(`(?i)\bnot found\b`),
 	regexp.MustCompile(`(?i)\bno data found\b`),
 	regexp.MustCompile(`(?i)\bdomain not found\b`),
@@ -60,6 +62,24 @@ var reservedPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\bname is restricted\b`),
 	regexp.MustCompile(`(?i)\bcannot be registered\b`),
 	regexp.MustCompile(`(?i)\bcan ?not be registered\b`),
+	// Tucows Registry back ends (.بحرين, the Indian IDN TLDs, ...).
+	regexp.MustCompile(`(?i)\bmatches a restricted word\b`),
+	// SGNIC error 01044.
+	regexp.MustCompile(`(?i)\bhas usage restrictions applied\b`),
+	// HKIRC (.香港) for names withheld from registration.
+	regexp.MustCompile(`(?i)\bcurrently not available for registration\b`),
+	// cctld.by (.бел): released names waiting for auction.
+	regexp.MustCompile(`(?i)\bobject pending auction\b`),
+}
+
+// rejectionPatterns are replies that refuse the query itself: the server does
+// not serve the TLD, or the name is not valid there. They carry no record, so
+// the status is left to the other sources and the DNS delegation check.
+var rejectionPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)\btld (?:is )?not supported\b`),
+	regexp.MustCompile(`(?i)\bregistration status:\s*invalid\b`),
+	regexp.MustCompile(`(?im)^\s*-\d+:\s*%invalid pattern\b`),
+	regexp.MustCompile(`(?i)\berreur\s+syntax\b`),
 }
 
 func (WHOISParser) Name() string { return "whois-generic" }
@@ -94,11 +114,16 @@ func (WHOISParser) Parse(_ context.Context, raw model.RawResponse, q model.Norma
 		partial.Warnings = append(partial.Warnings, "WHOIS Web fallback requires manual lookup")
 		return partial, nil
 	}
+	if pattern := firstMatch(rejectionPatterns, raw.Body); pattern != "" {
+		return nil, fmt.Errorf("%s rejected the query: %s", raw.Server, pattern)
+	}
+	// A reply that names the domain restricted or reserved also tends to say
+	// the object does not exist (ZDNS: "The queried object does not exist:
+	// ... This domain name is restricted from registration"); reserved wins.
 	if matchesAny(reservedPatterns, raw.Body) {
 		partial.Status = model.StatusReserved
 		partial.Domain.Reserved = true
-	}
-	if matchesAny(unregisteredPatterns, raw.Body) {
+	} else if matchesAny(unregisteredPatterns, raw.Body) {
 		partial.Status = model.StatusUnregistered
 	}
 
@@ -236,6 +261,16 @@ func valuesFor(fields map[string][]string, keys ...string) []string {
 		values = append(values, fields[strings.ToLower(key)]...)
 	}
 	return values
+}
+
+// firstMatch returns the text the first matching pattern found, trimmed.
+func firstMatch(patterns []*regexp.Regexp, body string) string {
+	for _, pattern := range patterns {
+		if match := pattern.FindString(body); match != "" {
+			return strings.TrimSpace(match)
+		}
+	}
+	return ""
 }
 
 func matchesAny(patterns []*regexp.Regexp, body string) bool {

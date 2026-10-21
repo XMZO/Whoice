@@ -79,20 +79,18 @@ func (p *Provider) Lookup(ctx context.Context, q model.NormalizedQuery, opts mod
 		return nil, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, err
+	status, contentType, body, err := p.fetch(ctx, endpoint)
+	// Some registry front ends (ZDNS) throttle bursts with 429 and answer the
+	// same request a moment later; one retry is worth the wait.
+	if err == nil && status == http.StatusTooManyRequests {
+		select {
+		case <-ctx.Done():
+		case <-time.After(rateLimitRetryDelay):
+			if retryStatus, retryType, retryBody, retryErr := p.fetch(ctx, endpoint); retryErr == nil {
+				status, contentType, body = retryStatus, retryType, retryBody
+			}
+		}
 	}
-	req.Header.Set("Accept", "application/rdap+json, application/json")
-	req.Header.Set("User-Agent", "Whoice/0.1 (+https://github.com/XMZO/Whoice)")
-
-	res, err := p.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Body.Close()
-
-	body, err := io.ReadAll(io.LimitReader(res.Body, 4*1024*1024))
 	if err != nil {
 		return nil, err
 	}
@@ -102,10 +100,31 @@ func (p *Provider) Lookup(ctx context.Context, q model.NormalizedQuery, opts mod
 		Server:      endpoint,
 		Query:       q.Query,
 		Body:        string(body),
-		ContentType: res.Header.Get("Content-Type"),
-		StatusCode:  res.StatusCode,
+		ContentType: contentType,
+		StatusCode:  status,
 		ElapsedMs:   time.Since(start).Milliseconds(),
 	}, nil
+}
+
+const rateLimitRetryDelay = time.Second
+
+func (p *Provider) fetch(ctx context.Context, endpoint string) (int, string, []byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return 0, "", nil, err
+	}
+	req.Header.Set("Accept", "application/rdap+json, application/json")
+	req.Header.Set("User-Agent", "Whoice/0.1 (+https://github.com/XMZO/Whoice)")
+	res, err := p.client.Do(req)
+	if err != nil {
+		return 0, "", nil, err
+	}
+	defer res.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(res.Body, 4*1024*1024))
+	if err != nil {
+		return 0, "", nil, err
+	}
+	return res.StatusCode, res.Header.Get("Content-Type"), body, nil
 }
 
 func (p *Provider) endpointFor(ctx context.Context, q model.NormalizedQuery, override string) (string, error) {

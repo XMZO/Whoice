@@ -80,7 +80,9 @@ func mergeStatus(result *model.LookupResult, part *model.PartialResult) {
 		result.Status = model.StatusReserved
 		result.Domain.Reserved = true
 	case model.StatusUnregistered:
-		if result.Status != model.StatusRegistered {
+		// A registry that calls the name reserved knows more than one that
+		// merely has no record of it (RDAP 404).
+		if result.Status != model.StatusRegistered && result.Status != model.StatusReserved {
 			result.Status = model.StatusUnregistered
 		}
 	}

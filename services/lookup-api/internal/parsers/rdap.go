@@ -32,19 +32,18 @@ func (RDAPParser) Parse(_ context.Context, raw model.RawResponse, q model.Normal
 		partial.Status = model.StatusUnregistered
 		return partial, nil
 	}
+	// Anything but a record or a 404 is a failed lookup, not an answer: the
+	// status is left to WHOIS and the DNS delegation check.
 	if raw.StatusCode >= 400 {
-		partial.Warnings = append(partial.Warnings, fmt.Sprintf("RDAP returned HTTP %d", raw.StatusCode))
-		return partial, nil
+		return nil, fmt.Errorf("RDAP returned HTTP %d", raw.StatusCode)
 	}
 	if raw.Body == "" {
-		partial.Warnings = append(partial.Warnings, "empty RDAP response")
-		return partial, nil
+		return nil, fmt.Errorf("empty RDAP response")
 	}
 
 	var doc map[string]any
 	if err := json.Unmarshal([]byte(raw.Body), &doc); err != nil {
-		partial.Warnings = append(partial.Warnings, "invalid RDAP JSON")
-		return partial, nil
+		return nil, fmt.Errorf("invalid RDAP JSON")
 	}
 
 	partial.Status = model.StatusRegistered

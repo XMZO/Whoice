@@ -795,14 +795,10 @@ func TestRDAPParserHTTPErrorDoesNotBecomeRegisteredEvidence(t *testing.T) {
 		StatusCode: 500,
 		Server:     "https://rdap.example.test/domain/example.com",
 	}, q)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if part.Status != model.StatusUnknown {
-		t.Fatalf("status: got %q want %q", part.Status, model.StatusUnknown)
-	}
-	if len(part.Warnings) == 0 {
-		t.Fatal("expected warning for RDAP HTTP error")
+	// A failed RDAP request is a source error, so WHOIS or the DNS delegation
+	// check decides the status.
+	if err == nil || part != nil {
+		t.Fatalf("expected an error for RDAP HTTP 500, got %+v", part)
 	}
 }
 
@@ -972,5 +968,38 @@ func domainQueryFor(value, suffix string) model.NormalizedQuery {
 		Host:             value,
 		Suffix:           suffix,
 		RegisteredDomain: value,
+	}
+}
+
+func TestWHOISParserReservedWinsAndRejectionsAreErrors(t *testing.T) {
+	q := domainQuery("example.com")
+	parse := func(body string) (*model.PartialResult, error) {
+		return WHOISParser{}.Parse(context.Background(), model.RawResponse{Source: model.SourceWHOIS, Query: q.Query, Body: body, Server: "whois.example.test"}, q)
+	}
+	for _, body := range []string{
+		"The queried object does not exist: \n根据有关规定，该域名限制注册。\nThis domain name is restricted from registration.",
+		"Domain Name: example.com\n\n>>> This name is not available for registration:\n\n>>> Domain name matches a restricted word\n",
+		"Error code: 01044\nError message: The domain name requested has usage restrictions applied to it.",
+		"This domain is currently not available for registration. Please select other domain.",
+		"object pending auction",
+	} {
+		part, err := parse(body)
+		if err != nil || part.Status != model.StatusReserved {
+			t.Fatalf("expected reserved for %q, got %+v %v", body, part, err)
+		}
+	}
+	if part, err := parse("Not find MatchingRecord\n\n使用条款: ..."); err != nil || part.Status != model.StatusUnregistered {
+		t.Fatalf("expected unregistered for CONAC, got %+v %v", part, err)
+	}
+	for _, body := range []string{
+		"TLD is not supported.\n>>> Last update of WHOIS database: 2026-10-21T10:36:17Z <<<",
+		"Domain Name: x\n>>> This name is not available for registration:\n>>> Tld not supported by this registry interface\n",
+		"DOMAIN NAME: x.бг (x.xn--90ae)\nregistration status: invalid",
+		"% EURid\n-7: %Invalid pattern",
+		"NIC Whois server for cTLDs : .tn\nErreur\tSyntax [ Domain ]",
+	} {
+		if part, err := parse(body); err == nil {
+			t.Fatalf("expected a rejection error for %q, got %+v", body, part)
+		}
 	}
 }
