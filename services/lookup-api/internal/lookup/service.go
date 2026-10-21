@@ -161,20 +161,32 @@ func (s *Service) lookupFresh(ctx context.Context, q model.NormalizedQuery, opts
 
 	providerCtx, stopProviders := context.WithCancel(lookupCtx)
 	defer stopProviders()
-	var early <-chan delegationOutcome
-	var stoppedEarly atomic.Bool
-	if s.delegationFirst(q, opts) {
-		early = s.startDelegation(lookupCtx, q, opts, func() {
-			stoppedEarly.Store(true)
-			stopProviders()
-		})
-	}
 
+	var previews *previewer
 	var onRaw func(model.RawResponse, []model.ProviderTrace, int)
 	if opts.OnPartial != nil {
-		onRaw = s.partialEmitter(ctx, q, opts, start)
+		previews = &previewer{service: s, ctx: ctx, q: q, opts: opts, start: start}
+		onRaw = previews.addRaw
 	}
+
+	// The DNS delegation check runs alongside RDAP and WHOIS for every
+	// domain: it can show a registration before a slow WHOIS server answers,
+	// and it is ready at once when WHOIS and RDAP have nothing.
+	var delegated <-chan delegationOutcome
+	var stoppedEarly atomic.Bool
+	if s.delegationEligible(q, opts) {
+		stop := func() {}
+		if delegationFirstTLDs[suffixTLD(q.Query)] {
+			stop = func() {
+				stoppedEarly.Store(true)
+				stopProviders()
+			}
+		}
+		delegated = s.startDelegation(lookupCtx, q, opts, previews, stop)
+	}
+
 	rawResponses, sourceErrors, providerTraces := s.runProviders(providerCtx, q, opts, onRaw)
+	previews.finish()
 	if stoppedEarly.Load() {
 		markStoppedEarly(sourceErrors, providerTraces)
 	}
@@ -192,20 +204,13 @@ func (s *Service) lookupFresh(ctx context.Context, q model.NormalizedQuery, opts
 		parts = append(parts, part)
 	}
 
-	if early != nil {
-		// Delegation-first suffix: the check ran alongside the providers and
-		// is used only when they produced nothing.
-		if outcome := <-early; len(parts) == 0 && outcome.trace != nil {
+	// The delegation result decides only when the sources produced nothing
+	// usable; otherwise it is not waited for.
+	if delegated != nil && len(parts) == 0 && (stoppedEarly.Load() || whoisUnavailable(providerTraces) || whoisUnreadable(sourceErrors)) {
+		if outcome := <-delegated; outcome.trace != nil {
 			providerTraces = append(providerTraces, *outcome.trace)
 			if outcome.part != nil {
 				parts = append(parts, outcome.part)
-			}
-		}
-	} else if len(parts) == 0 && (whoisUnavailable(providerTraces) || whoisUnreadable(sourceErrors)) {
-		if part, trace := s.delegationFallback(lookupCtx, q, opts); trace != nil {
-			providerTraces = append(providerTraces, *trace)
-			if part != nil {
-				parts = append(parts, part)
 			}
 		}
 	}
@@ -508,30 +513,76 @@ func hasDeferredEnrichment(result *model.LookupResult) bool {
 	return result.Enrichment.DNS != nil || result.Enrichment.Pricing != nil || result.Enrichment.Moz != nil
 }
 
-// partialEmitter returns a callback for runProviders that merges the answers
-// received so far and hands them to opts.OnPartial. Only previews that show
-// a registration are sent: a "not found" from one source can still be
+// previewer merges the answers received so far and hands them to
+// opts.OnPartial while sources are still running. It takes provider answers
+// and the parallel DNS delegation result. Only previews that show a
+// registration are sent: a "not found" from one source can still be
 // contradicted by another, so availability waits for the final result.
-func (s *Service) partialEmitter(ctx context.Context, q model.NormalizedQuery, opts model.LookupOptions, start time.Time) func(model.RawResponse, []model.ProviderTrace, int) {
-	var parts []*model.PartialResult
-	return func(raw model.RawResponse, traces []model.ProviderTrace, pending int) {
-		part, err := s.parsers.Parse(ctx, raw, q)
-		if err != nil {
-			return
-		}
-		parts = append(parts, part)
-		if pending == 0 {
-			return
-		}
-		preview := s.merger.Merge(q, parts)
-		if preview.Status != model.StatusRegistered && preview.Status != model.StatusReserved {
-			return
-		}
-		preview.Meta.Providers = append([]model.ProviderTrace(nil), traces...)
-		preview.Meta.ElapsedMs = time.Since(start).Milliseconds()
-		s.fast.Run(ctx, preview)
-		opts.OnPartial(preview)
+type previewer struct {
+	service *Service
+	ctx     context.Context
+	q       model.NormalizedQuery
+	opts    model.LookupOptions
+	start   time.Time
+
+	mu      sync.Mutex
+	parts   []*model.PartialResult
+	traces  []model.ProviderTrace
+	pending bool
+	done    bool
+}
+
+func (p *previewer) addRaw(raw model.RawResponse, traces []model.ProviderTrace, pending int) {
+	part, err := p.service.parsers.Parse(p.ctx, raw, p.q)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.traces = append([]model.ProviderTrace(nil), traces...)
+	p.pending = pending > 0
+	if err != nil {
+		return
 	}
+	p.parts = append(p.parts, part)
+	if p.pending {
+		p.emitLocked(nil)
+	}
+}
+
+// addDelegation previews a DNS delegation that shows a registration while
+// RDAP or WHOIS are still running.
+func (p *previewer) addDelegation(part *model.PartialResult, trace *model.ProviderTrace) {
+	if p == nil || part == nil || trace == nil || part.Status != model.StatusRegistered {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.done || (len(p.traces) > 0 && !p.pending) {
+		return
+	}
+	p.parts = append(p.parts, part)
+	p.emitLocked(trace)
+}
+
+func (p *previewer) finish() {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	p.done = true
+	p.mu.Unlock()
+}
+
+func (p *previewer) emitLocked(extra *model.ProviderTrace) {
+	preview := p.service.merger.Merge(p.q, p.parts)
+	if preview.Status != model.StatusRegistered && preview.Status != model.StatusReserved {
+		return
+	}
+	preview.Meta.Providers = append([]model.ProviderTrace(nil), p.traces...)
+	if extra != nil {
+		preview.Meta.Providers = append(preview.Meta.Providers, *extra)
+	}
+	preview.Meta.ElapsedMs = time.Since(p.start).Milliseconds()
+	p.service.fast.Run(p.ctx, preview)
+	p.opts.OnPartial(preview)
 }
 
 func (s *Service) runProviders(ctx context.Context, q model.NormalizedQuery, opts model.LookupOptions, onRaw func(model.RawResponse, []model.ProviderTrace, int)) ([]model.RawResponse, []model.SourceError, []model.ProviderTrace) {
@@ -667,20 +718,18 @@ type delegationOutcome struct {
 	trace *model.ProviderTrace
 }
 
-func (s *Service) delegationFirst(q model.NormalizedQuery, opts model.LookupOptions) bool {
-	if s.delegation == nil || q.Type != model.QueryDomain || opts.RDAPServer != "" || opts.WHOISServer != "" {
-		return false
-	}
-	return delegationFirstTLDs[suffixTLD(q.Query)]
+func (s *Service) delegationEligible(q model.NormalizedQuery, opts model.LookupOptions) bool {
+	return s.delegation != nil && q.Type == model.QueryDomain && opts.RDAPServer == "" && opts.WHOISServer == ""
 }
 
 // startDelegation runs the delegation check in the background. Once it has a
 // result, stop is called after delegationGrace so slow providers no longer
 // hold up the lookup.
-func (s *Service) startDelegation(ctx context.Context, q model.NormalizedQuery, opts model.LookupOptions, stop func()) <-chan delegationOutcome {
+func (s *Service) startDelegation(ctx context.Context, q model.NormalizedQuery, opts model.LookupOptions, previews *previewer, stop func()) <-chan delegationOutcome {
 	out := make(chan delegationOutcome, 1)
 	go func() {
 		part, trace := s.delegationFallback(ctx, q, opts)
+		previews.addDelegation(part, trace)
 		out <- delegationOutcome{part: part, trace: trace}
 		if part == nil {
 			return

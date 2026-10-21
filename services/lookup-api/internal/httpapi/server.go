@@ -986,6 +986,12 @@ type statusRecorder struct {
 	status int
 }
 
+// Unwrap lets http.ResponseController reach the underlying writer, so
+// streamed lookups can flush through this wrapper.
+func (r *statusRecorder) Unwrap() http.ResponseWriter {
+	return r.ResponseWriter
+}
+
 func (r *statusRecorder) WriteHeader(status int) {
 	r.status = status
 	r.ResponseWriter.WriteHeader(status)

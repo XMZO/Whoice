@@ -857,3 +857,13 @@ func TestLookupStreamWritesNDJSONFinalLine(t *testing.T) {
 		}
 	}
 }
+
+func TestLookupStreamFlushesThroughMiddleware(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	wrapped := &statusRecorder{ResponseWriter: recorder, status: http.StatusOK}
+	stream := newLookupStream(wrapped)
+	stream.partial(&model.LookupResult{NormalizedQuery: "example.com"})
+	if !recorder.Flushed || !strings.Contains(recorder.Body.String(), `"partial"`) {
+		t.Fatalf("preview was not flushed through the status recorder: flushed=%v body=%q", recorder.Flushed, recorder.Body.String())
+	}
+}

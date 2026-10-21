@@ -56,9 +56,10 @@ func (s *lookupStream) startLocked() {
 func (s *lookupStream) writeLineLocked(value any) {
 	s.startLocked()
 	_ = json.NewEncoder(s.w).Encode(value)
-	if flusher, ok := s.w.(http.Flusher); ok {
-		flusher.Flush()
-	}
+	// ResponseController follows Unwrap through middleware wrappers; a
+	// plain type assertion missed the flusher and buffered every preview
+	// until the final line.
+	_ = http.NewResponseController(s.w).Flush()
 }
 
 func (s *lookupStream) partial(result *model.LookupResult) {

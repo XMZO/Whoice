@@ -633,3 +633,60 @@ func TestMissingNameDirectlyUnderThirdLevelOnlyTLDIsNotAvailable(t *testing.T) {
 		t.Fatal("existing names stay registered")
 	}
 }
+
+type slowDelegation struct {
+	delay  time.Duration
+	result *delegation.Result
+}
+
+func (s slowDelegation) Check(ctx context.Context, domain string) (*delegation.Result, error) {
+	select {
+	case <-time.After(s.delay):
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	result := *s.result
+	result.Domain = domain
+	return &result, nil
+}
+
+func TestDNSDelegationPreviewsBeforeSlowWHOIS(t *testing.T) {
+	whois := delayedProvider{delay: 300 * time.Millisecond, testProvider: testProvider{source: model.SourceWHOIS, raw: &model.RawResponse{
+		Source: model.SourceWHOIS, Server: "whois.example",
+		Body: "Domain Name: EXAMPLE.TEST\nRegistrar: Example Registrar\nName Server: NS1.EXAMPLE.TEST\n",
+	}}}
+	service := NewService(config.Config{LookupTimeout: 5 * time.Second, ProviderTimeout: 5 * time.Second, WHOISEnabled: true},
+		[]providerapi.Provider{whois}, parsers.NewRegistry(parsers.WHOISParser{}))
+	service.delegation = slowDelegation{delay: 10 * time.Millisecond, result: &delegation.Result{
+		Zone: "test", Status: model.StatusRegistered, Nameservers: []string{"ns1.example.test"}, Body: "; delegated\n",
+	}}
+
+	var previews []*model.LookupResult
+	result, err := service.Lookup(context.Background(), "example.test", model.LookupOptions{
+		UseWHOIS: true, OnPartial: func(p *model.LookupResult) { previews = append(previews, p) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(previews) != 1 || previews[0].Status != model.StatusRegistered || previews[0].Source.Primary != model.SourceDNS {
+		t.Fatalf("expected one DNS preview, got %d: %#v", len(previews), previews)
+	}
+	if result.Source.Primary != model.SourceWHOIS || result.Registrar.Name != "Example Registrar" || result.Raw.DNS != "" {
+		t.Fatalf("final result should come from WHOIS: %#v", result.Source)
+	}
+}
+
+func TestLookupDoesNotWaitForSlowDNSWhenWHOISAnswers(t *testing.T) {
+	service := NewService(config.Config{LookupTimeout: 5 * time.Second, ProviderTimeout: 5 * time.Second, WHOISEnabled: true},
+		[]providerapi.Provider{testProvider{source: model.SourceWHOIS, raw: &model.RawResponse{
+			Source: model.SourceWHOIS, Server: "whois.example", Body: "Domain Name: EXAMPLE.TEST\nRegistrar: Example Registrar\n",
+		}}}, parsers.NewRegistry(parsers.WHOISParser{}))
+	service.delegation = slowDelegation{delay: 3 * time.Second, result: &delegation.Result{Zone: "test", Status: model.StatusRegistered}}
+	start := time.Now()
+	if _, err := service.Lookup(context.Background(), "example.test", model.LookupOptions{UseWHOIS: true}); err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("lookup waited %s for the DNS check", elapsed)
+	}
+}
