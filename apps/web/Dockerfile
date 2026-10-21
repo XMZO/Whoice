@@ -1,11 +1,11 @@
-FROM node:24-alpine AS deps
+FROM node:24.22.1-alpine3.24 AS deps
 
 WORKDIR /app
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/web/package.json ./apps/web/package.json
 RUN corepack enable && pnpm install --filter @whoice/web --frozen-lockfile
 
-FROM node:24-alpine AS build
+FROM node:24.22.1-alpine3.24 AS build
 
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -24,10 +24,13 @@ RUN corepack enable && pnpm --dir apps/web build \
 # Runtime: a plain Alpine with only the node binary and the two libraries it
 # links (npm, corepack and yarn never enter the image), plus the standalone
 # server Next traced from the build. Keep the Alpine release in step with
-# the node:24-alpine base so libstdc++ matches.
+# the node base (pinned to a release with its security fixes) so libstdc++
+# matches.
 FROM alpine:3.24 AS runner
 
-RUN apk add --no-cache libstdc++ libgcc \
+# apk upgrade picks up Alpine security fixes released after the base image.
+RUN apk upgrade --no-cache \
+  && apk add --no-cache libstdc++ libgcc \
   && adduser -D -H -u 1000 node
 COPY --from=build /usr/local/bin/node /usr/local/bin/node
 WORKDIR /app

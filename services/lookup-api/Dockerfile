@@ -12,9 +12,11 @@ WORKDIR /src/services/lookup-api
 # names); -trimpath removes build paths.
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/whoice-api ./cmd/whoice-api
 
-FROM alpine:3.22
+FROM alpine:3.24
 
-RUN apk add --no-cache su-exec \
+# apk upgrade picks up Alpine security fixes released after the base image.
+RUN apk upgrade --no-cache \
+  && apk add --no-cache su-exec \
   && adduser -D -H whoice \
   && mkdir -p /data \
   && chown whoice:whoice /data
