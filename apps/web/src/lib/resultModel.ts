@@ -288,7 +288,7 @@ export function agreeingProviders(addresses: { source?: string; resolver?: strin
   return Array.from(sets[0]).filter((name) => sets.every((set) => set.has(name)));
 }
 
-export type ResolverStatusItem = { key: string; label: string; status: "ok" | "empty" | "error"; detail?: string };
+export type ResolverStatusItem = { key: string; label: string; status: "ok" | "empty" | "error"; source?: string; detail?: string };
 
 export function resolverStatusItems(resolvers: ResolverInfo[] = [], t: Translate, detailed: boolean): ResolverStatusItem[] {
   if (detailed) {
@@ -296,6 +296,7 @@ export function resolverStatusItems(resolvers: ResolverInfo[] = [], t: Translate
       key: `${resolver.source}-${resolver.resolver}-${index}`,
       label: resolverName(resolver, t, true),
       status: (resolver.status as ResolverStatusItem["status"]) || "ok",
+      source: resolver.source,
       detail: resolver.error || resolver.endpoint,
     }));
   }
@@ -310,7 +311,7 @@ export function resolverStatusItems(resolvers: ResolverInfo[] = [], t: Translate
       current.detail = [current.detail, resolver.error || resolver.resolver].filter(Boolean).join("\n");
       continue;
     }
-    groups.set(key, { key, label: name, status, count: 1, detail: resolver.error || resolver.endpoint || resolver.resolver });
+    groups.set(key, { key, label: name, status, source: resolver.source, count: 1, detail: resolver.error || resolver.endpoint || resolver.resolver });
   }
   return Array.from(groups.values()).map((group) => ({ ...group, label: group.count > 1 ? `${group.label} ×${group.count}` : group.label }));
 }

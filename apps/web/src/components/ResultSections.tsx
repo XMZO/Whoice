@@ -438,12 +438,12 @@ export function DNSSection({
               </span>
               <span className="resolver-items resolver-items-grouped">
                 {resolverStatusItems(resolvers, t, false).map((item) => (
-                  <ResolverDot key={item.key} label={item.label} status={item.status} detail={item.detail} />
+                  <ResolverDot key={item.key} label={item.label} status={item.status} source={item.source} detail={item.detail} />
                 ))}
               </span>
               <span className="resolver-items resolver-items-detailed">
                 {resolverStatusItems(resolvers, t, true).map((item) => (
-                  <ResolverDot key={item.key} label={item.label} status={item.status} detail={item.detail} />
+                  <ResolverDot key={item.key} label={item.label} status={item.status} source={item.source} detail={item.detail} />
                 ))}
               </span>
             </div>
@@ -459,18 +459,38 @@ export function DNSSection({
   );
 }
 
-function ResolverDot({ label, status, detail }: { label: string; status: string; detail?: string }) {
+// "empty" means the resolver answered without records, which is not a
+// failure: DoH resolvers are asked for addresses only (a mail-only domain has
+// none), UDP resolvers for A/AAAA, CNAME, MX and NS.
+const RESOLVER_EMPTY_DOH = t3("no address", "无地址记录", "無位址記錄");
+const RESOLVER_EMPTY_UDP = t3("no records", "无记录", "無記錄");
+const RESOLVER_EMPTY_HINT = t3(
+  "Answered, but the name has no matching records",
+  "已正常回答，但该名称没有对应记录",
+  "已正常回答，但該名稱沒有對應記錄",
+);
+
+function ResolverDot({ label, status, source, detail }: { label: string; status: string; source?: string; detail?: string }) {
   const { t } = useI18n();
-  const failed = status !== "ok";
-  const suffix = status === "error" ? (/timeout|deadline/i.test(detail || "") ? t("dnsTimeout") : t("resolverFailed")) : status === "empty" ? t("resolverNoAnswer") : "";
+  const pick = useT3();
+  const failed = status === "error";
+  const empty = status === "empty";
+  const suffix = failed
+    ? /timeout|deadline/i.test(detail || "")
+      ? t("dnsTimeout")
+      : t("resolverFailed")
+    : empty
+      ? pick(source === "doh" ? RESOLVER_EMPTY_DOH : RESOLVER_EMPTY_UDP)
+      : "";
+  const tooltip = empty ? [pick(RESOLVER_EMPTY_HINT), detail].filter(Boolean).join("\n") : detail;
   return (
-    <span className={`resolver-group resolver-dot ${failed ? "is-failed" : ""}`} tabIndex={detail ? 0 : undefined}>
+    <span className={`resolver-group resolver-dot ${failed ? "is-failed" : empty ? "is-empty" : ""}`} tabIndex={tooltip ? 0 : undefined}>
       <span className="dot" aria-hidden="true" />
       {label}
       {suffix && ` ${suffix}`}
-      {detail && (
+      {tooltip && (
         <span className="resolver-tooltip" role="tooltip">
-          {detail}
+          {tooltip}
         </span>
       )}
     </span>

@@ -1495,6 +1495,16 @@ button.src-tag {
   background: var(--amber);
 }
 
+/* Answered without matching records: neutral, not a failure. */
+.resolver-dot.is-empty {
+  color: var(--muted);
+}
+
+.resolver-dot.is-empty .dot {
+  background: transparent;
+  border: 1.5px solid var(--muted);
+}
+
 .resolver-tooltip {
   background: var(--panel);
   border: 1px solid var(--border);
