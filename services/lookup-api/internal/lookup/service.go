@@ -218,6 +218,7 @@ func (s *Service) lookupFresh(ctx context.Context, q model.NormalizedQuery, opts
 	}
 
 	result := s.merger.Merge(q, parts)
+	markClosedSecondLevel(q, result)
 	result.Source.Errors = sourceErrors
 	result.Meta.Providers = providerTraces
 	result.Meta.ElapsedMs = time.Since(start).Milliseconds()
@@ -769,4 +770,25 @@ func (s *Service) delegationFallback(ctx context.Context, q model.NormalizedQuer
 		part.Nameservers = append(part.Nameservers, model.Nameserver{Host: host})
 	}
 	return part, trace
+}
+
+// thirdLevelOnlyTLDs accept registrations only under their second-level
+// zones (co.zw, com.bd, ...), never directly under the TLD.
+var thirdLevelOnlyTLDs = map[string]string{
+	"bd": "com.bd", "ck": "co.ck", "er": "com.er", "fk": "co.fk", "jm": "com.jm",
+	"kh": "com.kh", "np": "com.np", "pg": "com.pg", "zw": "co.zw",
+}
+
+// markClosedSecondLevel reports a missing name directly under such a TLD
+// (nic.zw) as not available instead of "available": nobody can register it.
+func markClosedSecondLevel(q model.NormalizedQuery, result *model.LookupResult) {
+	example, ok := thirdLevelOnlyTLDs[strings.Trim(q.Suffix, ".")]
+	if !ok || q.Type != model.QueryDomain || result.Status != model.StatusUnregistered {
+		return
+	}
+	result.Status = model.StatusReserved
+	result.Domain.Reserved = true
+	result.Meta.Warnings = append(result.Meta.Warnings, fmt.Sprintf(
+		"The .%s registry only accepts registrations under second-level zones such as %s; names directly under .%s cannot be registered.",
+		q.Suffix, example, q.Suffix))
 }

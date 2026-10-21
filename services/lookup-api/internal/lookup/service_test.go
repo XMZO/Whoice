@@ -610,3 +610,26 @@ func TestCachedPricingShipsWithTheFirstResponse(t *testing.T) {
 		t.Fatalf("DNS stays deferred: %v", second.Meta.PendingEnrichments)
 	}
 }
+
+func TestMissingNameDirectlyUnderThirdLevelOnlyTLDIsNotAvailable(t *testing.T) {
+	for query, want := range map[string]model.ResultStatus{
+		"nic.zw":          model.StatusReserved,
+		"free.co.zw":      model.StatusUnregistered,
+		"free.example.zz": model.StatusUnregistered,
+	} {
+		q := model.NormalizedQuery{Type: model.QueryDomain, Query: query, Suffix: suffixFromDomain(query)}
+		if query == "nic.zw" {
+			q.Suffix = "zw"
+		}
+		result := &model.LookupResult{Type: model.QueryDomain, Status: model.StatusUnregistered}
+		markClosedSecondLevel(q, result)
+		if result.Status != want {
+			t.Fatalf("%s: status %q want %q", query, result.Status, want)
+		}
+	}
+	registered := &model.LookupResult{Type: model.QueryDomain, Status: model.StatusRegistered}
+	markClosedSecondLevel(model.NormalizedQuery{Type: model.QueryDomain, Query: "x.zw", Suffix: "zw"}, registered)
+	if registered.Status != model.StatusRegistered {
+		t.Fatal("existing names stay registered")
+	}
+}
