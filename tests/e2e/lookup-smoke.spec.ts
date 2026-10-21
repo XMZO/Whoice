@@ -825,3 +825,29 @@ test("a failed provider is greyed out without a warning while another one answer
   await showSection(page, /Sources/);
   await expect(page.locator(".trace-row.trace-quiet")).toContainText("connection refused");
 });
+
+test("the result layout is in place before the first source answers and does not move", async ({ page }, testInfo) => {
+  const query = "steady-layout.test";
+  let release: () => void = () => {};
+  const answered = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/api/lookup?**", async (route) => {
+    await answered;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, result: lookupFixture(query, { dates: { createdAt: "2001-02-03T00:00:00Z", expiresAt: "2031-02-03T00:00:00Z" } }) }),
+    });
+  });
+  await page.goto(`/lookup?query=${query}`);
+  await expect(page.locator(".lookup-pending")).toBeVisible();
+  if (testInfo.project.name === "mobile-chrome") {
+    await expect(page.locator(".mobile-tabs")).toBeVisible();
+  } else {
+    await expect(page.locator(".result-lower")).toBeVisible();
+  }
+  const before = await page.locator(".metric-grid").boundingBox();
+  release();
+  await expect(page.locator(".lookup-pending")).toHaveCount(0);
+  await expect(page.locator(".metric-grid")).toContainText("Fixture Registrar");
+  const after = await page.locator(".metric-grid").boundingBox();
+  expect(after).toEqual(before);
+});

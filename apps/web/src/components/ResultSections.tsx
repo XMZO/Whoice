@@ -97,19 +97,28 @@ export function SourceTags({ sources }: { sources: string[] }) {
   );
 }
 
+/** Placeholder for a value that is still on its way; it takes the value's line. */
+export function Skel({ width = "6em" }: { width?: string }) {
+  return <span className="skel" style={{ width }} aria-hidden="true" />;
+}
+
 /* ---------- Hero metrics and locks ---------- */
 
-function Metric({ icon, label, value, sub, tone, badge }: { icon: ReactNode; label: string; value: ReactNode; sub?: ReactNode; tone?: "ok" | "warn" | "danger"; badge?: string }) {
+// Every metric keeps the same three lines (label, value, sub) whether or not
+// the value has arrived, so streamed fields fill in without resizing cards.
+// A name value (registrar, network) passes `fit` so a long one shrinks to fit
+// its card instead of being cut off.
+function Metric({ icon, label, value, sub, tone, badge, title, fit }: { icon: ReactNode; label: string; value: ReactNode; sub?: ReactNode; tone?: "ok" | "warn" | "danger"; badge?: string; title?: string; fit?: string }) {
   return (
     <div className={`metric${tone ? ` metric-${tone}` : ""}`}>
       <span className="metric-icon" aria-hidden="true">{icon}</span>
       <span className="metric-body">
         <span className="metric-label">{label}</span>
-        <strong className="metric-value">
+        <strong className={fit ? "metric-value fit" : "metric-value"} title={title} style={fit ? ({ "--chars": fit.length + 2 } as CSSProperties) : undefined}>
           {value}
           {badge && <span className="metric-badge">{badge}</span>}
         </strong>
-        {sub && <span className="metric-sub">{sub}</span>}
+        <span className="metric-sub">{sub}</span>
       </span>
     </div>
   );
@@ -122,7 +131,7 @@ function expiryTone(days?: number): "ok" | "warn" | "danger" | undefined {
   return "ok";
 }
 
-export function DomainMetrics({ result }: { result: LookupResult }) {
+export function DomainMetrics({ result, pending }: { result: LookupResult; pending?: boolean }) {
   const { t, tf, locale } = useI18n();
   const registrar = result.registrar || {};
   const dates = result.dates || {};
@@ -130,10 +139,10 @@ export function DomainMetrics({ result }: { result: LookupResult }) {
   const registrarSub = [registrar.ianaId ? `IANA ${registrar.ianaId}` : "", country].filter(Boolean).join(" · ");
   const ageDays = dates.ageDays;
   const years = ageDays !== undefined && ageDays !== null ? Math.floor(ageDays / 365.25) : undefined;
-  const ageValue = years === undefined ? t("notProvided") : years >= 1 ? tf("durYears", { n: years }) : tf("durDays", { n: ageDays ?? 0 });
+  const ageValue = years === undefined ? (pending ? <Skel /> : t("notProvided")) : years >= 1 ? tf("durYears", { n: years }) : tf("durDays", { n: ageDays ?? 0 });
   const ageBadge = ageDays === undefined || ageDays === null ? undefined : ageDays < 90 ? t("newDomain") : ageDays >= 3650 ? t("oldDomain") : ageDays >= 1095 ? t("matureDomain") : undefined;
   const remaining = dates.remainingDays;
-  const remainingValue = remaining === undefined || remaining === null ? t("notProvided") : remaining < 0 ? tf("expiredDays", { n: Math.abs(remaining) }) : tf("durDays", { n: remaining });
+  const remainingValue = remaining === undefined || remaining === null ? (pending ? <Skel /> : t("notProvided")) : remaining < 0 ? tf("expiredDays", { n: Math.abs(remaining) }) : tf("durDays", { n: remaining });
   const updated = sinceLabel(dates.updatedAt, tf, t);
   const registrarSite = registrar.name ? safeExternalURL(registrar.url || registrar.brand?.website) : "";
   const registrarValue = registrarSite ? (
@@ -142,28 +151,30 @@ export function DomainMetrics({ result }: { result: LookupResult }) {
       <ExternalIcon size={13} className="metric-link-icon" />
     </a>
   ) : (
-    registrar.name || t("noRegistrar")
+    registrar.name || (pending ? <Skel width="8em" /> : t("noRegistrar"))
   );
+  const stamp = (value?: string) => (value ? <span className="mono">{formatTimestamp(value)}</span> : pending ? <Skel width="5.5em" /> : undefined);
   return (
     <div className="metric-grid summary-panel">
-      <Metric icon={<BuildingIcon />} label={t("registrar")} value={registrarValue} sub={registrarSub || undefined} />
-      <Metric icon={<CalendarIcon />} label={t("registrationAge")} value={ageValue} badge={ageBadge} sub={<span className="mono">{formatTimestamp(dates.createdAt)}</span>} />
-      <Metric icon={<ClockIcon />} label={t("remainingValidity")} value={remainingValue} tone={expiryTone(remaining)} sub={<span className="mono">{formatTimestamp(dates.expiresAt)}</span>} />
-      <Metric icon={<RefreshIcon />} label={t("lastUpdated")} value={updated || t("notProvided")} sub={<span className="mono">{formatTimestamp(dates.updatedAt)}</span>} />
+      <Metric icon={<BuildingIcon />} label={t("registrar")} value={registrarValue} title={registrar.name} fit={registrar.name} sub={registrarSub || (pending && !registrar.name ? <Skel width="4em" /> : undefined)} />
+      <Metric icon={<CalendarIcon />} label={t("registrationAge")} value={ageValue} badge={ageBadge} sub={stamp(dates.createdAt)} />
+      <Metric icon={<ClockIcon />} label={t("remainingValidity")} value={remainingValue} tone={expiryTone(remaining)} sub={stamp(dates.expiresAt)} />
+      <Metric icon={<RefreshIcon />} label={t("lastUpdated")} value={updated || (pending ? <Skel /> : t("notProvided"))} sub={stamp(dates.updatedAt)} />
     </div>
   );
 }
 
-export function NetworkMetrics({ result }: { result: LookupResult }) {
+export function NetworkMetrics({ result, pending }: { result: LookupResult; pending?: boolean }) {
   const { t, locale } = useI18n();
   const network = result.network || {};
   const country = countryName(network.country, locale);
+  const missing = pending ? <Skel /> : t("notProvided");
   return (
     <div className="metric-grid summary-panel">
-      <Metric icon={<NetworkIcon />} label={t("range")} value={<span className="mono">{network.cidr || network.range || t("notProvided")}</span>} sub={network.cidr && network.range ? <span className="mono">{network.range}</span> : undefined} />
-      <Metric icon={<BuildingIcon />} label={t("entityName")} value={network.name || t("notProvided")} sub={network.type} />
-      <Metric icon={<GlobeIcon />} label={t("country")} value={country || t("notProvided")} />
-      <Metric icon={<TagIcon />} label={t("originAs")} value={<span className="mono">{network.originAS || t("notProvided")}</span>} />
+      <Metric icon={<NetworkIcon />} label={t("range")} value={network.cidr || network.range ? <span className="mono">{network.cidr || network.range}</span> : missing} fit={network.cidr || network.range} sub={network.cidr && network.range ? <span className="mono">{network.range}</span> : undefined} />
+      <Metric icon={<BuildingIcon />} label={t("entityName")} value={network.name || missing} title={network.name} fit={network.name} sub={network.type} />
+      <Metric icon={<GlobeIcon />} label={t("country")} value={country || missing} />
+      <Metric icon={<TagIcon />} label={t("originAs")} value={network.originAS ? <span className="mono">{network.originAS}</span> : missing} />
     </div>
   );
 }
@@ -185,13 +196,15 @@ function lockTitle(code: string, locked: boolean, pick: (value: T3) => string, n
   return `${code} · ${locked ? (help ? pick(help) : "") : notSet}`.replace(/ · $/, "");
 }
 
-export function LockBar({ result }: { result: LookupResult }) {
+export function LockBar({ result, pending }: { result: LookupResult; pending?: boolean }) {
   const { t, tf } = useI18n();
   const pick = useT3();
   const statuses = Array.isArray(result.statuses) ? result.statuses : [];
   const model = lockModel(statuses);
   const signed = result.dnssec?.signed ?? /^(signed|yes|true)/i.test(result.dnssec?.text || "");
   const dnssecKnown = result.dnssec?.signed !== undefined || Boolean(result.dnssec?.text);
+  // Until a registry source answers, the locks are unknown, not "unlocked".
+  const waiting = Boolean(pending && !statuses.length);
   return (
     <div className="lock-bar status-panel">
       <span className="lock-title">
@@ -201,7 +214,8 @@ export function LockBar({ result }: { result: LookupResult }) {
       <span className="lock-group">
         <span className="lock-label">{t("registrarLock")}</span>
         <span className="lock-tags">
-          {model.registrar.map((item) => {
+          {waiting && model.registrar.map((item) => <span key={item.op} className="lock-tag skel-tag" aria-hidden="true" />)}
+          {!waiting && model.registrar.map((item) => {
             const op = lockOpLabel(item.op, t);
             return item.locked ? (
               <span key={item.op} className="lock-tag locked" title={lockTitle(item.code, true, pick, t("notSet"))}>
@@ -211,7 +225,8 @@ export function LockBar({ result }: { result: LookupResult }) {
               </span>
             ) : (
               <span key={item.op} className="lock-tag unlocked" title={lockTitle(item.code, false, pick, t("notSet"))}>
-                {tf("unlockedOp", { op })}
+                <span className="lock-text-long">{tf("unlockedOp", { op })}</span>
+                <span className="lock-text-short">{op}</span>
               </span>
             );
           })}
@@ -221,7 +236,9 @@ export function LockBar({ result }: { result: LookupResult }) {
       <span className="lock-group">
         <span className="lock-label">{t("registryLock")}</span>
         <span className="lock-tags">
-          {model.registryAny ? (
+          {waiting ? (
+            <Skel width="4em" />
+          ) : model.registryAny ? (
             model.registry
               .filter((item) => item.locked)
               .map((item) => {
@@ -241,7 +258,7 @@ export function LockBar({ result }: { result: LookupResult }) {
       </span>
       <span className="lock-group">
         <span className="lock-label">DNSSEC</span>
-        <span className="lock-value mono-cjk">{dnssecKnown ? (signed ? t("dnssecSigned") : t("dnssecUnsigned")) : t("notProvided")}</span>
+        <span className="lock-value mono-cjk">{dnssecKnown ? (signed ? t("dnssecSigned") : t("dnssecUnsigned")) : pending ? <Skel width="4em" /> : t("notProvided")}</span>
       </span>
     </div>
   );
@@ -387,6 +404,8 @@ export function DNSSection({
               ))}
             </div>
           </>
+        ) : pending ? (
+          <span className="pending-line short" aria-hidden="true" />
         ) : (
           <span className="muted">{t("noNameservers")}</span>
         )}
@@ -874,9 +893,11 @@ export function RegistrantSection({
   icpState,
   onICPLookup,
   onCopy,
+  pending,
   showHeader = true,
 }: {
   result: LookupResult;
+  pending?: boolean;
   aiLoading?: boolean;
   aiError?: string;
   icpDomain?: string;
@@ -923,6 +944,13 @@ export function RegistrantSection({
       {rows.length === 0 && extras.length === 0 ? (
         aiLoading ? (
           <p className="section-note">{t("aiChecking")}</p>
+        ) : pending ? (
+          <div className="pending-block" role="status" aria-label={t("searching")}>
+            <span className="pending-line" />
+            <span className="pending-line short" />
+            <span className="pending-line" />
+            <span className="pending-line short" />
+          </div>
         ) : (
           <RegistrarContact result={result} />
         )
@@ -1147,14 +1175,19 @@ export const TRUNCATED_DETAIL = t3(
 
 const rawLabelKey: Partial<Record<string, "rawRdap" | "rawWhois">> = { rdap: "rawRdap", whois: "rawWhois", whoisWeb: "rawWhois" };
 
+const SOURCE_ORDER = ["rdap", "whois", "whoisWeb", "dns"];
+
 export function SourcesSection({
   result,
   warnings,
+  pendingSources = [],
   onOpenRaw,
   showHeader = true,
 }: {
   result: LookupResult;
   warnings: string[];
+  /** Sources still being queried; they keep their row while they run. */
+  pendingSources?: string[];
   onOpenRaw: (tab: RawTab) => void;
   showHeader?: boolean;
 }) {
@@ -1162,12 +1195,17 @@ export function SourcesSection({
   const pick = useT3();
   const providers = Array.isArray(result.meta?.providers) ? result.meta.providers : [];
   const primary = result.source?.primary;
-  const ordered = providers.slice().sort((a, b) => (a.source === primary ? -1 : b.source === primary ? 1 : 0));
   const listed = new Set(providers.map((item) => item.source));
+  const waiting = pendingSources.filter((source) => !listed.has(source as never));
   const used = Array.isArray(result.source?.used) ? result.source.used : [];
   const rawFor = (source: string) => (source === "rdap" ? result.raw?.rdap : source === "whois" ? result.raw?.whois : source === "whoisWeb" ? result.raw?.whoisWeb : source === "dns" ? result.raw?.dns : undefined);
   const missing = (["rdap", "whois", "whoisWeb", "dns"] as const).filter((source) => !listed.has(source) && (used.includes(source) || rawFor(source)));
-  const unused = (["rdap", "whois", "whoisWeb"] as const).filter((source) => !listed.has(source) && !used.includes(source) && !rawFor(source));
+  const unused = (["rdap", "whois", "whoisWeb"] as const).filter((source) => !listed.has(source) && !used.includes(source) && !rawFor(source) && !waiting.includes(source));
+  // Rows keep a fixed source order, so streamed answers fill rows in place.
+  const rank = (source: string) => {
+    const index = SOURCE_ORDER.indexOf(source);
+    return index < 0 ? SOURCE_ORDER.length : index;
+  };
   const registry = result.registry || {};
   // A failed source is only greyed out while another registry source answered.
   const quiet = providers.some((item) => item.status === "ok" && item.source !== "dns");
@@ -1184,10 +1222,11 @@ export function SourcesSection({
       </div>
       {/* Provider rows double as request diagnostics: server, HTTP status, size, latency. */}
       <div className="trace-list">
-        {ordered.map((provider) => {
+        {[
+        ...providers.map((provider) => {
           const raw = rawFor(provider.source);
           const meta = [provider.statusCode ? `HTTP ${provider.statusCode}` : "", formatBytes(provider.bytes), `${provider.elapsedMs} ms`].filter(Boolean).join(" · ");
-          return (
+          return { source: provider.source, node: (
             <div className={`trace-row trace-${provider.status}${quiet && provider.status === "error" ? " trace-quiet" : ""}`} key={`${provider.source}-${provider.server || provider.elapsedMs}`}>
               <span className="trace-name">
                 <span className={`dot ${provider.status === "ok" ? "dot-ok" : provider.status === "error" ? (quiet ? "dot-hollow" : "dot-error") : provider.status === "stopped" ? "dot-stopped" : "dot-hollow"}`} aria-hidden="true" />
@@ -1215,9 +1254,9 @@ export function SourcesSection({
                 <span />
               )}
             </div>
-          );
-        })}
-        {missing.map((source) => (
+          ) };
+        }),
+        ...missing.map((source) => ({ source, node: (
           <div className="trace-row trace-ok" key={source}>
             <span className="trace-name">
               <span className="dot dot-ok" aria-hidden="true" />
@@ -1237,8 +1276,21 @@ export function SourcesSection({
               <span />
             )}
           </div>
-        ))}
-        {unused.map((source) => (
+        ) })),
+        ...waiting.map((source) => ({ source, node: (
+          <div className="trace-row trace-pending" key={source} role="status">
+            <span className="trace-name">
+              <span className="dot dot-hollow pulse" aria-hidden="true" />
+              {sourceName(source)}
+            </span>
+            <span className="trace-detail">
+              <span className="trace-server">{displayServer(source === "rdap" ? registry.rdapServer : source === "whois" ? registry.whoisServer : "") || "—"}</span>
+              <span className="trace-meta">{t("searching")}</span>
+            </span>
+            <span />
+          </div>
+        ) })),
+        ...unused.map((source) => ({ source, node: (
           <div className="trace-row trace-unused" key={source}>
             <span className="trace-name">
               <span className="dot dot-hollow" aria-hidden="true" />
@@ -1246,7 +1298,10 @@ export function SourcesSection({
             </span>
             <span className="trace-meta">{t("notUsed")}</span>
           </div>
-        ))}
+        ) })),
+        ]
+          .sort((x, y) => rank(x.source) - rank(y.source))
+          .map((row) => row.node)}
       </div>
       <WarningList warnings={warnings} />
       {(registry.name || registry.rdapServer || registry.whoisServer) && (

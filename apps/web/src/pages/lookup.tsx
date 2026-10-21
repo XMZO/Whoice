@@ -25,6 +25,7 @@ import {
   TRUNCATED_DETAIL,
   pricingSummary,
   registrantFieldCount,
+  Skel,
   type ICPState,
 } from "@/components/ResultSections";
 import { analyzeRegistration, appendLookupOptions, enrichLookup, getCapabilities, lookupICP, lookupStream, normalizeLookupInput, type LookupOptions } from "@/lib/api";
@@ -33,7 +34,7 @@ import { useI18n, type I18nKey } from "@/lib/i18n";
 import { diagnostic } from "@/lib/diagnostic";
 import { kindLabel, sourceName, sourceTag } from "@/lib/resultModel";
 import { t3, useT3, type T3 } from "@/lib/t3";
-import type { APIResponse, LookupResult } from "@/lib/types";
+import type { APIResponse, LookupResult, QueryType } from "@/lib/types";
 
 type SectionTab = "overview" | "dns" | "owner" | "price" | "source" | "network";
 
@@ -396,30 +397,39 @@ function TabButton({
   );
 }
 
-function LookupPendingView({ query, sources }: { query: string; sources: string[] }) {
-  const { t } = useI18n();
-  const pick = useT3();
-  return (
-    <section className="status-strip result-hero lookup-pending" aria-label={query} aria-live="polite">
-      <div className="hero-head">
-        <div className="hero-badges">
-          <span className="pill pill-amber pulse" role="status">{t("searching")}</span>
-          <span className="hero-meta">{sources.map(sourceName).join(" · ")}</span>
-        </div>
-        <div className="hero-title">
-          <h1>{query}</h1>
-        </div>
-      </div>
-      <div className="hero-overview pending-body">
-        <div className="pending-metrics" aria-hidden="true">
-          {[0, 1, 2, 3].map((index) => (
-            <span key={index} className="pending-metric" />
-          ))}
-        </div>
-        <p className="pending-note">{pick(t3("Results appear as each source answers.", "每个来源返回后立即显示结果。", "每個來源回應後立即顯示結果。"))}</p>
-      </div>
-    </section>
-  );
+// Stand-in result rendered while the first source is still on its way: the
+// page shows the real result layout (tabs, cards, panels) at once and every
+// field fills in place as sources answer, so nothing jumps.
+function placeholderResult(query: string): LookupResult {
+  const value = normalizeLookupInput(query);
+  const type: QueryType = /^as\d+$/i.test(value)
+    ? "asn"
+    : value.includes("/")
+      ? "cidr"
+      : value.includes(":")
+        ? "ipv6"
+        : /^\d{1,3}(\.\d{1,3}){3}$/.test(value)
+          ? "ipv4"
+          : "domain";
+  return {
+    query: value,
+    normalizedQuery: value,
+    type,
+    status: "unknown",
+    source: { used: [], errors: [] },
+    domain: { name: type === "domain" ? value : undefined, reserved: false, registered: false },
+    registry: {},
+    registrar: {},
+    dates: {},
+    statuses: [],
+    nameservers: [],
+    dnssec: {},
+    registrant: {},
+    network: {},
+    enrichment: {},
+    raw: {},
+    meta: { elapsedMs: 0, providers: [] },
+  } as LookupResult;
 }
 
 function LookupErrorPanel({ response, status, onRetry }: { response: APIResponse; status: number; onRetry?: () => void }) {
@@ -912,21 +922,25 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
     URL.revokeObjectURL(url);
   }
 
+  // Until the first source answers, the page renders the result layout around a
+  // placeholder so tabs and panels are there at once and stay put.
+  const skeleton = state.pending && !result;
+  const view = result || (skeleton ? placeholderResult(state.query) : undefined);
   const expectedSources: string[] = state.sourceMode === "rdap" ? ["rdap"] : state.sourceMode === "whois" ? ["whois"] : ["rdap", "whois"];
-  const answeredSources = new Set((result?.meta?.providers || []).map((provider) => provider.source));
+  const answeredSources = new Set((view?.meta?.providers || []).map((provider) => provider.source));
   const pendingSources = state.pending ? expectedSources.filter((source) => !answeredSources.has(source as never)) : [];
-  const truncatedSources = (result?.meta?.providers || []).filter((provider) => provider.status === "stopped").map((provider) => provider.source);
-  const isDomain = result?.type === "domain";
+  const truncatedSources = (view?.meta?.providers || []).filter((provider) => provider.status === "stopped").map((provider) => provider.source);
+  const isDomain = view?.type === "domain";
   const lowerTabs: SectionTab[] = isDomain ? ["dns", "owner", "price", "source"] : ["network", "owner", "source"];
   const activeLower: SectionTab = lowerTabs.includes(tab) ? tab : lowerTabs[0];
   const activeMobile: SectionTab = tab === "overview" || lowerTabs.includes(tab) ? tab : "overview";
   const copyValue = (value: string) => void copy(value, t("copied"));
-  const usedSources = Array.isArray(result?.source?.used) ? result.source.used : [];
-  const elapsed = result?.meta?.elapsedMs ?? 0;
+  const usedSources = Array.isArray(view?.source?.used) ? view.source.used : [];
+  const elapsed = view?.meta?.elapsedMs ?? 0;
   const warningText = warnings.length === 1 ? t("warningOne") : tf("warningMany", { n: warnings.length });
-  const ownerFields = result ? registrantFieldCount(result) : 0;
-  const ownerSources = result
-    ? Array.from(new Set(Object.values(result.registrant?.fieldSources || {}).flat().map((item) => sourceTag(item.source)).filter(Boolean)))
+  const ownerFields = view ? registrantFieldCount(view) : 0;
+  const ownerSources = view
+    ? Array.from(new Set(Object.values(view.registrant?.fieldSources || {}).flat().map((item) => sourceTag(item.source)).filter(Boolean)))
     : [];
 
   function selectTab(next: SectionTab) {
@@ -947,14 +961,14 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
   }
 
   const lowerTabLabel = (id: SectionTab): { label: string; meta?: ReactNode; dot?: boolean } => {
-    if (!result) return { label: id };
+    if (!view) return { label: id };
     switch (id) {
       case "dns":
-        return { label: t("dns"), meta: result.enrichment?.dns?.elapsedMs !== undefined ? `${result.enrichment.dns.elapsedMs} ms` : undefined };
+        return { label: t("dns"), meta: view.enrichment?.dns?.elapsedMs !== undefined ? `${view.enrichment.dns.elapsedMs} ms` : undefined };
       case "owner":
         return { label: t("registrant"), meta: ownerFields ? tf("fieldsShort", { n: ownerFields }) : undefined };
       case "price":
-        return { label: t("priceScore"), meta: pricingSummary(result, locale) };
+        return { label: t("priceScore"), meta: pricingSummary(view, locale) };
       case "network":
         return { label: t("networkInfo") };
       default:
@@ -966,9 +980,9 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
     id === "overview" ? t("tabOverview") : id === "dns" ? t("tabDns") : id === "owner" ? t("tabOwner") : id === "price" ? t("tabPrice") : id === "network" ? t("network") : t("tabSource");
 
   const lowerExtra = (() => {
-    if (!result) return null;
-    if (activeLower === "dns" && result.enrichment?.dnsviz?.url) return <DNSVizLink url={result.enrichment.dnsviz.url} />;
-    if (activeLower === "price" && result.enrichment?.pricing?.fx) return <CurrencyToggle fx={result.enrichment.pricing.fx} />;
+    if (!view) return null;
+    if (activeLower === "dns" && view.enrichment?.dnsviz?.url) return <DNSVizLink url={view.enrichment.dnsviz.url} />;
+    if (activeLower === "price" && view.enrichment?.pricing?.fx) return <CurrencyToggle fx={view.enrichment.pricing.fx} />;
     if (activeLower === "owner" && ownerSources.length) {
       return (
         <span className="source-caption">
@@ -977,11 +991,11 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
         </span>
       );
     }
-    if (activeLower === "source" && result.source?.primary) {
-      const others = usedSources.filter((source) => source !== result.source.primary).map(sourceName);
+    if (activeLower === "source" && view.source?.primary) {
+      const others = usedSources.filter((source) => source !== view.source.primary).map(sourceName);
       return (
         <span className="section-meta">
-          {sourceName(result.source.primary)} {t("primarySource")}
+          {sourceName(view.source.primary)} {t("primarySource")}
           {others.length ? ` · ${others.join(" + ")} ${t("supplementary")}` : ""}
         </span>
       );
@@ -1054,16 +1068,21 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
         </header>
 
         <section className="tool-stage" aria-label={t("lookupWorkspace")} aria-busy={isLoading ? "true" : undefined}>
-          {state.pending && !result ? (
-            <LookupPendingView query={state.query} sources={pendingSources} />
-          ) : !state.response.ok || !result ? (
+          {!state.response.ok || !view ? (
             <LookupErrorPanel response={state.response} status={state.httpStatus} onRetry={state.query ? () => void runLookup(state.query, state.sourceMode, state.options, false, true, true) : undefined} />
           ) : (
             <>
-              <section className="status-strip result-hero" data-tab={activeMobile} aria-label={result.normalizedQuery}>
+              <section className={`status-strip result-hero${skeleton ? " lookup-pending" : ""}`} data-tab={activeMobile} aria-label={view.normalizedQuery}>
                 <div className="hero-head">
                   <div className="hero-badges">
-                    <StatusBadge status={result.status} />
+                    {skeleton ? (
+                      <span className="status-badge status-badge-unknown pulse" role="status">
+                        <span className="status-badge-dot" aria-hidden="true" />
+                        {t("searching")}
+                      </span>
+                    ) : (
+                      <StatusBadge status={view.status} />
+                    )}
                     {truncatedSources.length > 0 && (
                       <span className="pill pill-amber" title={`${truncatedSources.map(sourceName).join(" · ")}: ${pick(TRUNCATED_DETAIL)}`}>
                         {pick(TRUNCATED)} · {truncatedSources.map(sourceName).join(" · ")}
@@ -1071,18 +1090,21 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
                     )}
                     {state.pending && (
                       <span className="pill pill-amber pulse" role="status" title={pendingSources.map(sourceName).join(" · ")}>
-                        {pick(t3("Updating", "正在补全", "正在補全"))} · {pendingSources.map(sourceName).join(" · ")}
+                        {skeleton ? "" : `${pick(t3("Updating", "正在补全", "正在補全"))} · `}
+                        {pendingSources.map(sourceName).join(" · ")}
                       </span>
                     )}
-                    <span className="type-tag">{kindLabel(result.type, t)}</span>
-                    {result.registry?.name && (
+                    <span className="type-tag">{kindLabel(view.type, t)}</span>
+                    {view.registry?.name && (
                       <span className="hero-meta">
-                        {t("registryLabel")} {result.registry.name}
+                        {t("registryLabel")} {view.registry.name}
                       </span>
                     )}
-                    <span className="hero-meta">
-                      {usedSources.map(sourceName).join(" + ") || sourceName(result.source?.primary)} · <span className="mono">{elapsed} ms</span>
-                    </span>
+                    {!skeleton && (
+                      <span className="hero-meta">
+                        {usedSources.map(sourceName).join(" + ") || sourceName(view.source?.primary)} · <span className="mono">{elapsed} ms</span>
+                      </span>
+                    )}
                     {warnings.length > 0 && (
                       <button type="button" className="warn-pill" onClick={goSources} aria-label={`${warningText}, ${t("viewSources")}`}>
                         <WarnIcon size={13} />
@@ -1094,15 +1116,15 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
                   <div className="hero-title">
                     <h1>
                       {isDomain ? (
-                        <a className="hero-domain-link" href={`https://${result.normalizedQuery}`} target="_blank" rel="noopener noreferrer" title={pick(t3("Open the website in a new tab", "在新标签页打开网站", "在新分頁開啟網站"))}>
-                          {result.normalizedQuery}
+                        <a className="hero-domain-link" href={`https://${view.normalizedQuery}`} target="_blank" rel="noopener noreferrer" title={pick(t3("Open the website in a new tab", "在新标签页打开网站", "在新分頁開啟網站"))}>
+                          {view.normalizedQuery}
                           <ExternalIcon size={16} className="hero-domain-icon" />
                         </a>
                       ) : (
-                        result.normalizedQuery
+                        view.normalizedQuery
                       )}
                     </h1>
-                    <button type="button" className="icon-button ghost" aria-label={t("copyDomain")} title={t("copyDomain")} onClick={() => copyValue(result.normalizedQuery)}>
+                    <button type="button" className="icon-button ghost" aria-label={t("copyDomain")} title={t("copyDomain")} onClick={() => copyValue(view.normalizedQuery)}>
                       <CopyIcon size={16} />
                     </button>
                   </div>
@@ -1110,15 +1132,15 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
 
                 <div className="hero-actions">
                   <section className="action-bar" aria-label={pick(t3("Result actions", "结果操作", "結果操作"))}>
-                    <button type="button" className="btn action-btn" onClick={shareResult}>
+                    <button type="button" className="btn action-btn" disabled={skeleton} onClick={shareResult}>
                       <LinkIcon size={15} className="btn-icon" />
                       {t("share")}
                     </button>
-                    <button type="button" className="btn action-btn" onClick={() => copy(rawText(result), t("copied"))}>
+                    <button type="button" className="btn action-btn" disabled={skeleton} onClick={() => copy(rawText(view), t("copied"))}>
                       <FileIcon size={15} className="btn-icon" />
                       {t("copyRaw")}
                     </button>
-                    <button type="button" className="btn action-btn" onClick={downloadResult}>
+                    <button type="button" className="btn action-btn" disabled={skeleton} onClick={downloadResult}>
                       <DownloadIcon size={15} className="btn-icon" />
                       {t("downloadJson")}
                     </button>
@@ -1132,23 +1154,23 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
                 </div>
 
                 <div className="result-section hero-overview" id="section-overview" data-section="overview" data-active="true" data-mobile-active={activeMobile === "overview"}>
-                  {isDomain && result.status === "unregistered" ? (
+                  {isDomain && view.status === "unregistered" ? (
                     <p className="available-note">{t("availableHint")}</p>
                   ) : isDomain ? (
-                    <DomainMetrics result={result} />
+                    <DomainMetrics result={view} pending={state.pending} />
                   ) : (
-                    <NetworkMetrics result={result} />
+                    <NetworkMetrics result={view} pending={state.pending} />
                   )}
-                  {isDomain && result.status !== "unregistered" ? <LockBar result={result} /> : <StatusList result={result} />}
+                  {isDomain && view.status !== "unregistered" ? <LockBar result={view} pending={state.pending} /> : <StatusList result={view} />}
                   <p className="hero-meta-line">
-                    {result.registry?.name && (
+                    {view.registry?.name && (
                       <span>
-                        {t("registryLabel")} <strong>{result.registry.name}</strong>
+                        {t("registryLabel")} <strong>{view.registry.name}</strong>
                       </span>
                     )}
                     <span>{usedSources.map(sourceName).join(" + ")}</span>
                     <span>
-                      {t("elapsed")} <strong className="mono">{elapsed} ms</strong>
+                      {t("elapsed")} {skeleton ? <Skel width="3em" /> : <strong className="mono">{elapsed} ms</strong>}
                     </span>
                   </p>
                   {warnings.length > 0 && (
@@ -1174,28 +1196,29 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
                 <div className="lower-col">
                   {isDomain ? (
                     <>
-                      {section("dns", <DNSSection result={result} pending={dnsPending} loadingError={enrichmentError} notes={dnsWarnings} onCopy={copyValue} />)}
-                      {section("price", <PriceSection result={result} pending={pricingPending} loadingError={enrichmentError} />)}
+                      {section("dns", <DNSSection result={view} pending={dnsPending || (state.pending && !view.enrichment?.dns)} loadingError={enrichmentError} notes={dnsWarnings} onCopy={copyValue} />)}
+                      {section("price", <PriceSection result={view} pending={pricingPending || (state.pending && !view.enrichment?.pricing)} loadingError={enrichmentError} />)}
                     </>
                   ) : (
-                    section("network", <NetworkSection result={result} />)
+                    section("network", <NetworkSection result={view} />)
                   )}
                 </div>
                 <div className="lower-col">
                   {section(
                     "owner",
                     <RegistrantSection
-                      result={result}
+                      result={view}
+                      pending={state.pending}
                       aiLoading={aiState.loading && aiState.identity === currentAIIdentity}
                       aiError={aiState.identity === currentAIIdentity ? aiState.error : undefined}
-                      icpDomain={isDomain ? icpDomain : undefined}
+                      icpDomain={isDomain ? icpDomain || view.normalizedQuery : undefined}
                       icpState={icpState}
-                      onICPLookup={() => void runICPLookup()}
+                      onICPLookup={() => void runICPLookup(icpDomain || view.normalizedQuery)}
                       onCopy={copyValue}
                     />,
                   )}
                   {/* Raw evidence (rawWhois / rawRdap) and request diagnostics live in the sources section and the raw drawer. */}
-                  {section("source", <SourcesSection result={result} warnings={sourceWarnings} onOpenRaw={(next) => setRawTab(next)} />)}
+                  {section("source", <SourcesSection result={view} warnings={sourceWarnings} pendingSources={pendingSources} onOpenRaw={(next) => setRawTab(next)} />)}
                 </div>
               </div>
             </>

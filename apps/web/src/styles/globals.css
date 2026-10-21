@@ -575,6 +575,26 @@ button.src-tag {
   height: 62px;
 }
 
+/* Inline placeholder for a field still on its way; it sits on the value's line. */
+.skel,
+.lock-tag.skel-tag {
+  animation: shimmer 1.4s linear infinite;
+  background: linear-gradient(90deg, var(--hair) 0%, var(--border) 45%, var(--hair) 70%);
+  background-size: 220% 100%;
+}
+
+.skel {
+  border-radius: var(--radius-pill);
+  display: inline-block;
+  height: 0.75em;
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+.lock-tag.skel-tag {
+  width: 64px;
+}
+
 .pending-block {
   display: grid;
   gap: 8px;
@@ -770,34 +790,6 @@ button.src-tag {
   gap: 12px;
   min-width: 0;
   position: relative;
-}
-
-/* Pending lookup: shown until the first source answers. */
-.pending-body {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 0 18px 16px;
-}
-
-.pending-metrics {
-  display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.pending-metric {
-  animation: soft-pulse 1.2s ease-in-out infinite;
-  background: var(--panel-subtle);
-  border: 1px solid var(--hair);
-  border-radius: 10px;
-  height: 84px;
-}
-
-.pending-note {
-  color: var(--muted);
-  font-size: 12.5px;
-  margin: 0;
 }
 
 .lookup-footer {
@@ -1060,7 +1052,9 @@ button.src-tag {
 }
 
 .metric-body {
+  container-type: inline-size;
   display: flex;
+  flex: 1 1 0;
   flex-direction: column;
   gap: 1px;
   min-width: 0;
@@ -1075,7 +1069,15 @@ button.src-tag {
   font-size: 16px;
   font-weight: 600;
   line-height: 1.3;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Names shrink to the card width (about 0.62em per character), down to a
+   floor; the ellipsis is the last resort. */
+.metric-value.fit {
+  font-size: clamp(11px, calc(100cqi / (var(--chars) * 0.62)), 16px);
 }
 
 .metric-ok .metric-value {
@@ -1104,7 +1106,11 @@ button.src-tag {
 .metric-sub {
   color: var(--muted);
   font-size: 12px;
-  overflow-wrap: anywhere;
+  line-height: 1.4;
+  min-height: 1.4em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .metric-sub .mono {
@@ -3290,10 +3296,6 @@ button.src-tag {
 /* ---------- Mobile: one screen, tabbed result card ---------- */
 
 @media (max-width: 760px) {
-  .pending-metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   body {
     font-size: 12.5px;
     line-height: 1.4;
@@ -3456,12 +3458,11 @@ button.src-tag {
     padding: 8px 10px 4px 12px;
   }
 
-  /* The title claims its full width first; when the badges no longer fit
-     beside it they wrap to the next line instead of crushing the domain. */
+  /* Title row, then badge row, always: badges come and go while a lookup
+     streams, and a fixed second row keeps them from moving anything else. */
   .hero-title {
-    flex: 1 1 max-content;
+    flex: 1 1 100%;
     gap: 2px;
-    max-width: 100%;
     order: 0;
   }
 
@@ -3593,6 +3594,10 @@ button.src-tag {
     font-size: 14px;
   }
 
+  .metric-value.fit {
+    font-size: clamp(10px, calc(100cqi / (var(--chars) * 0.62)), 14px);
+  }
+
   .metric-sub,
   .metric-sub .mono {
     font-size: 10.5px;
@@ -3656,6 +3661,10 @@ button.src-tag {
     gap: 3px;
     height: 21px;
     padding: 0 7px;
+  }
+
+  .lock-tag.skel-tag {
+    width: 40px;
   }
 
   .lock-text-long {
