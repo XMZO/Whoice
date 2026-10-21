@@ -88,7 +88,15 @@ func (p *Provider) Lookup(ctx context.Context, q model.NormalizedQuery, opts mod
 	// For a domain without a known registry server the query goes to IANA,
 	// which answers with the TLD record. Without a referral that record says
 	// nothing about the domain itself.
-	if opts.WHOISServer == "" && isBareIANATLDRecord(q, usedServers, body) {
+	// A registry that refuses the query answers with a notice, not a record;
+	// treat it as a failure so it is not read as registration data.
+	if refusal := refusalPattern.FindString(body); refusal != "" {
+		return nil, fmt.Errorf("%s refused the query: %s", server.Host, strings.TrimSpace(refusal))
+	}
+	if opts.WHOISServer == "" && isBareIANATLDRecord(q, usedServers) {
+		if referral := findReferral(body); referral != "" {
+			return nil, fmt.Errorf("the .%s registry WHOIS server %s did not answer", tldOf(q), referral)
+		}
 		return nil, providers.Skip(fmt.Sprintf("the registry for .%s publishes no WHOIS service", tldOf(q)))
 	}
 
@@ -167,6 +175,10 @@ func containsServer(servers []string, server string) bool {
 	return false
 }
 
+// refusalPattern matches registry notices that decline to answer: blocked
+// clients, rate limits, or a server that rejects the query format.
+var refusalPattern = regexp.MustCompile(`(?im)^.*(?:requests of this client are not permitted|solo acepta consultas|(?:query|request|rate|connection) ?limit (?:exceeded|reached)|maximum (?:number of )?(?:queries|requests|query rate)|too many (?:queries|requests|connections)|access (?:has been )?denied|you have exceeded|temporarily (?:blocked|denied|unavailable)|try again later).*$`)
+
 func tldOf(q model.NormalizedQuery) string {
 	name := strings.Trim(q.Query, ".")
 	if index := strings.LastIndex(name, "."); index >= 0 {
@@ -175,7 +187,9 @@ func tldOf(q model.NormalizedQuery) string {
 	return name
 }
 
-func isBareIANATLDRecord(q model.NormalizedQuery, usedServers []string, body string) bool {
-	return q.Type == model.QueryDomain && len(usedServers) == 1 &&
-		strings.EqualFold(usedServers[0], ianaServer) && findReferral(body) == ""
+// isBareIANATLDRecord reports that a domain query got nothing beyond the
+// IANA record of its TLD: the TLD has no WHOIS (no referral), or the
+// referred registry server did not answer.
+func isBareIANATLDRecord(q model.NormalizedQuery, usedServers []string) bool {
+	return q.Type == model.QueryDomain && len(usedServers) == 1 && strings.EqualFold(usedServers[0], ianaServer)
 }

@@ -3,6 +3,7 @@ package parsers
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/xmzo/whoice/services/lookup-api/internal/model"
 )
@@ -286,10 +287,26 @@ func (BDWHOISParser) Parse(ctx context.Context, raw model.RawResponse, q model.N
 	if statuses := statusesFromValues(valuesFor(fields, "domain status", "status"), raw.Source); len(statuses) > 0 {
 		partial.Statuses = statuses
 	}
-	if nameservers := nameserversFromValues(valuesFor(fields, "primary dns", "secondary dns", "name server", "nameserver")); len(nameservers) > 0 {
+	if nameservers := nameserversFromValues(valuesFor(fields, "primary dns", "secondary dns", "tertiary dns", "name server", "nameserver")); len(nameservers) > 0 {
 		partial.Nameservers = nameservers
 	}
+	// whois.get.bd writes day/month/year ("Activation Date: 18/10/2003").
+	partial.Dates.CreatedAt = pickString(partial.Dates.CreatedAt, dayMonthYear(firstValue(fields, "activation date")))
+	partial.Dates.ExpiresAt = pickString(partial.Dates.ExpiresAt, dayMonthYear(firstValue(fields, "expiry date")))
+	partial.Registrant.Name = pickString(partial.Registrant.Name, firstValue(fields, "registrant's name"))
 	return partial, nil
+}
+
+// dayMonthYear converts "18/10/2003" or "18-10-2003" to "2003-10-18";
+// other values pass through unchanged.
+func dayMonthYear(value string) string {
+	value = strings.TrimSpace(value)
+	for _, layout := range []string{"02/01/2006", "02-01-2006"} {
+		if parsed, err := time.Parse(layout, value); err == nil {
+			return parsed.Format("2006-01-02")
+		}
+	}
+	return value
 }
 
 type BNWHOISParser struct{}
@@ -356,7 +373,9 @@ func (ILWHOISParser) Parse(ctx context.Context, raw model.RawResponse, q model.N
 	fields := parseFlexibleKeyValues(raw.Body)
 	partial.Registrar.Name = pickString(partial.Registrar.Name, firstValue(fields, "registrar name"))
 	partial.Registrar.URL = pickString(partial.Registrar.URL, normalizeRegistrarURL(firstValue(fields, "registrar info")))
-	partial.Dates.ExpiresAt = pickString(partial.Dates.ExpiresAt, firstValue(fields, "validity"))
+	// ISOC-IL writes day-month-year: "assigned: 05-06-1999".
+	partial.Dates.CreatedAt = pickString(partial.Dates.CreatedAt, dayMonthYear(firstValue(fields, "assigned")))
+	partial.Dates.ExpiresAt = pickString(partial.Dates.ExpiresAt, dayMonthYear(firstValue(fields, "validity")))
 	if changed := ilLastChangedDate(raw.Body); changed != "" {
 		partial.Dates.UpdatedAt = changed
 	}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/xmzo/whoice/services/lookup-api/internal/model"
@@ -12,6 +13,9 @@ import (
 )
 
 type zoneReply struct {
+	// existing, when set, is the only name the zone knows; other names get
+	// NXDOMAIN.
+	existing    string
 	rcode       dnsmessage.RCode
 	nsOwner     string
 	nameservers []string
@@ -22,6 +26,7 @@ type zoneReply struct {
 // fake addresses named after them.
 func fakeChecker(t *testing.T, zones map[string][]string, replies map[string]zoneReply) Checker {
 	t.Helper()
+	var mu sync.Mutex
 	addrHost := map[string]string{}
 	next := 1
 	return Checker{
@@ -37,6 +42,8 @@ func fakeChecker(t *testing.T, zones map[string][]string, replies map[string]zon
 			return out, nil
 		},
 		LookupHost: func(_ context.Context, host string) ([]string, error) {
+			mu.Lock()
+			defer mu.Unlock()
 			addr := net.IPv4(192, 0, 2, byte(next)).String()
 			next++
 			addrHost[addr] = host
@@ -44,7 +51,10 @@ func fakeChecker(t *testing.T, zones map[string][]string, replies map[string]zon
 		},
 		Exchange: func(_ context.Context, server string, query []byte) ([]byte, error) {
 			addr, _, _ := net.SplitHostPort(server)
-			reply, ok := replies[addrHost[addr]]
+			mu.Lock()
+			host := addrHost[addr]
+			mu.Unlock()
+			reply, ok := replies[host]
 			if !ok {
 				return nil, errors.New("timeout")
 			}
@@ -61,6 +71,9 @@ func buildReply(t *testing.T, query []byte, reply zoneReply) []byte {
 	}
 	if q.Header.RecursionDesired {
 		t.Fatal("delegation queries must not ask for recursion")
+	}
+	if reply.existing != "" && len(q.Questions) == 1 && q.Questions[0].Name.String() != reply.existing+"." {
+		reply = zoneReply{rcode: dnsmessage.RCodeNameError, soaOwner: reply.soaOwner}
 	}
 	msg := dnsmessage.Message{
 		Header:    dnsmessage.Header{ID: q.ID, Response: true, RCode: reply.rcode},
@@ -147,7 +160,7 @@ func TestCheckFollowsReferralToSecondLevelZone(t *testing.T) {
 func TestCheckNameWithoutDelegationIsUnknown(t *testing.T) {
 	checker := fakeChecker(t,
 		map[string][]string{"al": {"nsx.nic.al"}},
-		map[string]zoneReply{"nsx.nic.al": {soaOwner: "al"}},
+		map[string]zoneReply{"nsx.nic.al": {existing: "gov.al", soaOwner: "al"}},
 	)
 	result, err := checker.Check(context.Background(), "gov.al")
 	if err != nil {
@@ -176,5 +189,20 @@ func TestCheckReportsUnreachableZone(t *testing.T) {
 	checker := fakeChecker(t, map[string][]string{"uy": {"dead.nic.uy"}}, nil)
 	if _, err := checker.Check(context.Background(), "ka.uy"); err == nil || !strings.Contains(err.Error(), "dead.nic.uy: timeout") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestCheckWildcardZoneWithoutDelegationIsUnregistered(t *testing.T) {
+	// Every name gets NOERROR with only the SOA, as in a wildcard zone.
+	checker := fakeChecker(t,
+		map[string][]string{"ph": {"1.ns.ph"}},
+		map[string]zoneReply{"1.ns.ph": {soaOwner: "com.ph"}},
+	)
+	result, err := checker.Check(context.Background(), "free-name.com.ph")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != model.StatusUnregistered || !strings.Contains(result.Body, "Wildcard zone") {
+		t.Fatalf("got %#v", result)
 	}
 }

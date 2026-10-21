@@ -21,7 +21,8 @@ import (
 )
 
 const (
-	maxServers      = 3
+	maxServers      = 6
+	nsLookupTimeout = 1500 * time.Millisecond
 	maxReferrals    = 3
 	perQueryTimeout = 2 * time.Second
 )
@@ -69,6 +70,9 @@ func (c Checker) Check(ctx context.Context, domain string) (*Result, error) {
 			return nil, fmt.Errorf("query %s nameservers: %w", zone, err)
 		}
 		result, next, nextHosts := interpret(domain, zone, server, reply)
+		if result != nil && result.Status == model.StatusUnknown {
+			c.resolveWildcard(ctx, result, domain, hosts)
+		}
 		if result != nil {
 			return result, nil
 		}
@@ -78,6 +82,25 @@ func (c Checker) Check(ctx context.Context, domain string) (*Result, error) {
 		lastErr = fmt.Errorf("referral loop below %s", zone)
 	}
 	return nil, lastErr
+}
+
+// resolveWildcard handles a "name exists, no delegation" answer. Zones
+// with a wildcard (*.com.ph points every name at a parking page) answer
+// that way for every name, registered or not. If a random sibling gets the
+// same answer the zone is a wildcard, and since registered names are always
+// delegated, no delegation means the name is not registered.
+func (c Checker) resolveWildcard(ctx context.Context, result *Result, domain string, hosts []string) {
+	parent := domain[strings.Index(domain, ".")+1:]
+	probe := fmt.Sprintf("whoice-probe-%08x.%s", rand.Uint32(), parent)
+	reply, _, err := c.ask(ctx, probe, hosts)
+	if err != nil || reply.RCode != dnsmessage.RCodeSuccess {
+		return
+	}
+	if probeResult, _, _ := interpret(probe, result.Zone, "", reply); probeResult == nil || probeResult.Status != model.StatusUnknown {
+		return
+	}
+	result.Status = model.StatusUnregistered
+	result.Body += fmt.Sprintf("\n; Wildcard zone: the random name %s gets the same answer, so the\n; missing delegation means %s is most likely available.\n", probe, domain)
 }
 
 func (c Checker) parentZone(ctx context.Context, domain string) (string, []string, error) {
@@ -121,19 +144,40 @@ func (c Checker) ask(ctx context.Context, domain string, hosts []string) (*dnsme
 	if err != nil {
 		return nil, "", err
 	}
-	var errs []string
+	// Resolve every nameserver at once and query them in the order they
+	// resolve: some registries list nameservers that do not resolve or
+	// time out (.kh), which must not use up the budget for the good ones.
+	type resolved struct {
+		host  string
+		addrs []string
+		err   error
+	}
+	results := make(chan resolved, len(hosts))
 	for _, host := range hosts {
-		addrs, err := c.LookupHost(ctx, host)
-		if err != nil || len(addrs) == 0 {
-			errs = append(errs, host+": no address")
+		go func(host string) {
+			lookupCtx, cancel := context.WithTimeout(ctx, nsLookupTimeout)
+			defer cancel()
+			addrs, err := c.lookupHostRetry(lookupCtx, host)
+			results <- resolved{host: host, addrs: addrs, err: err}
+		}(host)
+	}
+	var errs []string
+	for range hosts {
+		item := <-results
+		if item.err != nil || len(item.addrs) == 0 {
+			reason := "no address"
+			if item.err != nil {
+				reason = "no address (" + item.err.Error() + ")"
+			}
+			errs = append(errs, item.host+": "+reason)
 			continue
 		}
-		addr := preferIPv4(addrs)
+		addr := preferIPv4(item.addrs)
 		tryCtx, cancel := context.WithTimeout(ctx, perQueryTimeout)
 		body, err := c.Exchange(tryCtx, net.JoinHostPort(addr, "53"), query)
 		cancel()
 		if err != nil {
-			errs = append(errs, host+": "+err.Error())
+			errs = append(errs, item.host+": "+err.Error())
 			if ctx.Err() != nil {
 				break
 			}
@@ -141,14 +185,14 @@ func (c Checker) ask(ctx context.Context, domain string, hosts []string) (*dnsme
 		}
 		var msg dnsmessage.Message
 		if err := msg.Unpack(body); err != nil || msg.ID != id {
-			errs = append(errs, host+": malformed reply")
+			errs = append(errs, item.host+": malformed reply")
 			continue
 		}
 		if msg.RCode != dnsmessage.RCodeSuccess && msg.RCode != dnsmessage.RCodeNameError {
-			errs = append(errs, host+": "+msg.RCode.String())
+			errs = append(errs, item.host+": "+msg.RCode.String())
 			continue
 		}
-		return &msg, fmt.Sprintf("%s (%s)", host, addr), nil
+		return &msg, fmt.Sprintf("%s (%s)", item.host, addr), nil
 	}
 	if len(errs) == 0 {
 		return nil, "", errors.New("no nameservers to query")
@@ -242,6 +286,21 @@ func recordText(body dnsmessage.ResourceBody) string {
 	default:
 		return strings.TrimPrefix(body.GoString(), "dnsmessage.")
 	}
+}
+
+// lookupHostRetry resolves a nameserver's address, retrying once: under
+// concurrent lookups the system resolver occasionally fails transiently.
+func (c Checker) lookupHostRetry(ctx context.Context, host string) ([]string, error) {
+	addrs, err := c.LookupHost(ctx, host)
+	if err == nil && len(addrs) > 0 {
+		return addrs, nil
+	}
+	select {
+	case <-time.After(150 * time.Millisecond):
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	return c.LookupHost(ctx, host)
 }
 
 func buildQuery(domain string) ([]byte, uint16, error) {

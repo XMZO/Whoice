@@ -201,7 +201,7 @@ func (s *Service) lookupFresh(ctx context.Context, q model.NormalizedQuery, opts
 				parts = append(parts, outcome.part)
 			}
 		}
-	} else if len(parts) == 0 && whoisUnavailable(providerTraces) {
+	} else if len(parts) == 0 && (whoisUnavailable(providerTraces) || whoisUnreadable(sourceErrors)) {
 		if part, trace := s.delegationFallback(lookupCtx, q, opts); trace != nil {
 			providerTraces = append(providerTraces, *trace)
 			if part != nil {
@@ -212,6 +212,12 @@ func (s *Service) lookupFresh(ctx context.Context, q model.NormalizedQuery, opts
 
 	if len(parts) == 0 {
 		if len(sourceErrors) == 0 {
+			// Every source was skipped; report why the DNS fallback failed.
+			for _, trace := range providerTraces {
+				if trace.Source == model.SourceDNS && trace.Error != "" {
+					return nil, fmt.Errorf("no WHOIS or RDAP service for this name, and the DNS delegation check failed: %s", trace.Error)
+				}
+			}
 			return nil, errors.New("no provider returned data")
 		}
 		return nil, errors.New(sourceErrors[0].Error)
@@ -722,6 +728,17 @@ func suffixTLD(domain string) string {
 
 // whoisUnavailable reports whether WHOIS ran and failed, or was skipped
 // because the registry has no WHOIS service.
+// whoisUnreadable reports a WHOIS reply the parsers rejected (an
+// unrecognized or throttled answer).
+func whoisUnreadable(errs []model.SourceError) bool {
+	for _, item := range errs {
+		if item.Source == model.SourceWHOIS {
+			return true
+		}
+	}
+	return false
+}
+
 func whoisUnavailable(traces []model.ProviderTrace) bool {
 	for _, trace := range traces {
 		if trace.Source == model.SourceWHOIS && (trace.Status == "error" || trace.Status == "skipped") {

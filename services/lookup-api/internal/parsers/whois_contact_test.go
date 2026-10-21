@@ -80,3 +80,54 @@ func TestWHOISPlaceholderRegistrarMeansReserved(t *testing.T) {
 		}
 	}
 }
+
+func TestWHOISRegistryMissPhrasings(t *testing.T) {
+	for server, body := range map[string]string{
+		"whois.cnnic.cn":           "No matching record.\n",
+		"whois.domain-registry.nl": "zwsemxnvqex7q.nl is free\n",
+		"whois.twnic.net.tw":       "No Found\n",
+		"whois.nic.ar":             "El dominio no se encuentra registrado en NIC Argentina\n",
+		"whois.cctld.by":           "object does not exist\n",
+		"whois.nic.tm":             "Domain zwsemxnvqex7q.tm is available for purchase\nPlease visit http://www.nic.tm/ for more information\n",
+	} {
+		raw := model.RawResponse{Source: model.SourceWHOIS, Server: server, Query: "x.test", Body: body}
+		part, err := (WHOISParser{}).Parse(context.Background(), raw, model.NormalizedQuery{Type: model.QueryDomain, Query: "x.test"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if part.Status != model.StatusUnregistered {
+			t.Fatalf("%s: status %q for %q", server, part.Status, body)
+		}
+	}
+	// A registered record that mentions "free" in prose stays registered.
+	raw := model.RawResponse{Source: model.SourceWHOIS, Query: "x.nl", Body: "Domain name: x.nl\nStatus: active\nRegistrar: Free Software Hosting B.V.\n"}
+	part, _ := (WHOISParser{}).Parse(context.Background(), raw, model.NormalizedQuery{Type: model.QueryDomain, Query: "x.nl"})
+	if part.Status == model.StatusUnregistered {
+		t.Fatal("registered record misread as free")
+	}
+}
+
+func TestWHOISILNoDataIsUnregistered(t *testing.T) {
+	raw := model.RawResponse{Source: model.SourceWHOIS, Server: "whois.isoc.org.il", Query: "x.co.il", Body: "% By submitting this query, you agree to abide by this policy.\n \n% No data was found to match the request criteria.\n"}
+	part, err := (WHOISParser{}).Parse(context.Background(), raw, model.NormalizedQuery{Type: model.QueryDomain, Query: "x.co.il"})
+	if err != nil || part.Status != model.StatusUnregistered {
+		t.Fatalf("status %q err %v", part.Status, err)
+	}
+	if got := dayMonthYear("05-06-1999"); got != "1999-06-05" {
+		t.Fatalf("dayMonthYear: %q", got)
+	}
+}
+
+func TestShortUnrecognizedWHOISReplyIsAnError(t *testing.T) {
+	raw := model.RawResponse{Source: model.SourceWHOIS, Server: "whois.hkirc.hk", Query: "x.com.hk", Body: "CMM174\n"}
+	if _, err := (WHOISParser{}).Parse(context.Background(), raw, model.NormalizedQuery{Type: model.QueryDomain, Query: "x.com.hk"}); err == nil {
+		t.Fatal("an unrecognized short reply must not count as a record")
+	}
+	for _, body := range []string{"No matching record.\n", "No Found\n", "The domain has not been registered.\n"} {
+		raw.Body = body
+		part, err := (WHOISParser{}).Parse(context.Background(), raw, model.NormalizedQuery{Type: model.QueryDomain, Query: "x.com.hk"})
+		if err != nil || part.Status != model.StatusUnregistered {
+			t.Fatalf("%q: %v %v", body, err, part)
+		}
+	}
+}

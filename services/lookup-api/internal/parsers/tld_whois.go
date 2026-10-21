@@ -4,6 +4,7 @@ import (
 	"context"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/xmzo/whoice/services/lookup-api/internal/model"
 )
@@ -136,12 +137,14 @@ func (JPWHOISParser) Parse(_ context.Context, raw model.RawResponse, q model.Nor
 		partial.Domain.Name = strings.ToLower(domain)
 		partial.Domain.PunycodeName = partial.Domain.Name
 	}
-	if registrant := firstBracketValue(fields, "registrant"); registrant != "" {
+	// General-use names (example.jp) and organizational ones (example.co.jp)
+	// label the same data differently.
+	if registrant := firstBracketValue(fields, "registrant", "organization"); registrant != "" {
 		partial.Registrant.Organization = registrant
 	}
-	partial.Dates.CreatedAt = normalizeJPDate(firstBracketValue(fields, "created on"))
+	partial.Dates.CreatedAt = normalizeJPDate(firstBracketValue(fields, "created on", "registered date", "connected date"))
 	partial.Dates.ExpiresAt = normalizeJPDate(firstBracketValue(fields, "expires on"))
-	partial.Dates.UpdatedAt = normalizeJPDate(firstBracketValue(fields, "last updated"))
+	partial.Dates.UpdatedAt = normalizeJPDate(firstBracketValue(fields, "last updated", "last update"))
 
 	for _, status := range fields["status"] {
 		status = strings.TrimSpace(status)
@@ -245,7 +248,16 @@ func parseBracketFields(body string) map[string][]string {
 	return fields
 }
 
-func firstBracketValue(fields map[string][]string, key string) string {
+func firstBracketValue(fields map[string][]string, keys ...string) string {
+	for _, key := range keys {
+		if value := firstBracketValueFor(fields, key); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func firstBracketValueFor(fields map[string][]string, key string) string {
 	for _, value := range fields[strings.ToLower(key)] {
 		if strings.TrimSpace(value) != "" {
 			return strings.TrimSpace(value)
@@ -262,8 +274,17 @@ func firstToken(value string) string {
 	return fields[0]
 }
 
+var jstZone = time.FixedZone("JST", 9*3600)
+
+// normalizeJPDate turns "2026/04/01 01:02:00 (JST)" into RFC 3339 with the
+// +09:00 offset; dates without a time become "2026-04-01".
 func normalizeJPDate(value string) string {
 	value = strings.TrimSpace(value)
+	if strings.HasSuffix(value, "(JST)") {
+		if parsed, err := time.ParseInLocation("2006/01/02 15:04:05", strings.TrimSpace(strings.TrimSuffix(value, "(JST)")), jstZone); err == nil {
+			return parsed.Format(time.RFC3339)
+		}
+	}
 	value = strings.TrimSuffix(value, " (JST)")
 	return strings.ReplaceAll(value, "/", "-")
 }

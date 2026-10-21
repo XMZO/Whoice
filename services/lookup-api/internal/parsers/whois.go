@@ -2,6 +2,7 @@ package parsers
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -33,6 +34,13 @@ var unregisteredPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\bno matching objects? found\b`),
 	// PNINA (.ps): "Domain Status: No Object Found".
 	regexp.MustCompile(`(?i)\bno object found\b`),
+	regexp.MustCompile(`(?i)\bobject does not exist\b`),      // .by
+	regexp.MustCompile(`(?im)^\s*no matching record\.?\s*$`), // .cn
+	regexp.MustCompile(`(?im)^\s*no found\s*$`),              // .tw
+	regexp.MustCompile(`(?im)^\s*\S+\.\S+ is free\s*$`),      // .nl: "example.nl is free"
+	regexp.MustCompile(`(?i)\bis available for purchase\b`),  // .tm
+	regexp.MustCompile(`(?i)\bno se encuentra registrado\b`), // .ar
+	regexp.MustCompile(`(?i)\bno data was found to match\b`), // .il
 }
 
 var reservedRegistrarPattern = regexp.MustCompile(`(?i)^\s*(?:nic|registry|tld)?\s*reserved(?:\s+names?)?\s*$`)
@@ -95,6 +103,12 @@ func (WHOISParser) Parse(_ context.Context, raw model.RawResponse, q model.Norma
 	}
 
 	fields := parseKeyValues(raw.Body)
+	// A short reply with no fields and no known phrasing ("CMM174" from a
+	// throttled HKIRC) is not a record; reading it as one made every name
+	// "registered".
+	if partial.Status == model.StatusRegistered && len(fields) == 0 && len(strings.TrimSpace(raw.Body)) < 200 {
+		return nil, fmt.Errorf("unrecognized WHOIS reply from %s: %q", raw.Server, strings.TrimSpace(raw.Body))
+	}
 
 	partial.Domain.Name = firstValue(fields, "domain name", "domain")
 	if partial.Domain.Name == "" && q.Type == model.QueryDomain {
@@ -107,7 +121,7 @@ func (WHOISParser) Parse(_ context.Context, raw model.RawResponse, q model.Norma
 	partial.Domain.Registered = partial.Status == model.StatusRegistered && q.Type == model.QueryDomain
 
 	partial.Registry.WHOISServer = firstValue(fields, "whois", "whois server", "registry whois server")
-	partial.Registrar.Name = firstValue(fields, "registrar", "sponsoring registrar")
+	partial.Registrar.Name = firstValue(fields, "registrar", "sponsoring registrar", "registrar name", "registrar-name")
 	partial.Registrar.URL = normalizeRegistrarURL(firstValue(fields, "registrar url", "sponsoring registrar url", "registrar website", "registrar-url", "registration service url"))
 	if registrarName, registrarURL := splitRegistrarURL(partial.Registrar.Name); registrarURL != "" && partial.Registrar.URL == "" {
 		partial.Registrar.Name = registrarName

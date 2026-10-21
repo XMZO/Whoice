@@ -22,22 +22,49 @@ func TestDecodeWHOISBodyHandlesWindows1252(t *testing.T) {
 
 func TestBareIANATLDRecordIsNotADomainRecord(t *testing.T) {
 	domain := model.NormalizedQuery{Type: model.QueryDomain, Query: "google.al"}
-	ianaAL := "% IANA WHOIS server\nrefer:        \n\ndomain:       AL\n\norganisation: Electronic and Postal Communications Authority - AKEP\n"
-	if !isBareIANATLDRecord(domain, []string{"whois.iana.org"}, ianaAL) {
+	if !isBareIANATLDRecord(domain, []string{"whois.iana.org"}) {
 		t.Fatal("IANA TLD record without referral should be rejected for a domain query")
 	}
 	if tldOf(domain) != "al" {
 		t.Fatalf("tld: %q", tldOf(domain))
 	}
-	withReferral := "% IANA WHOIS server\nrefer:        whois.nic.example\n\ndomain:       EXAMPLE\n"
-	if isBareIANATLDRecord(domain, []string{"whois.iana.org"}, withReferral) {
-		t.Fatal("a referral means the registry has a WHOIS server")
+	// A referral that was not answered leaves only the IANA record too.
+	if !isBareIANATLDRecord(domain, []string{"whois.iana.org"}) {
+		t.Fatal("an unanswered referral still leaves only TLD data")
 	}
-	if isBareIANATLDRecord(domain, []string{"whois.iana.org", "whois.nic.example"}, ianaAL) {
+	if isBareIANATLDRecord(domain, []string{"whois.iana.org", "whois.nic.example"}) {
 		t.Fatal("followed referrals are registry data")
 	}
 	asn := model.NormalizedQuery{Type: model.QueryASN, Query: "AS13335"}
-	if isBareIANATLDRecord(asn, []string{"whois.iana.org"}, "as-block: AS13312-AS18431\n") {
+	if isBareIANATLDRecord(asn, []string{"whois.iana.org"}) {
 		t.Fatal("non-domain IANA answers are kept")
+	}
+}
+
+func TestRefusalNoticesAreNotRecords(t *testing.T) {
+	for _, body := range []string{
+		"Requests of this client are not permitted. Please use https://www.nic.ch/whois/ for queries.\n",
+		"whois.nic.bo solo acepta consultas con dominios .bo\n",
+		"% Query rate limit exceeded. Reduced information.\n",
+	} {
+		if refusalPattern.FindString(body) == "" {
+			t.Fatalf("refusal not recognized: %q", body)
+		}
+	}
+	if refusalPattern.FindString("Domain Name: example.ch\nRegistrar: Example AG\n") != "" {
+		t.Fatal("a normal record is not a refusal")
+	}
+}
+
+func TestRateLimitNoticesAreRefusals(t *testing.T) {
+	for _, body := range []string{
+		"% Maximum query rate reached\n",
+		"Too many connections, try again later\n",
+		"% Request limit exceeded\n",
+		"Error: ratelimit exceeded\r\n",
+	} {
+		if refusalPattern.FindString(body) == "" {
+			t.Fatalf("not recognized: %q", body)
+		}
 	}
 }
