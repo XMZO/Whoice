@@ -645,7 +645,7 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [absolutePageURL, rawTab, result, t]);
 
-  async function runLookup(nextQuery: string, nextSourceMode = state.sourceMode, nextOptions = state.options, updateURL = true, armAI = true) {
+  async function runLookup(nextQuery: string, nextSourceMode = state.sourceMode, nextOptions = state.options, updateURL = true, armAI = true, force = false) {
     const trimmed = normalizeLookupInput(nextQuery);
     if (!trimmed) return;
     const requestOptions = {
@@ -655,8 +655,9 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
     };
     const serializableOptions = cleanOptions(requestOptions);
     const nextURL = lookupUrl(trimmed, nextSourceMode, serializableOptions);
-    if (inflightURLRef.current === nextURL) return;
-    // A new lookup replaces the one in flight.
+    // Automatic triggers skip a duplicate of the lookup in flight; an explicit
+    // submit always restarts it. Either way a new lookup replaces the old one.
+    if (!force && inflightURLRef.current === nextURL) return;
     lookupAbortRef.current?.abort();
     const controller = new AbortController();
     lookupAbortRef.current = controller;
@@ -842,7 +843,7 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
 
   function submitMiniSearch(event: FormEvent) {
     event.preventDefault();
-    void runLookup(searchValue);
+    void runLookup(searchValue, state.sourceMode, state.options, true, true, true);
   }
 
   function switchSource(nextSourceMode: SourceMode) {
@@ -1043,7 +1044,7 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
           {state.pending && !result ? (
             <LookupPendingView query={state.query} sources={pendingSources} />
           ) : !state.response.ok || !result ? (
-            <LookupErrorPanel response={state.response} status={state.httpStatus} onRetry={state.query ? () => void runLookup(state.query, state.sourceMode, state.options, false) : undefined} />
+            <LookupErrorPanel response={state.response} status={state.httpStatus} onRetry={state.query ? () => void runLookup(state.query, state.sourceMode, state.options, false, true, true) : undefined} />
           ) : (
             <>
               <section className="status-strip result-hero" data-tab={activeMobile} aria-label={result.normalizedQuery}>
