@@ -8,7 +8,9 @@ RUN go mod download
 WORKDIR /src
 COPY services/lookup-api ./services/lookup-api
 WORKDIR /src/services/lookup-api
-RUN CGO_ENABLED=0 go build -o /out/whoice-api ./cmd/whoice-api
+# -s -w drops the symbol table and DWARF data (stack traces keep function
+# names); -trimpath removes build paths.
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/whoice-api ./cmd/whoice-api
 
 FROM alpine:3.22
 
