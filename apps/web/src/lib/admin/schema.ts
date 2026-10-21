@@ -56,9 +56,9 @@ export const SETTINGS_SECTIONS: Section[] = [
             path: "lookup.dns_first_suffixes",
             label: t3("DNS-first suffixes", "DNS 优先的后缀", "DNS 優先的後綴"),
             hint: t3(
-              "Registry WHOIS unreachable: stop waiting 1s after DNS answers (shown as truncated)",
-              "注册局 WHOIS 连不上：DNS 有结果后最多再等 1 秒（显示为已截断）",
-              "註冊局 WHOIS 連不上：DNS 有結果後最多再等 1 秒（顯示為已截斷）",
+              "Registry WHOIS unreachable: stop waiting 0.5s after DNS answers (shown as truncated)",
+              "注册局 WHOIS 连不上：DNS 有结果后最多再等 0.5 秒（显示为已截断）",
+              "註冊局 WHOIS 連不上：DNS 有結果後最多再等 0.5 秒（顯示為已截斷）",
             ),
             placeholder: "uy",
           },

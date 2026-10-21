@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/xmzo/whoice/services/lookup-api/internal/model"
 	"golang.org/x/net/dns/dnsmessage"
@@ -204,5 +205,31 @@ func TestCheckWildcardZoneWithoutDelegationIsUnregistered(t *testing.T) {
 	}
 	if result.Status != model.StatusUnregistered || !strings.Contains(result.Body, "Wildcard zone") {
 		t.Fatalf("got %#v", result)
+	}
+}
+
+func TestCheckHedgesPastASilentNameserver(t *testing.T) {
+	checker := fakeChecker(t,
+		map[string][]string{"es": {"silent.nic.es", "fast.nic.es"}},
+		map[string]zoneReply{"fast.nic.es": {nsOwner: "google.es", nameservers: []string{"ns1.google.com"}}},
+	)
+	fastExchange := checker.Exchange
+	checker.Exchange = func(ctx context.Context, server string, query []byte) ([]byte, error) {
+		body, err := fastExchange(ctx, server, query)
+		if err != nil { // the silent server: hang until cancelled
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}
+		return body, nil
+	}
+	for i := 0; i < 5; i++ { // both server orders
+		start := time.Now()
+		result, err := checker.Check(context.Background(), "google.es")
+		if err != nil || result.Status != model.StatusRegistered {
+			t.Fatalf("result %#v err %v", result, err)
+		}
+		if elapsed := time.Since(start); elapsed > time.Second {
+			t.Fatalf("waited %s for a silent nameserver", elapsed)
+		}
 	}
 }

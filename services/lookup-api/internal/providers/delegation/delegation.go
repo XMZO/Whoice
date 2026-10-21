@@ -23,6 +23,7 @@ import (
 const (
 	maxServers      = 6
 	nsLookupTimeout = 1500 * time.Millisecond
+	hedgeDelay      = 250 * time.Millisecond
 	maxReferrals    = 3
 	perQueryTimeout = 2 * time.Second
 )
@@ -165,38 +166,88 @@ func (c Checker) ask(ctx context.Context, domain string, hosts []string) (*dnsme
 			results <- resolved{host: host, addrs: addrs, err: err}
 		}(host)
 	}
+	// Hedged queries: ask one server, and if it has not answered within
+	// hedgeDelay ask the next one as well; the first valid reply wins. A
+	// server that drops packets (a.nic.es over IPv4) then costs 250 ms
+	// instead of the full per-query timeout.
+	type answer struct {
+		msg    *dnsmessage.Message
+		server string
+		err    error
+	}
+	hedgeCtx, cancelHedge := context.WithCancel(ctx)
+	defer cancelHedge()
+	answers := make(chan answer, len(hosts))
 	var errs []string
-	for range hosts {
-		item := <-results
-		if item.err != nil || len(item.addrs) == 0 {
-			reason := "no address"
-			if item.err != nil {
-				reason = "no address (" + item.err.Error() + ")"
+	inFlight, resolvedLeft := 0, len(hosts)
+	var pending []resolved
+	ask := func(item resolved) {
+		inFlight++
+		go func() {
+			addr := preferIPv4(item.addrs)
+			tryCtx, cancel := context.WithTimeout(hedgeCtx, perQueryTimeout)
+			defer cancel()
+			body, err := c.Exchange(tryCtx, net.JoinHostPort(addr, "53"), query)
+			if err != nil {
+				answers <- answer{err: fmt.Errorf("%s: %w", item.host, err)}
+				return
 			}
-			errs = append(errs, item.host+": "+reason)
-			continue
+			var msg dnsmessage.Message
+			if err := msg.Unpack(body); err != nil || msg.ID != id {
+				answers <- answer{err: fmt.Errorf("%s: malformed reply", item.host)}
+				return
+			}
+			if msg.RCode != dnsmessage.RCodeSuccess && msg.RCode != dnsmessage.RCodeNameError {
+				answers <- answer{err: fmt.Errorf("%s: %s", item.host, msg.RCode)}
+				return
+			}
+			answers <- answer{msg: &msg, server: fmt.Sprintf("%s (%s)", item.host, addr)}
+		}()
+	}
+	timer := time.NewTimer(time.Hour)
+	timer.Stop()
+	defer timer.Stop()
+	for inFlight > 0 || resolvedLeft > 0 || len(pending) > 0 {
+		if inFlight == 0 && len(pending) > 0 {
+			ask(pending[0])
+			pending = pending[1:]
+			timer.Reset(hedgeDelay)
 		}
-		addr := preferIPv4(item.addrs)
-		tryCtx, cancel := context.WithTimeout(ctx, perQueryTimeout)
-		body, err := c.Exchange(tryCtx, net.JoinHostPort(addr, "53"), query)
-		cancel()
-		if err != nil {
-			errs = append(errs, item.host+": "+err.Error())
+		var resolvedCh chan resolved
+		if resolvedLeft > 0 {
+			resolvedCh = results
+		}
+		select {
+		case item := <-resolvedCh:
+			resolvedLeft--
+			if item.err != nil || len(item.addrs) == 0 {
+				reason := "no address"
+				if item.err != nil {
+					reason = "no address (" + item.err.Error() + ")"
+				}
+				errs = append(errs, item.host+": "+reason)
+				continue
+			}
+			pending = append(pending, item)
+		case got := <-answers:
+			inFlight--
+			if got.err == nil {
+				return got.msg, got.server, nil
+			}
+			errs = append(errs, got.err.Error())
 			if ctx.Err() != nil {
-				break
+				return nil, "", errors.New(strings.Join(errs, "; "))
 			}
-			continue
+		case <-timer.C:
+			if len(pending) > 0 {
+				ask(pending[0])
+				pending = pending[1:]
+				timer.Reset(hedgeDelay)
+			}
+		case <-ctx.Done():
+			errs = append(errs, ctx.Err().Error())
+			return nil, "", errors.New(strings.Join(errs, "; "))
 		}
-		var msg dnsmessage.Message
-		if err := msg.Unpack(body); err != nil || msg.ID != id {
-			errs = append(errs, item.host+": malformed reply")
-			continue
-		}
-		if msg.RCode != dnsmessage.RCodeSuccess && msg.RCode != dnsmessage.RCodeNameError {
-			errs = append(errs, item.host+": "+msg.RCode.String())
-			continue
-		}
-		return &msg, fmt.Sprintf("%s (%s)", item.host, addr), nil
 	}
 	if len(errs) == 0 {
 		return nil, "", errors.New("no nameservers to query")

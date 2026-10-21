@@ -733,7 +733,7 @@ const (
 	delegationTimeout = 5 * time.Second
 	// delegationGrace is how long providers may still answer after the
 	// parallel delegation check has a result.
-	delegationGrace = time.Second
+	delegationGrace = 500 * time.Millisecond
 )
 
 type delegationOutcome struct {
