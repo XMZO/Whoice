@@ -207,10 +207,21 @@ type PricingInfo struct {
 	Source    string   `json:"source,omitempty"`
 	UpdatedAt string   `json:"updatedAt,omitempty"`
 	// CachedAt is set when the prices came from the server-side cache.
-	CachedAt      string        `json:"cachedAt,omitempty"`
+	CachedAt string `json:"cachedAt,omitempty"`
+	// FX holds USD-based rates for the currencies above plus CNY and USD,
+	// so clients can show converted prices next to the originals.
+	FX            *FXRates      `json:"fx,omitempty"`
 	RegisterOffer *PricingOffer `json:"registerOffer,omitempty"`
 	RenewOffer    *PricingOffer `json:"renewOffer,omitempty"`
 	TransferOffer *PricingOffer `json:"transferOffer,omitempty"`
+}
+
+type FXRates struct {
+	Base      string             `json:"base"`
+	Rates     map[string]float64 `json:"rates"`
+	Source    string             `json:"source,omitempty"`
+	UpdatedAt string             `json:"updatedAt,omitempty"`
+	CachedAt  string             `json:"cachedAt,omitempty"`
 }
 
 type PricingOffer struct {

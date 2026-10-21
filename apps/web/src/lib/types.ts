@@ -114,6 +114,7 @@ export type LookupResult = {
       source?: string;
       updatedAt?: string;
       cachedAt?: string;
+      fx?: FXRates;
       registerOffer?: PricingOffer;
       renewOffer?: PricingOffer;
       transferOffer?: PricingOffer;
@@ -160,6 +161,15 @@ export type LookupResult = {
       error?: string;
     };
   };
+};
+
+export type FXRates = {
+  base: string;
+  /** Units of each currency per one USD. */
+  rates: Record<string, number>;
+  source?: string;
+  updatedAt?: string;
+  cachedAt?: string;
 };
 
 export type PricingOffer = {

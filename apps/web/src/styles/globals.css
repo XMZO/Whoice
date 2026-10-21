@@ -1565,6 +1565,46 @@ button.src-tag {
   overflow-wrap: anywhere;
 }
 
+/* The original amount under a converted one, fitted the same way. */
+.price-original {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: clamp(9px, calc(100cqi / (var(--chars) * 0.6)), 12px);
+  overflow-wrap: anywhere;
+}
+
+.currency-switch {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.currency-toggle {
+  background: var(--panel-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  display: inline-flex;
+  padding: 1px;
+}
+
+.currency-toggle button {
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-pill);
+  color: var(--muted);
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+}
+
+.currency-toggle button.active {
+  background: var(--panel);
+  box-shadow: 0 0 0 1px var(--border);
+  color: var(--text);
+}
+
 .price-registrar {
   color: var(--link);
   font-size: 12px;

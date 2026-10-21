@@ -108,6 +108,7 @@ export const SETTINGS_SECTIONS: Section[] = [
           toggle("enrichment.brands", t3("Brand recognition", "服务商识别", "服務商識別")),
           toggle("enrichment.pricing", t3("Registration prices", "注册价格", "註冊價格")),
           duration("enrichment.pricing_cache_ttl", t3("Price cache", "价格缓存", "價格快取"), t3("Per suffix · 0 disables, forever never expires", "按后缀缓存 · 0 不缓存，forever 永久", "按後綴快取 · 0 不快取，forever 永久"), true),
+          duration("enrichment.fx_cache_ttl", t3("Exchange-rate cache", "汇率缓存", "匯率快取"), t3("CNY/USD conversion · 0 refetches every time", "人民币/美元换算 · 0 每次重新获取", "人民幣/美元換算 · 0 每次重新取得"), true),
           toggle("enrichment.moz", t3("Moz scores", "Moz 评分", "Moz 評分"), t3("Local data/enrichment/moz.json only", "仅使用本地 moz.json", "僅使用本機 moz.json")),
         ],
       },

@@ -263,9 +263,23 @@ export interface PricingInfo {
   source?: string;
   updatedAt?: string;
   cachedAt?: string;
+  fx?: FXRates;
   registerOffer?: PricingOffer;
   renewOffer?: PricingOffer;
   transferOffer?: PricingOffer;
+}
+/**
+ * This interface was referenced by `WhoiceAPIResponse`'s JSON-Schema
+ * via the `definition` "FXRates".
+ */
+export interface FXRates {
+  base: string;
+  rates: {
+    [k: string]: number;
+  };
+  source?: string;
+  updatedAt?: string;
+  cachedAt?: string;
 }
 /**
  * This interface was referenced by `WhoiceAPIResponse`'s JSON-Schema

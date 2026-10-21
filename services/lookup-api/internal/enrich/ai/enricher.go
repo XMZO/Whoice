@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -51,9 +52,7 @@ func (e *Enricher) Enabled() bool {
 
 func (e *Enricher) Apply(ctx context.Context, result *model.LookupResult, force bool) model.AITrace {
 	trace := model.AITrace{
-		Provider: e.provider(),
-		Model:    e.model(),
-		Status:   "skipped",
+		Status: "skipped",
 	}
 	if e == nil || !e.opts.Enabled {
 		return trace
@@ -101,8 +100,9 @@ func (e *Enricher) Apply(ctx context.Context, result *model.LookupResult, force 
 			}
 		}
 		if err != nil {
+			log.Printf("ai analysis failed for %s: %v", result.NormalizedQuery, err)
 			trace.Status = "error"
-			trace.Error = err.Error()
+			trace.Error = publicError(err)
 			trace.ElapsedMs = time.Since(start).Milliseconds()
 			return trace
 		}

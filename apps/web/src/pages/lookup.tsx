@@ -20,6 +20,7 @@ import {
   SourceTags,
   SourcesSection,
   StatusList,
+  CurrencyToggle,
   TRUNCATED,
   TRUNCATED_DETAIL,
   pricingSummary,
@@ -953,6 +954,7 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
   const lowerExtra = (() => {
     if (!result) return null;
     if (activeLower === "dns" && result.enrichment?.dnsviz?.url) return <DNSVizLink url={result.enrichment.dnsviz.url} />;
+    if (activeLower === "price" && result.enrichment?.pricing?.fx) return <CurrencyToggle fx={result.enrichment.pricing.fx} />;
     if (activeLower === "owner" && ownerSources.length) {
       return (
         <span className="source-caption">

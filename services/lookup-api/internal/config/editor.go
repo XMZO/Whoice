@@ -144,6 +144,7 @@ var envBindings = map[string]string{
 	"WHOICE_ENRICH_EPP": "enrichment.epp", "WHOICE_ENRICH_BRANDS": "enrichment.brands",
 	"WHOICE_ENRICH_REGISTRAR": "enrichment.registrar", "WHOICE_ENRICH_PRICING": "enrichment.pricing",
 	"WHOICE_ENRICH_MOZ": "enrichment.moz", "WHOICE_PRICING_CACHE_TTL": "enrichment.pricing_cache_ttl",
+	"WHOICE_FX_CACHE_TTL": "enrichment.fx_cache_ttl",
 	"WHOICE_AI_ENABLED": "ai.enabled", "WHOICE_AI_PROVIDER": "ai.provider", "WHOICE_AI_BASE_URL": "ai.base_url",
 	"WHOICE_AI_API_KEY": "ai.api_key", "WHOICE_AI_MODEL": "ai.model", "WHOICE_AI_TIMEOUT": "ai.timeout",
 	"WHOICE_AI_CACHE_TTL": "ai.cache_ttl", "WHOICE_AI_MAX_INPUT_CHARS": "ai.max_input_chars",
@@ -244,6 +245,7 @@ func SettingsView(cfg Config) FileConfig {
 			EPP: boolean(cfg.EnrichEPP), Brands: boolean(cfg.EnrichBrands), Registrar: boolean(cfg.EnrichRegistrar),
 			Pricing: boolean(cfg.EnrichPricing), Moz: boolean(cfg.EnrichMoz),
 			PricingCacheTTL: str(FormatCacheDuration(cfg.PricingCacheTTL)),
+			FXCacheTTL: str(FormatCacheDuration(cfg.FXCacheTTL)),
 		},
 		AI: &AIConfig{
 			Enabled: boolean(cfg.AIEnabled), Provider: str(cfg.AIProvider), BaseURL: str(cfg.AIBaseURL),

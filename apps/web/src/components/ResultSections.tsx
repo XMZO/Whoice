@@ -37,7 +37,8 @@ import {
   sourceName,
   sourceTag,
 } from "@/lib/resultModel";
-import type { ICPResult, LookupResult, PricingOffer } from "@/lib/types";
+import type { FXRates, ICPResult, LookupResult, PricingOffer } from "@/lib/types";
+import { convertAmount, useDisplayCurrency, type DisplayCurrency } from "@/lib/currency";
 import type { RawTab } from "@/components/RawDrawer";
 
 type RegistrationSource = NonNullable<LookupResult["registrant"]["extra"]>[number];
@@ -505,20 +506,39 @@ export function pricingSummary(result: LookupResult, locale: string) {
   return formatMoney(price, pricing.registerOffer?.currency || currency, locale);
 }
 
-function PriceTile({ label, offer, fallbackCurrency }: { label: string; offer?: PricingOffer; fallbackCurrency: string }) {
-  const { locale } = useI18n();
+function moneyText(value: number | undefined, currency: string, locale: string) {
   // Intl joins a currency code with a no-break space; a plain space lets a
   // long amount ("IDR 987,654,322") wrap between code and number.
-  const value = formatMoney(offer?.price, offer?.currency || fallbackCurrency, locale)?.replace(/\u00a0/g, " ");
+  return formatMoney(value, currency, locale)?.replace(/\u00a0/g, " ");
+}
+
+function longestPart(value: string) {
+  return Math.max(...value.split(/ +/).map((part) => part.length), 1);
+}
+
+function PriceTile({ label, offer, fallbackCurrency, displayCurrency, fx }: { label: string; offer?: PricingOffer; fallbackCurrency: string; displayCurrency: DisplayCurrency; fx?: FXRates }) {
+  const { locale } = useI18n();
+  const original = offer?.currency || fallbackCurrency;
+  const originalText = moneyText(offer?.price, original, locale);
+  const converted = original.toUpperCase() === displayCurrency ? undefined : convertAmount(offer?.price, original, displayCurrency, fx);
+  const convertedText = converted === undefined ? undefined : `≈ ${moneyText(converted, displayCurrency, locale)}`;
+  const main = convertedText || originalText || "—";
   const href = safeExternalURL(offer?.website);
-  const longestPart = Math.max(...(value || "—").split(/\s+/).map((part) => part.length), 1);
   return (
     <div className="price-tile">
       <span className="price-label">{label}</span>
-      {/* --chars lets CSS shrink long amounts (e.g. ₫1.234.567) to the tile width. */}
-      <strong className="price-value" title={value || undefined} style={{ "--chars": longestPart } as CSSProperties}>
-        {value || "—"}
+      {/* --chars lets CSS shrink long amounts (e.g. ₫1,234,567,890) to the tile width. */}
+      {/* Converted amounts are sized as one line including "≈ " (a fallback-font
+          glyph wider than one mono cell, so counted twice); only when even the
+          minimum size is too wide does the line break after "≈". */}
+      <strong className="price-value" title={main} style={{ "--chars": convertedText ? main.length + 1 : longestPart(main) } as CSSProperties}>
+        {main}
       </strong>
+      {convertedText && originalText && (
+        <span className="price-original" title={originalText} style={{ "--chars": longestPart(originalText) } as CSSProperties}>
+          {originalText}
+        </span>
+      )}
       {offer?.registrar ? (
         href ? (
           <a className="price-registrar" href={href} target="_blank" rel="noreferrer">{offer.registrar}</a>
@@ -529,6 +549,46 @@ function PriceTile({ label, offer, fallbackCurrency }: { label: string; offer?: 
         <span className="price-registrar muted">&nbsp;</span>
       )}
     </div>
+  );
+}
+
+/** CNY / USD switch for converted prices; shared across the page. */
+export function CurrencyToggle({ fx }: { fx?: FXRates }) {
+  const { locale } = useI18n();
+  const pick = useT3();
+  const [currency, setCurrency] = useDisplayCurrency(locale);
+  if (!fx) return null;
+  const when = fx.cachedAt ? formatTimestamp(fx.cachedAt) : "";
+  const detail = [
+    `${pick(t3("Rates", "汇率", "匯率"))}: ${fx.source || "—"}`,
+    fx.updatedAt ? `${pick(t3("Rate date", "汇率日期", "匯率日期"))}: ${fx.updatedAt.slice(0, 10)}` : "",
+    when ? `${pick(t3("Cached at", "缓存于", "快取於"))} ${when}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+  return (
+    <span className="currency-switch">
+      <FXTag fx={fx} title={detail} />
+      <span className="currency-toggle" role="group" aria-label={pick(t3("Show prices in", "价格换算为", "價格換算為"))}>
+        {(["CNY", "USD"] as DisplayCurrency[]).map((code) => (
+          <button key={code} type="button" aria-pressed={currency === code} className={currency === code ? "active" : undefined} onClick={() => setCurrency(code)}>
+            {code}
+          </button>
+        ))}
+      </span>
+    </span>
+  );
+}
+
+function FXTag({ fx, title }: { fx: FXRates; title: string }) {
+  const { t, tf } = useI18n();
+  const pick = useT3();
+  const timestamp = fx.cachedAt ? Date.parse(fx.cachedAt) : NaN;
+  return (
+    <span className="pill pill-xs" title={title}>
+      {pick(t3("Rates", "汇率", "匯率"))}
+      {Number.isNaN(timestamp) ? "" : ` · ${relativeTime(timestamp, Date.now(), tf, t)}`}
+    </span>
   );
 }
 
@@ -547,8 +607,10 @@ function CacheTag({ cachedAt }: { cachedAt?: string }) {
 }
 
 export function PriceSection({ result, pending, loadingError, showHeader = true }: { result: LookupResult; pending?: boolean; loadingError?: string; showHeader?: boolean }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const pricing = result.enrichment?.pricing;
+  const [displayCurrency] = useDisplayCurrency(locale);
+  const fx = pricing?.fx;
   const moz = result.enrichment?.moz;
   const currency = pricing?.currency || "USD";
   const offer = (value?: PricingOffer, price?: number) => value ?? (price === undefined ? undefined : { price, currency, registrar: pricing?.provider });
@@ -561,6 +623,7 @@ export function PriceSection({ result, pending, loadingError, showHeader = true 
       {showHeader ? (
         <SectionHead id="h-price" icon={<TagIcon size={15} />} title={t("priceScore")}>
           <CacheTag cachedAt={pricing?.cachedAt} />
+          <CurrencyToggle fx={fx} />
         </SectionHead>
       ) : (
         <h2 id="h-price" className="sr-only">{t("priceScore")}</h2>
@@ -568,12 +631,13 @@ export function PriceSection({ result, pending, loadingError, showHeader = true 
       <div className="price-head-narrow">
         <strong>{t("priceTitle")}</strong>
         <CacheTag cachedAt={pricing?.cachedAt} />
+        <CurrencyToggle fx={fx} />
       </div>
       {pricing ? (
         <div className="price-grid">
-          <PriceTile label={t("register")} offer={register} fallbackCurrency={currency} />
-          <PriceTile label={t("renew")} offer={renew} fallbackCurrency={currency} />
-          <PriceTile label={t("transfer")} offer={transfer} fallbackCurrency={currency} />
+          <PriceTile label={t("register")} offer={register} fallbackCurrency={currency} displayCurrency={displayCurrency} fx={fx} />
+          <PriceTile label={t("renew")} offer={renew} fallbackCurrency={currency} displayCurrency={displayCurrency} fx={fx} />
+          <PriceTile label={t("transfer")} offer={transfer} fallbackCurrency={currency} displayCurrency={displayCurrency} fx={fx} />
           {moz && (
             <div className="price-tile moz-tile">
               <span className="price-label">{t("mozWeight")}</span>
@@ -814,7 +878,7 @@ export function RegistrantSection({
       {aiLoading && <span className="pill pill-amber pulse">{t("aiAnalyzing")}</span>}
       {!aiLoading && aiError && <span className="pill pill-red" title={aiError}>{pick(AI_STATUS.error)}</span>}
       {ai && (
-        <span className={`pill ${ai.status === "error" ? "pill-red" : "pill-accent"}`} title={[ai.provider, ai.model, ai.reason, ai.error, ai.applied?.length ? ai.applied.join(", ") : ""].filter(Boolean).join("\n")}>
+        <span className={`pill ${ai.status === "error" ? "pill-red" : "pill-accent"}`} title={[ai.reason, ai.error, ai.applied?.length ? ai.applied.join(", ") : ""].filter(Boolean).join("\n")}>
           {AI_STATUS[ai.status] ? pick(AI_STATUS[ai.status]) : `AI ${ai.status}`}
           {ai.cached ? ` · ${pick(CACHED)}` : ""}
         </span>

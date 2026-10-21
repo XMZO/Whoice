@@ -186,6 +186,9 @@ pricing = ` + tomlBool(cfg.EnrichPricing) + `
 # pricing_cache_ttl: How long prices for a suffix are reused from data/cache/pricing.json. "0" disables, "forever" never expires.
 # pricing_cache_ttl：每个后缀的价格在 data/cache/pricing.json 中缓存多久。"0" 不缓存，"forever" 永久。
 pricing_cache_ttl = ` + tomlCacheDuration(cfg.PricingCacheTTL) + `
+# fx_cache_ttl: How long CNY/USD exchange rates (public daily sources) are reused from data/cache/fx.json. "0" refetches every time, "forever" never expires.
+# fx_cache_ttl：人民币/美元换算汇率（公开的每日数据源）在 data/cache/fx.json 中缓存多久。"0" 每次重新获取，"forever" 永久。
+fx_cache_ttl = ` + tomlCacheDuration(cfg.FXCacheTTL) + `
 # moz: Add optional local Moz-like authority metrics from data/enrichment/moz.json only.
 # moz：从本地 data/enrichment/moz.json 补充 Moz 风格权重指标；不会实时请求外部 Moz API。
 moz = ` + tomlBool(cfg.EnrichMoz) + `

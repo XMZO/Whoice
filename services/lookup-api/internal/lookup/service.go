@@ -18,6 +18,7 @@ import (
 	dnsenrich "github.com/xmzo/whoice/services/lookup-api/internal/enrich/dns"
 	"github.com/xmzo/whoice/services/lookup-api/internal/enrich/dnsviz"
 	"github.com/xmzo/whoice/services/lookup-api/internal/enrich/epp"
+	"github.com/xmzo/whoice/services/lookup-api/internal/enrich/fx"
 	"github.com/xmzo/whoice/services/lookup-api/internal/enrich/moz"
 	"github.com/xmzo/whoice/services/lookup-api/internal/enrich/pipeline"
 	"github.com/xmzo/whoice/services/lookup-api/internal/enrich/pricing"
@@ -40,6 +41,7 @@ type Service struct {
 	brands           *brandmap.Registry
 	enrichment       *enrichmentdata.Registry
 	pricing          *pricing.Resolver
+	fx               *fx.Service
 	enrichers        pipeline.Pipeline
 	static           pipeline.Pipeline
 	fast             pipeline.Pipeline
@@ -65,6 +67,7 @@ func NewService(cfg config.Config, providerList []providers.Provider, parserRegi
 		brands:     brandRegistry,
 		enrichment: enrichmentRegistry,
 		pricing:    buildPricingResolver(cfg),
+		fx:         fx.New(cfg.DataDir, cfg.FXCacheTTL),
 		ai:         aienrich.New(cfg),
 		inflight:   newSingleflight(),
 		delegation: delegation.New(),
@@ -270,10 +273,8 @@ func (s *Service) ApplyAI(ctx context.Context, result *model.LookupResult, force
 	}
 	if reason := s.aiIgnoreReason(result); reason != "" {
 		trace := model.AITrace{
-			Provider: s.cfg.AIProvider,
-			Model:    s.cfg.AIModel,
-			Status:   "ignored",
-			Reason:   reason,
+			Status: "ignored",
+			Reason: reason,
 		}
 		result.Meta.AI = &trace
 		s.static.Run(ctx, result)
@@ -382,6 +383,7 @@ func (s *Service) buildFastPipeline() pipeline.Pipeline {
 		// Cached prices and local Moz data cost nothing, so they ship with
 		// the first response instead of waiting behind deferred DNS.
 		pricing.CachedEnricher{EnabledValue: s.cfg.EnrichPricing, Resolver: s.pricing},
+		s.fxStep(false),
 		pipeline.Step{
 			NameValue:    "moz",
 			EnabledValue: s.cfg.EnrichMoz,
@@ -451,7 +453,35 @@ func (s *Service) buildDeferredPipeline() pipeline.Pipeline {
 		// Only suffixes missing from the price cache reach this step; local Moz
 		// data is applied by the fast pipeline.
 		pricing.NewEnricher(s.cfg.EnrichPricing, s.pricing),
+		s.fxStep(true),
 	)
+}
+
+// fxStep attaches exchange rates to prices. The fast path uses cached rates
+// only (refreshing expired ones in the background); the deferred path may
+// fetch them.
+func (s *Service) fxStep(allowFetch bool) pipeline.Enricher {
+	return pipeline.Step{
+		NameValue:    "fx",
+		EnabledValue: s.cfg.EnrichPricing,
+		SupportsFunc: func(result *model.LookupResult) bool {
+			return result != nil && result.Enrichment.Pricing != nil && result.Enrichment.Pricing.FX == nil
+		},
+		EnrichFunc: func(ctx context.Context, result *model.LookupResult) error {
+			result.Enrichment.Pricing.FX = s.fx.Snapshot(ctx, pricingCurrencies(result.Enrichment.Pricing), allowFetch)
+			return nil
+		},
+	}
+}
+
+func pricingCurrencies(info *model.PricingInfo) []string {
+	codes := []string{info.Currency}
+	for _, offer := range []*model.PricingOffer{info.RegisterOffer, info.RenewOffer, info.TransferOffer} {
+		if offer != nil {
+			codes = append(codes, offer.Currency)
+		}
+	}
+	return codes
 }
 
 func (s *Service) buildStaticPipeline() pipeline.Pipeline {

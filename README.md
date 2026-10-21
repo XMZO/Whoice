@@ -71,7 +71,7 @@ Settings can be changed in the admin panel or directly in `data/whoice.toml`. Th
 | `[auth]` | `none`, `password` (site password), or `token` (API tokens) |
 | `[lookup]` | Timeouts, RDAP / WHOIS / WHOIS Web toggles, referral depth, DNS-first suffixes (registries with an unreachable WHOIS) |
 | `[dns]` | Resolver pools (IPv4, IPv6, DoH), fake-IP filtering, DNSViz links |
-| `[enrichment]` | EPP, registrar, brands, pricing (cached per suffix, 7 days by default), Moz |
+| `[enrichment]` | EPP, registrar, brands, pricing (cached per suffix, 7 days by default; CNY/USD conversion with daily public exchange rates, cached 1 day), Moz |
 | `[ai]` | OpenAI-compatible or Ollama endpoint, model, prompt, cache |
 | `[icp]` | ICP filing lookup, caching, captcha handling, upstream service |
 | `[rate_limit]` | Fixed-window limit for anonymous clients, e.g. `60/min` |

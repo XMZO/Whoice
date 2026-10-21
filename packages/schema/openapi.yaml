@@ -794,12 +794,30 @@ components:
           type: string
         cachedAt:
           type: string
+        fx:
+          $ref: "#/components/schemas/FXRates"
         registerOffer:
           $ref: "#/components/schemas/PricingOffer"
         renewOffer:
           $ref: "#/components/schemas/PricingOffer"
         transferOffer:
           $ref: "#/components/schemas/PricingOffer"
+    FXRates:
+      type: object
+      required: [base, rates]
+      properties:
+        base:
+          type: string
+        rates:
+          type: object
+          additionalProperties:
+            type: number
+        source:
+          type: string
+        updatedAt:
+          type: string
+        cachedAt:
+          type: string
     PricingOffer:
       type: object
       properties:

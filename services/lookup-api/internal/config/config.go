@@ -60,6 +60,7 @@ type Config struct {
 	EnrichDNSViz           bool
 	EnrichPricing          bool
 	PricingCacheTTL        time.Duration
+	FXCacheTTL             time.Duration
 	EnrichMoz              bool
 	AIEnabled              bool
 	AIProvider             string
@@ -218,6 +219,7 @@ func Default() Config {
 		AITimeout:           8 * time.Second,
 		AICacheTTL:          168 * time.Hour,
 		PricingCacheTTL:     168 * time.Hour,
+		FXCacheTTL:          24 * time.Hour,
 		AIMaxInputChars:     16000,
 		AIMinConfidence:     0.68,
 		AIMaxOutputTokens:   700,
@@ -553,6 +555,8 @@ type EnrichmentConfig struct {
 	Moz       *bool `toml:"moz" json:"moz,omitempty"`
 	// PricingCacheTTL keeps per-suffix prices in data/cache/pricing.json.
 	PricingCacheTTL *string `toml:"pricing_cache_ttl" json:"pricing_cache_ttl,omitempty"`
+	// FXCacheTTL is how long exchange rates in data/cache/fx.json are reused.
+	FXCacheTTL *string `toml:"fx_cache_ttl" json:"fx_cache_ttl,omitempty"`
 }
 
 type AIConfig struct {
@@ -758,6 +762,9 @@ func (f FileConfig) Apply(cfg *Config) error {
 		if err := setCacheDuration(&cfg.PricingCacheTTL, f.Enrichment.PricingCacheTTL, "enrichment.pricing_cache_ttl"); err != nil {
 			return err
 		}
+		if err := setCacheDuration(&cfg.FXCacheTTL, f.Enrichment.FXCacheTTL, "enrichment.fx_cache_ttl"); err != nil {
+			return err
+		}
 	}
 	if f.AI != nil {
 		setBool(&cfg.AIEnabled, f.AI.Enabled)
@@ -868,6 +875,7 @@ func applyEnv(cfg *Config) {
 	envBoolInto(&cfg.EnrichDNSViz, "WHOICE_ENRICH_DNSVIZ")
 	envBoolInto(&cfg.EnrichPricing, "WHOICE_ENRICH_PRICING")
 	envCacheDurationInto(&cfg.PricingCacheTTL, "WHOICE_PRICING_CACHE_TTL")
+	envCacheDurationInto(&cfg.FXCacheTTL, "WHOICE_FX_CACHE_TTL")
 	envBoolInto(&cfg.EnrichMoz, "WHOICE_ENRICH_MOZ")
 	envBoolInto(&cfg.AIEnabled, "WHOICE_AI_ENABLED")
 	envStringInto(&cfg.AIProvider, "WHOICE_AI_PROVIDER")

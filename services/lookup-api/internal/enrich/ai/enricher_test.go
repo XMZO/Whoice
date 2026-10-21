@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -474,8 +475,24 @@ func TestApplyStopsAfterConfiguredAIAttempts(t *testing.T) {
 	if trace.Attempts != 2 || client.calls != 2 {
 		t.Fatalf("attempts: trace=%d calls=%d", trace.Attempts, client.calls)
 	}
-	if trace.Error != "bad json 2" {
-		t.Fatalf("trace error: %q", trace.Error)
+	// The provider's own message stays in the server log; visitors get a
+	// category that names no model or endpoint.
+	if trace.Error != "AI service is unreachable" || trace.Model != "" || trace.Provider != "" {
+		t.Fatalf("trace leaks provider details: %#v", trace)
+	}
+}
+
+func TestPublicErrorHidesProviderWording(t *testing.T) {
+	cases := map[error]string{
+		&httpStatusError{status: 404, body: `{"error":"model 'gpt-secret' not found at https://internal.example/v1"}`}: "AI service returned HTTP 404",
+		&upstreamError{message: "The model `gpt-secret` does not exist"}:                                               "AI service reported an error",
+		context.DeadlineExceeded: "AI request timed out",
+	}
+	for err, want := range cases {
+		got := publicError(err)
+		if got != want || strings.Contains(got, "gpt-secret") || strings.Contains(got, "internal.example") {
+			t.Fatalf("publicError(%v) = %q, want %q", err, got, want)
+		}
 	}
 }
 

@@ -115,14 +115,14 @@ func (c *openAICompatibleClient) analyze(ctx context.Context, prompt, evidence s
 		return Analysis{}, err
 	}
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return Analysis{}, fmt.Errorf("AI endpoint returned HTTP %d: %s", res.StatusCode, trimForError(string(responseBody)))
+		return Analysis{}, &httpStatusError{status: res.StatusCode, body: trimForError(string(responseBody))}
 	}
 	var chat chatResponse
 	if err := json.Unmarshal(responseBody, &chat); err != nil {
 		return Analysis{}, fmt.Errorf("parse AI response: %w", err)
 	}
 	if chat.Error != nil && chat.Error.Message != "" {
-		return Analysis{}, errors.New(chat.Error.Message)
+		return Analysis{}, &upstreamError{message: chat.Error.Message}
 	}
 	if len(chat.Choices) == 0 {
 		return Analysis{}, errors.New("AI response has no choices")
@@ -198,4 +198,38 @@ func clampTemperature(value float64) float64 {
 		return 2
 	}
 	return value
+}
+
+// httpStatusError and upstreamError carry the provider's own wording, which
+// often names the model or the endpoint; it is logged, not shown publicly.
+type httpStatusError struct {
+	status int
+	body   string
+}
+
+func (e *httpStatusError) Error() string {
+	return fmt.Sprintf("AI endpoint returned HTTP %d: %s", e.status, e.body)
+}
+
+type upstreamError struct{ message string }
+
+func (e *upstreamError) Error() string { return e.message }
+
+// publicError turns an analysis failure into a message safe to return to
+// visitors: the category only, never the provider's text, model or URL.
+func publicError(err error) string {
+	var status *httpStatusError
+	var upstream *upstreamError
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return "AI request timed out"
+	case errors.As(err, &status):
+		return fmt.Sprintf("AI service returned HTTP %d", status.status)
+	case errors.As(err, &upstream):
+		return "AI service reported an error"
+	case strings.Contains(err.Error(), "parse AI") || strings.Contains(err.Error(), "did not contain JSON") || strings.Contains(err.Error(), "no choices") || strings.Contains(err.Error(), "response is empty"):
+		return "AI response could not be read"
+	default:
+		return "AI service is unreachable"
+	}
 }

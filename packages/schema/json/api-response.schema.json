@@ -482,9 +482,22 @@
           "source": { "type": "string" },
           "updatedAt": { "type": "string" },
           "cachedAt": { "type": "string" },
+          "fx": { "$ref": "#/$defs/FXRates" },
           "registerOffer": { "$ref": "#/$defs/PricingOffer" },
           "renewOffer": { "$ref": "#/$defs/PricingOffer" },
           "transferOffer": { "$ref": "#/$defs/PricingOffer" }
+        },
+        "additionalProperties": false
+      },
+      "FXRates": {
+        "type": "object",
+        "required": ["base", "rates"],
+        "properties": {
+          "base": { "type": "string" },
+          "rates": { "type": "object", "additionalProperties": { "type": "number" } },
+          "source": { "type": "string" },
+          "updatedAt": { "type": "string" },
+          "cachedAt": { "type": "string" }
         },
         "additionalProperties": false
       },
