@@ -107,6 +107,25 @@ func (r *Resolver) WithCache(dataDir string, ttl time.Duration) *Resolver {
 	return &Resolver{sources: r.sources, cache: newSuffixCache(dataDir, ttl)}
 }
 
+// Cached answers from the per-suffix cache only, never from a source: hit
+// reports whether the suffix is cached, found whether it has prices.
+func (r *Resolver) Cached(suffix string) (info model.PricingInfo, found bool, hit bool) {
+	if r == nil || r.cache == nil {
+		return model.PricingInfo{}, false, false
+	}
+	suffix = normalizeSuffix(suffix)
+	if suffix == "" {
+		return model.PricingInfo{}, false, false
+	}
+	entry, ok := r.cache.get(suffix)
+	if !ok {
+		return model.PricingInfo{}, false, false
+	}
+	info = entry.Info
+	info.CachedAt = entry.CachedAt.Format(time.RFC3339)
+	return info, entry.Found, true
+}
+
 func (r *Resolver) lookupCached(ctx context.Context, suffix string) (model.PricingInfo, bool, error) {
 	if entry, ok := r.cache.get(suffix); ok {
 		info := entry.Info

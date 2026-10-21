@@ -11,6 +11,7 @@ import (
 
 	"github.com/xmzo/whoice/services/lookup-api/internal/config"
 	"github.com/xmzo/whoice/services/lookup-api/internal/enrich/pipeline"
+	"github.com/xmzo/whoice/services/lookup-api/internal/enrich/pricing"
 	"github.com/xmzo/whoice/services/lookup-api/internal/model"
 	"github.com/xmzo/whoice/services/lookup-api/internal/parsers"
 	providerapi "github.com/xmzo/whoice/services/lookup-api/internal/providers"
@@ -546,5 +547,66 @@ func TestRegistryWHOISWebRunsWithFallbackSwitchedOff(t *testing.T) {
 		if !required && err == nil {
 			t.Fatalf("plain WHOIS Web modules stay off: %#v", result.Source)
 		}
+	}
+}
+
+type staticPriceSource struct{ prices map[string]float64 }
+
+func (s staticPriceSource) Name() string { return "static" }
+
+func (s staticPriceSource) Lookup(_ context.Context, suffix string) (model.PricingInfo, bool, error) {
+	price, ok := s.prices[suffix]
+	if !ok {
+		return model.PricingInfo{}, false, nil
+	}
+	return model.PricingInfo{Register: &price, Currency: "USD"}, true, nil
+}
+
+func TestCachedPricingShipsWithTheFirstResponse(t *testing.T) {
+	service := NewService(config.Config{
+		LookupTimeout: time.Second, ProviderTimeout: time.Second, WHOISEnabled: true,
+		LookupFastResponse: true, EnrichDNS: true, EnrichPricing: true,
+	}, []providerapi.Provider{
+		testProvider{source: model.SourceWHOIS, raw: &model.RawResponse{
+			Source: model.SourceWHOIS, Server: "whois.example",
+			Body: "Domain Name: EXAMPLE.TEST\nRegistrar: Example Registrar\n",
+		}},
+	}, parsers.NewRegistry(parsers.WHOISParser{}))
+	service.pricing = pricing.NewResolver(staticPriceSource{prices: map[string]float64{"test": 9}}).WithCache(t.TempDir(), time.Hour)
+	service.fast = service.buildFastPipeline()
+	service.deferred = service.buildDeferredPipeline()
+
+	lookupOnce := func(query string) *model.LookupResult {
+		result, err := service.Lookup(context.Background(), query, model.LookupOptions{UseWHOIS: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+	has := func(names []string, want string) bool {
+		for _, name := range names {
+			if name == want {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Cache miss: pricing is deferred.
+	first := lookupOnce("example.test")
+	if first.Enrichment.Pricing != nil || !has(first.Meta.PendingEnrichments, "pricing") {
+		t.Fatalf("cache miss should defer pricing: %#v %v", first.Enrichment.Pricing, first.Meta.PendingEnrichments)
+	}
+	if _, err := service.ApplyDeferred(context.Background(), first); err != nil {
+		t.Fatal(err)
+	}
+
+	// Cache hit: prices arrive with the lookup itself.
+	second := lookupOnce("example.test")
+	if second.Enrichment.Pricing == nil || second.Enrichment.Pricing.CachedAt == "" || has(second.Meta.PendingEnrichments, "pricing") {
+		t.Fatalf("cached prices should ship immediately: %#v %v", second.Enrichment.Pricing, second.Meta.PendingEnrichments)
+	}
+	if !has(second.Meta.PendingEnrichments, "dns") {
+		t.Fatalf("DNS stays deferred: %v", second.Meta.PendingEnrichments)
 	}
 }

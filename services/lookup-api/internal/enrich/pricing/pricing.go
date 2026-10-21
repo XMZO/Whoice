@@ -118,8 +118,43 @@ func (e Enricher) Enabled() bool {
 	return e.EnabledValue
 }
 
+// Supports skips suffixes the cache already answered (CachedEnricher applied
+// them with the first response), so only cache misses wait for deferred
+// enrichment.
 func (e Enricher) Supports(result *model.LookupResult) bool {
+	if result == nil || result.Type != model.QueryDomain || result.Enrichment.Pricing != nil {
+		return false
+	}
+	_, _, hit := e.Resolver.Cached(resultSuffix(result))
+	return !hit
+}
+
+// CachedEnricher applies cached prices without touching any source, so it
+// can run in the fast path before the lookup response is sent.
+type CachedEnricher struct {
+	EnabledValue bool
+	Resolver     *Resolver
+}
+
+func (e CachedEnricher) Name() string  { return "pricing-cache" }
+func (e CachedEnricher) Enabled() bool { return e.EnabledValue }
+
+func (e CachedEnricher) Supports(result *model.LookupResult) bool {
 	return result != nil && result.Type == model.QueryDomain && result.Enrichment.Pricing == nil
+}
+
+func (e CachedEnricher) Enrich(_ context.Context, result *model.LookupResult) error {
+	if info, found, hit := e.Resolver.Cached(resultSuffix(result)); hit && found {
+		result.Enrichment.Pricing = &info
+	}
+	return nil
+}
+
+func resultSuffix(result *model.LookupResult) string {
+	if result.Domain.Suffix != "" {
+		return result.Domain.Suffix
+	}
+	return domainSuffix(result.NormalizedQuery)
 }
 
 func (e Enricher) Enrich(ctx context.Context, result *model.LookupResult) error {
@@ -130,11 +165,7 @@ func Apply(ctx context.Context, result *model.LookupResult, resolver *Resolver) 
 	if result == nil || result.Type != model.QueryDomain {
 		return nil
 	}
-	suffix := result.Domain.Suffix
-	if suffix == "" {
-		suffix = domainSuffix(result.NormalizedQuery)
-	}
-	info, ok, err := resolver.Lookup(ctx, suffix)
+	info, ok, err := resolver.Lookup(ctx, resultSuffix(result))
 	if err != nil {
 		return err
 	}

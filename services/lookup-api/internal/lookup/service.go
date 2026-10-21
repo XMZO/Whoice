@@ -367,6 +367,20 @@ func (s *Service) buildPipeline() pipeline.Pipeline {
 
 func (s *Service) buildFastPipeline() pipeline.Pipeline {
 	return pipeline.New(append([]pipeline.Enricher{
+		// Cached prices and local Moz data cost nothing, so they ship with
+		// the first response instead of waiting behind deferred DNS.
+		pricing.CachedEnricher{EnabledValue: s.cfg.EnrichPricing, Resolver: s.pricing},
+		pipeline.Step{
+			NameValue:    "moz",
+			EnabledValue: s.cfg.EnrichMoz,
+			SupportsFunc: func(result *model.LookupResult) bool {
+				return result != nil && result.Type == model.QueryDomain && result.Enrichment.Moz == nil
+			},
+			EnrichFunc: func(_ context.Context, result *model.LookupResult) error {
+				moz.Apply(result, s.enrichment)
+				return nil
+			},
+		},
 		pipeline.Step{
 			NameValue:    "epp",
 			EnabledValue: s.cfg.EnrichEPP,
@@ -422,18 +436,9 @@ func (s *Service) buildDeferredPipeline() pipeline.Pipeline {
 				return nil
 			},
 		},
+		// Only suffixes missing from the price cache reach this step; local Moz
+		// data is applied by the fast pipeline.
 		pricing.NewEnricher(s.cfg.EnrichPricing, s.pricing),
-		pipeline.Step{
-			NameValue:    "moz",
-			EnabledValue: s.cfg.EnrichMoz,
-			SupportsFunc: func(result *model.LookupResult) bool {
-				return result != nil && result.Type == model.QueryDomain && result.Enrichment.Moz == nil
-			},
-			EnrichFunc: func(_ context.Context, result *model.LookupResult) error {
-				moz.Apply(result, s.enrichment)
-				return nil
-			},
-		},
 	)
 }
 
