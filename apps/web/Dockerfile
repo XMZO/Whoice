@@ -1,11 +1,11 @@
-FROM node:24.22.1-alpine3.24 AS deps
+FROM node:24-alpine3.24 AS deps
 
 WORKDIR /app
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/web/package.json ./apps/web/package.json
 RUN corepack enable && pnpm install --filter @whoice/web --frozen-lockfile
 
-FROM node:24.22.1-alpine3.24 AS build
+FROM node:24-alpine3.24 AS build
 
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -23,9 +23,9 @@ RUN corepack enable && pnpm --dir apps/web build \
 
 # Runtime: a plain Alpine with only the node binary and the two libraries it
 # links (npm, corepack and yarn never enter the image), plus the standalone
-# server Next traced from the build. Keep the Alpine release in step with
-# the node base (pinned to a release with its security fixes) so libstdc++
-# matches.
+# server Next traced from the build. The node base follows Node 24 patch
+# releases (CI resolves the tag afresh on every build) on a fixed Alpine
+# release; keep that release in step with this one so libstdc++ matches.
 FROM alpine:3.24 AS runner
 
 # apk upgrade picks up Alpine security fixes released after the base image.
