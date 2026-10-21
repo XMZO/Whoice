@@ -57,3 +57,26 @@ func TestWHOISNoObjectFoundIsUnregistered(t *testing.T) {
 		t.Fatalf("a miss should not report domain statuses, got %#v", status)
 	}
 }
+
+func TestWHOISPlaceholderRegistrarMeansReserved(t *testing.T) {
+	for name, want := range map[string]model.ResultStatus{
+		"NIC Reserved ":        model.StatusReserved,
+		"Registry Reserved":    model.StatusReserved,
+		"Markmonitor":          model.StatusRegistered,
+		"Reserved Hosting Ltd": model.StatusRegistered,
+	} {
+		body := "Domain Name: ac.cd\nCreation Date: 2021-01-15T00:00:00.0Z\nRegistrar: " + name + "\nDomain Status: inactive https://icann.org/epp#inactive\n"
+		raw := model.RawResponse{Source: model.SourceWHOIS, Server: "whois.nic.cd", Query: "ac.cd", Body: body}
+		part, err := (WHOISParser{}).Parse(context.Background(), raw, model.NormalizedQuery{Type: model.QueryDomain, Query: "ac.cd"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := part.Status
+		if got == model.StatusUnknown {
+			got = model.StatusRegistered
+		}
+		if got != want {
+			t.Fatalf("registrar %q: status %q, want %q", name, part.Status, want)
+		}
+	}
+}

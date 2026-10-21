@@ -35,6 +35,8 @@ var unregisteredPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\bno object found\b`),
 }
 
+var reservedRegistrarPattern = regexp.MustCompile(`(?i)^\s*(?:nic|registry|tld)?\s*reserved(?:\s+names?)?\s*$`)
+
 var reservedPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\breserved by (?:the )?registry\b`),
 	regexp.MustCompile(`(?i)\breserved domain\b`),
@@ -110,6 +112,12 @@ func (WHOISParser) Parse(_ context.Context, raw model.RawResponse, q model.Norma
 	if registrarName, registrarURL := splitRegistrarURL(partial.Registrar.Name); registrarURL != "" && partial.Registrar.URL == "" {
 		partial.Registrar.Name = registrarName
 		partial.Registrar.URL = registrarURL
+	}
+	// Some registries park reserved names under a placeholder registrar
+	// ("Registrar: NIC Reserved" on whois.nic.cd for ac.cd, com.cd, ...).
+	if reservedRegistrarPattern.MatchString(partial.Registrar.Name) && partial.Status != model.StatusUnregistered {
+		partial.Status = model.StatusReserved
+		partial.Domain.Reserved = true
 	}
 	partial.Registrar.IANAID = firstValue(fields, "registrar iana id", "iana id")
 	partial.Registrar.WHOISServer = firstValue(fields, "registrar whois server")
