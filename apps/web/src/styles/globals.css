@@ -3446,13 +3446,17 @@ button.src-tag {
   .hero-head {
     align-items: center;
     flex-direction: row;
+    flex-wrap: wrap;
     gap: 4px;
     padding: 8px 10px 4px 12px;
   }
 
+  /* The title claims its full width first; when the badges no longer fit
+     beside it they wrap to the next line instead of crushing the domain. */
   .hero-title {
-    flex: 1 1 auto;
+    flex: 1 1 max-content;
     gap: 2px;
+    max-width: 100%;
     order: 0;
   }
 
@@ -3467,7 +3471,7 @@ button.src-tag {
   }
 
   .hero-badges {
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     gap: 6px;
     order: 1;
   }

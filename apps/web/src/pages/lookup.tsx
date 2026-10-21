@@ -843,6 +843,8 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
 
   function submitMiniSearch(event: FormEvent) {
     event.preventDefault();
+    // Drop focus so the on-screen keyboard closes and the result is visible.
+    (document.activeElement as HTMLElement | null)?.blur();
     void runLookup(searchValue, state.sourceMode, state.options, true, true, true);
   }
 
