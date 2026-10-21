@@ -210,7 +210,7 @@ func Default() Config {
 		EnrichRegistrar:     true,
 		EnrichDNS:           true,
 		DNSTimeout:          3 * time.Second,
-		DNSIPv4Resolvers:    parseList("1.1.1.1,1.0.0.1,8.8.8.8,8.8.4.4,180.184.1.1,180.184.2.2"),
+		DNSIPv4Resolvers:    parseList("1.1.1.1,1.0.0.1,8.8.8.8,8.8.4.4"),
 		DNSIPv6Resolvers:    parseList("2606:4700:4700::1111,2606:4700:4700::1001,2001:4860:4860::8888,2001:4860:4860::8844"),
 		DNSDoHResolvers:     parseList("https://cloudflare-dns.com/dns-query,https://dns.google/resolve,https://doh.pub/dns-query,https://dns.alidns.com/dns-query"),
 		DNSFilterFakeIP:     true,
@@ -747,7 +747,12 @@ func (f FileConfig) Apply(cfg *Config) error {
 		if err := setDuration(&cfg.DNSTimeout, f.DNS.Timeout, "dns.timeout"); err != nil {
 			return err
 		}
-		setList(&cfg.DNSIPv4Resolvers, f.DNS.IPv4Resolvers)
+		// Files written before v0.07 spelled out the old default list, which
+		// included Volcengine (180.184.1.1/2.2): it answers empty from outside
+		// China. An unchanged copy of that list follows the current default.
+		if !sameList(f.DNS.IPv4Resolvers, legacyDefaultIPv4Resolvers) {
+			setList(&cfg.DNSIPv4Resolvers, f.DNS.IPv4Resolvers)
+		}
 		setList(&cfg.DNSIPv6Resolvers, f.DNS.IPv6Resolvers)
 		setList(&cfg.DNSDoHResolvers, f.DNS.DoHResolvers)
 		setBool(&cfg.DNSFilterFakeIP, f.DNS.FilterFakeIP)
@@ -1108,6 +1113,21 @@ func setFloat(target *float64, value *float64) {
 	if value != nil {
 		*target = *value
 	}
+}
+
+var legacyDefaultIPv4Resolvers = []string{"1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4", "180.184.1.1", "180.184.2.2"}
+
+func sameList(a, b []string) bool {
+	a = cleanList(a)
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func setList(target *[]string, values []string) {

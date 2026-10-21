@@ -16,8 +16,11 @@ func TestLoadDNSResolverDefaults(t *testing.T) {
 	cfg := Load()
 	assertContains(t, cfg.DNSIPv4Resolvers, "1.1.1.1")
 	assertContains(t, cfg.DNSIPv4Resolvers, "8.8.8.8")
-	assertContains(t, cfg.DNSIPv4Resolvers, "180.184.1.1")
-	assertContains(t, cfg.DNSIPv4Resolvers, "180.184.2.2")
+	for _, resolver := range cfg.DNSIPv4Resolvers {
+		if strings.HasPrefix(resolver, "180.184.") {
+			t.Fatalf("Volcengine resolvers are no longer a default: %v", cfg.DNSIPv4Resolvers)
+		}
+	}
 	assertContains(t, cfg.DNSIPv6Resolvers, "2606:4700:4700::1111")
 	assertContains(t, cfg.DNSIPv6Resolvers, "2001:4860:4860::8888")
 	assertContains(t, cfg.DNSDoHResolvers, "https://cloudflare-dns.com/dns-query")
@@ -523,4 +526,23 @@ func unsetEnv(t *testing.T, key string) {
 			_ = os.Unsetenv(key)
 		}
 	})
+}
+
+func TestLegacyDefaultIPv4ResolversFollowNewDefault(t *testing.T) {
+	cfg := Default()
+	legacy := FileConfig{DNS: &DNSConfig{IPv4Resolvers: []string{"1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4", "180.184.1.1", "180.184.2.2"}}}
+	if err := legacy.Apply(&cfg); err != nil {
+		t.Fatal(err)
+	}
+	if !sameList(cfg.DNSIPv4Resolvers, []string{"1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4"}) {
+		t.Fatalf("unchanged legacy list should follow the new default: %v", cfg.DNSIPv4Resolvers)
+	}
+	cfg = Default()
+	custom := FileConfig{DNS: &DNSConfig{IPv4Resolvers: []string{"1.1.1.1", "180.184.1.1"}}}
+	if err := custom.Apply(&cfg); err != nil {
+		t.Fatal(err)
+	}
+	if !sameList(cfg.DNSIPv4Resolvers, []string{"1.1.1.1", "180.184.1.1"}) {
+		t.Fatalf("a customised list is kept: %v", cfg.DNSIPv4Resolvers)
+	}
 }
