@@ -158,7 +158,8 @@ async function checkCIAndRelease() {
     "ghcr.io/xmzo/whoice-web:latest",
     "127.0.0.1:18080:8080",
     "127.0.0.1:18081:8081",
-    "condition: service_healthy",
+    "depends_on:",
+    "init: true",
     "healthcheck:",
     "restart: unless-stopped",
   ]);
