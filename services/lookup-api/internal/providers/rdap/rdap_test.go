@@ -162,3 +162,26 @@ func TestTransportOffersRSAKeyExchangeSuites(t *testing.T) {
 		t.Fatal("certificates must be verified")
 	}
 }
+
+type mapBootstrap map[string]string
+
+func (m mapBootstrap) BaseURL(_ context.Context, q model.NormalizedQuery) (string, bool, error) {
+	for _, key := range []string{q.Query, q.Suffix, tldOf(q.Query)} {
+		if base, ok := m[key]; ok {
+			return base, true, nil
+		}
+	}
+	return "", false, nil
+}
+
+func TestPrivateSuffixSkipsTLDRegistry(t *testing.T) {
+	provider := &Provider{resolver: mapBootstrap{"ci": "https://rdap.nic.ci/", "example.org": "https://rdap.example.org/"}}
+	private := model.NormalizedQuery{Type: model.QueryDomain, Query: "lolihub.us.ci", Suffix: "us.ci", PrivateSuffix: true}
+	if _, err := provider.endpointFor(context.Background(), private, ""); !providers.IsSkip(err) {
+		t.Fatalf("names under a private suffix must not go to the TLD registry, err=%v", err)
+	}
+	icann := model.NormalizedQuery{Type: model.QueryDomain, Query: "example.com.ci", Suffix: "com.ci"}
+	if endpoint, err := provider.endpointFor(context.Background(), icann, ""); err != nil || endpoint != "https://rdap.nic.ci/domain/example.com.ci" {
+		t.Fatalf("ICANN second-level names still use the TLD registry: %q %v", endpoint, err)
+	}
+}

@@ -70,7 +70,10 @@ func (Merger) Merge(q model.NormalizedQuery, parts []*model.PartialResult) *mode
 func mergeStatus(result *model.LookupResult, part *model.PartialResult) {
 	switch part.Status {
 	case model.StatusRegistered:
-		if result.Status == model.StatusUnknown {
+		// A source that shows a registration outweighs one that found
+		// nothing (the other may be the wrong registry, as with private
+		// suffixes), whatever order the sources answered in.
+		if result.Status == model.StatusUnknown || result.Status == model.StatusUnregistered {
 			result.Status = model.StatusRegistered
 		}
 	case model.StatusReserved:

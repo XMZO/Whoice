@@ -109,11 +109,15 @@ func (n Normalizer) NormalizeWithOptions(input string, opts model.LookupOptions)
 	}
 
 	registeredDomain, _ := publicsuffix.EffectiveTLDPlusOne(ascii)
-	suffix, _ := publicsuffix.PublicSuffix(ascii)
+	suffix, icann := publicsuffix.PublicSuffix(ascii)
+	builtinSuffix := suffix
 	if overlaySuffix, ok := n.suffixRules.PublicSuffix(ascii); ok && (n.suffixRules.IsAuthoritative() || publicsuffixes.MoreSpecific(overlaySuffix, suffix)) {
 		suffix = overlaySuffix
 		registeredDomain = publicsuffixes.EffectiveTLDPlusOne(ascii, suffix)
 	}
+	// The overlay only adds private zones; a suffix the built-in list knows
+	// keeps its ICANN/private flag.
+	privateSuffix := strings.Contains(suffix, ".") && (!icann || publicsuffixes.MoreSpecific(suffix, builtinSuffix))
 	if opts.ExactDomain {
 		registeredDomain = ascii
 	}
@@ -126,6 +130,7 @@ func (n Normalizer) NormalizeWithOptions(input string, opts model.LookupOptions)
 		Host:             ascii,
 		Suffix:           suffix,
 		RegisteredDomain: registeredDomain,
+		PrivateSuffix:    privateSuffix,
 	}, nil
 }
 

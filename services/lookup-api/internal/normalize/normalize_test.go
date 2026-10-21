@@ -168,3 +168,24 @@ func TestNormalizeCleansCommonDomainSlips(t *testing.T) {
 		t.Fatalf("bracketed IPv6: %#v %v", q, err)
 	}
 }
+
+func TestNormalizeMarksPrivateSuffixes(t *testing.T) {
+	n := New()
+	for input, want := range map[string]bool{
+		"lolihub.us.ci":  true,
+		"anby.cc.cd":     true,
+		"foo.eu.org":     true,
+		"foo.github.io":  true,
+		"example.com.cn": false,
+		"example.co.uk":  false,
+		"example.com":    false,
+	} {
+		q, err := n.Normalize(input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if q.PrivateSuffix != want {
+			t.Fatalf("%s (suffix %s): private=%v want %v", input, q.Suffix, q.PrivateSuffix, want)
+		}
+	}
+}

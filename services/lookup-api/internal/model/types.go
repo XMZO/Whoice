@@ -42,6 +42,10 @@ type NormalizedQuery struct {
 	Suffix           string    `json:"suffix,omitempty"`
 	RegisteredDomain string    `json:"registeredDomain,omitempty"`
 	ASN              uint32    `json:"asn,omitempty"`
+	// PrivateSuffix marks suffixes run by someone other than the TLD
+	// registry (PSL private section or the local overlay: eu.org, us.ci,
+	// github.io). The TLD registry holds no records for names under them.
+	PrivateSuffix bool `json:"-"`
 }
 
 type LookupOptions struct {

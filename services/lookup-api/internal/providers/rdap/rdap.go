@@ -116,6 +116,9 @@ func (p *Provider) endpointFor(ctx context.Context, q model.NormalizedQuery, ove
 				return "", providers.Skip(fmt.Sprintf("RDAP bootstrap lookup failed for %s %q: %v", q.Type, q.Query, err))
 			} else if ok {
 				base = resolved
+				if p.onlyTLDRegistry(ctx, q, resolved) {
+					return "", providers.Skip(fmt.Sprintf("the .%s registry holds no records for names under %s", tldOf(q.Suffix), q.Suffix))
+				}
 			}
 		}
 		if base == "" {
@@ -140,6 +143,26 @@ func (p *Provider) endpointFor(ctx context.Context, q model.NormalizedQuery, ove
 	default:
 		return "", fmt.Errorf("RDAP does not support query type %q", q.Type)
 	}
+}
+
+// onlyTLDRegistry reports a name under a private suffix (us.ci, eu.org)
+// whose RDAP server is just the TLD registry's: that registry does not
+// hold such names, so its 404 would wrongly read as "not registered".
+func (p *Provider) onlyTLDRegistry(ctx context.Context, q model.NormalizedQuery, resolved string) bool {
+	if q.Type != model.QueryDomain || !q.PrivateSuffix {
+		return false
+	}
+	tld := tldOf(q.Suffix)
+	tldBase, ok, err := p.resolver.BaseURL(ctx, model.NormalizedQuery{Type: model.QueryDomain, Query: tld, Suffix: tld})
+	return err == nil && ok && strings.TrimRight(tldBase, "/") == strings.TrimRight(resolved, "/")
+}
+
+func tldOf(name string) string {
+	name = strings.Trim(name, ".")
+	if index := strings.LastIndex(name, "."); index >= 0 {
+		return name[index+1:]
+	}
+	return name
 }
 
 func join(base string, parts ...string) string {

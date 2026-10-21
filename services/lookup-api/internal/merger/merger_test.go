@@ -156,3 +156,15 @@ func TestMergeNormalizesZonedRegistryDates(t *testing.T) {
 		t.Fatalf("dates: %#v", result.Dates)
 	}
 }
+
+func TestMergeRegisteredOutweighsNotFoundInAnyOrder(t *testing.T) {
+	q := model.NormalizedQuery{Type: model.QueryDomain, Query: "lolihub.us.ci"}
+	registered := &model.PartialResult{Source: model.SourceWHOISWeb, Status: model.StatusRegistered}
+	notFound := &model.PartialResult{Source: model.SourceRDAP, Status: model.StatusUnregistered}
+	for _, parts := range [][]*model.PartialResult{{notFound, registered}, {registered, notFound}} {
+		result := New().Merge(q, parts)
+		if result.Status != model.StatusRegistered || result.Source.Primary != model.SourceWHOISWeb {
+			t.Fatalf("status %q primary %q", result.Status, result.Source.Primary)
+		}
+	}
+}

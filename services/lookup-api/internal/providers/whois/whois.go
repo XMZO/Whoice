@@ -50,6 +50,15 @@ func (p *Provider) Lookup(ctx context.Context, q model.NormalizedQuery, opts mod
 	if err != nil {
 		return nil, err
 	}
+	// Under a private suffix (us.ci, github.io) the TLD registry's WHOIS has
+	// no records; only a server listed for the suffix itself is useful.
+	if q.Type == model.QueryDomain && q.PrivateSuffix && opts.WHOISServer == "" {
+		tld := tldOf(model.NormalizedQuery{Query: q.Suffix})
+		tldServer, _, _ := p.resolver.Resolve(model.NormalizedQuery{Type: model.QueryDomain, Query: tld, Suffix: tld}, "")
+		if strings.EqualFold(tldServer.Host, server.Host) {
+			return nil, providers.Skip(fmt.Sprintf("no WHOIS server for names under %s", q.Suffix))
+		}
+	}
 
 	body, err := queryServer(ctx, server.Host, query, opts.ProviderLimit)
 	if err != nil {
