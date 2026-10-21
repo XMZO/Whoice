@@ -186,6 +186,24 @@ export const getServerSideProps: GetServerSideProps<Props> = async (context) => 
   return { props: { query, pending: true, httpStatus: 200, response: { ok: true }, sourceMode, options: serializableOptions, icpAutoQuery } };
 };
 
+// Internationalized names come back from the API in punycode. The page shows
+// the Unicode form people read, with the punycode beside it; the browser's URL
+// parser converts a typed Unicode name, so both are known before the result.
+function domainNames(result: LookupResult): { display: string; ascii: string } {
+  const value = result.normalizedQuery;
+  let ascii = value;
+  try {
+    ascii = new URL(`http://${value}`).hostname || value;
+  } catch {
+    // Not a host name (an IP range, an AS number): shown as is.
+  }
+  const unicode = result.type === "domain" ? result.domain?.unicodeName || "" : "";
+  if (unicode && !unicode.includes("xn--") && unicode !== ascii && /^[\x00-\x7f]*$/.test(value)) {
+    return { display: unicode, ascii };
+  }
+  return { display: value, ascii };
+}
+
 // What identifies the API's settings: the fingerprint (unchanged across
 // restarts), or the load time from APIs that predate it.
 function configKey(config?: { fingerprint?: string; loadedAt?: string }) {
@@ -540,7 +558,7 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
   const newerReleaseRef = useRef("");
   const aiArmedRef = useRef(parseBool(options.ai));
   const result = state.response.result;
-  const title = result ? `${result.normalizedQuery} | Whoice` : `${state.query || "Lookup"} | Whoice`;
+  const title = result ? `${domainNames(result).display} | Whoice` : `${state.query || "Lookup"} | Whoice`;
   const statuses = Array.isArray(result?.statuses) ? result.statuses : [];
   const sourceErrors = Array.isArray(result?.source.errors) ? result.source.errors : [];
   const metaWarnings = Array.isArray(result?.meta.warnings) ? result.meta.warnings : [];
@@ -1032,6 +1050,7 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
   const pendingSources = state.pending ? expectedSources.filter((source) => !answeredSources.has(source as never)) : [];
   const truncatedSources = (view?.meta?.providers || []).filter((provider) => provider.status === "stopped").map((provider) => provider.source);
   const isDomain = view?.type === "domain";
+  const names = view ? domainNames(view) : { display: "", ascii: "" };
   const lowerTabs: SectionTab[] = isDomain ? ["dns", "owner", "price", "source"] : ["network", "owner", "source"];
   const activeLower: SectionTab = lowerTabs.includes(tab) ? tab : lowerTabs[0];
   const activeMobile: SectionTab = tab === "overview" || lowerTabs.includes(tab) ? tab : "overview";
@@ -1218,17 +1237,22 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
                   <div className="hero-title">
                     <h1>
                       {isDomain ? (
-                        <a className="hero-domain-link" href={`https://${view.normalizedQuery}`} target="_blank" rel="noopener noreferrer" title={pick(t3("Open the website in a new tab", "在新标签页打开网站", "在新分頁開啟網站"))}>
-                          {view.normalizedQuery}
+                        <a className="hero-domain-link" href={`https://${names.ascii}`} target="_blank" rel="noopener noreferrer" title={pick(t3("Open the website in a new tab", "在新标签页打开网站", "在新分頁開啟網站"))}>
+                          {names.display}
                           <ExternalIcon size={16} className="hero-domain-icon" />
                         </a>
                       ) : (
-                        view.normalizedQuery
+                        names.display
                       )}
                     </h1>
-                    <button type="button" className="icon-button ghost" aria-label={t("copyDomain")} title={t("copyDomain")} onClick={() => copyValue(view.normalizedQuery)}>
+                    <button type="button" className="icon-button ghost" aria-label={t("copyDomain")} title={t("copyDomain")} onClick={() => copyValue(names.display)}>
                       <CopyIcon size={16} />
                     </button>
+                    {names.ascii !== names.display && (
+                      <button type="button" className="hero-ascii" title={pick(t3("Punycode form · click to copy", "Punycode 写法 · 点击复制", "Punycode 寫法 · 點擊複製"))} onClick={() => copyValue(names.ascii)}>
+                        {names.ascii}
+                      </button>
+                    )}
                   </div>
                 </div>
 

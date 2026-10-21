@@ -982,6 +982,29 @@ button.src-tag {
   opacity: 1;
 }
 
+/* The punycode of an internationalized name, beside the Unicode title. */
+/* It only takes the room the title leaves, shortening with an ellipsis
+   before the title would wrap. */
+.hero-ascii {
+  background: none;
+  border: 0;
+  color: var(--muted);
+  cursor: copy;
+  flex: 1 1 0;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  min-width: 0;
+  text-align: left;
+  overflow: hidden;
+  padding: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hero-ascii:hover {
+  color: var(--text);
+}
+
 .hero-domain-link {
   align-items: center;
   color: inherit;

@@ -944,3 +944,16 @@ test("after a newer release is deployed, the next search loads the page afresh",
   await documentLoad;
   await expect(page.getByRole("heading", { name: "second.test" })).toBeVisible();
 });
+
+test("an internationalized name is titled in Unicode with its punycode beside it", async ({ page }) => {
+  const ascii = "xn--fiqs8s.xn--6qq986b3xl";
+  await routeLookupFixtures(page, {
+    "中国.我爱你": lookupFixture(ascii, { domain: { name: ascii, unicodeName: "中国.我爱你", suffix: "xn--6qq986b3xl", registeredDomain: ascii } }),
+  });
+  await page.goto(`/lookup?query=${encodeURIComponent("中国.我爱你")}`);
+  await expect(page.getByRole("heading", { name: "中国.我爱你" })).toBeVisible();
+  await expect(page.locator(".lookup-pending")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "中国.我爱你" })).toBeVisible();
+  await expect(page.locator(".hero-ascii")).toHaveText(ascii);
+  await expect(page).toHaveTitle(/中国\.我爱你/);
+});
