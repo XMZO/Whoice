@@ -210,7 +210,9 @@ func mergeRegistrant(result *model.LookupResult, part *model.PartialResult) {
 }
 
 func mergeRegistrantField(result *model.LookupResult, key, current, incoming string, part *model.PartialResult) string {
-	incoming = strings.TrimSpace(incoming)
+	// Placeholders ("REDACTED") are dropped here so they never shadow real
+	// data from another source.
+	incoming = cleanContactValue(incoming)
 	if incoming == "" {
 		return current
 	}
@@ -262,7 +264,7 @@ func mergeRegistrationFields(current, incoming []model.RegistrationField) []mode
 	out := current
 	for _, field := range incoming {
 		field.Label = strings.TrimSpace(field.Label)
-		field.Value = strings.TrimSpace(field.Value)
+		field.Value = cleanContactValue(field.Value)
 		field.Source = strings.TrimSpace(field.Source)
 		field.Evidence = strings.TrimSpace(field.Evidence)
 		if field.Label == "" || field.Value == "" {
@@ -305,7 +307,7 @@ func addRegistrantFieldSource(registrant *model.RegistrantInfo, key string, fiel
 func addRegistrantFieldSourceToMap(target *map[string][]model.RegistrationField, key string, field model.RegistrationField) {
 	key = strings.TrimSpace(key)
 	field.Label = strings.TrimSpace(field.Label)
-	field.Value = strings.TrimSpace(field.Value)
+	field.Value = cleanContactValue(field.Value)
 	field.Source = strings.TrimSpace(field.Source)
 	field.Evidence = strings.TrimSpace(field.Evidence)
 	if target == nil || key == "" || field.Value == "" {
