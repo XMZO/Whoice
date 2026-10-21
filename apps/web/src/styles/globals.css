@@ -495,7 +495,7 @@ button.src-tag {
   width: 7px;
 }
 
-/* Status hues are kept far apart: available green, registered blue,
+/* Status hues are kept far apart: unregistered green, registered blue,
    reserved red, unknown grey (the base style). Amber stays reserved for
    warnings and truncation so it never reads as a status. */
 .status-badge-registered {

@@ -348,7 +348,7 @@ const statusLabelKey: Record<string, I18nKey> = {
 };
 
 // Each status has its own hue and icon so it reads at a glance:
-// available = green check (go), registered = blue dot (taken, plain fact),
+// unregistered = green check (free), registered = blue dot (taken, plain fact),
 // reserved = red slash (cannot be registered), unknown = grey question.
 function StatusBadge({ status }: { status: string }) {
   const { t } = useI18n();
