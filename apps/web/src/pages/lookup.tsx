@@ -186,6 +186,12 @@ export const getServerSideProps: GetServerSideProps<Props> = async (context) => 
   return { props: { query, pending: true, httpStatus: 200, response: { ok: true }, sourceMode, options: serializableOptions, icpAutoQuery } };
 };
 
+// What identifies the API's settings: the fingerprint (unchanged across
+// restarts), or the load time from APIs that predate it.
+function configKey(config?: { fingerprint?: string; loadedAt?: string }) {
+  return config?.fingerprint || config?.loadedAt || "";
+}
+
 function isDNSWarning(warning: string) {
   return warning.startsWith("DNS ") || warning.startsWith("Registry/WHOIS nameservers differ");
 }
@@ -528,7 +534,10 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
   const icpInflightRef = useRef("");
   const aiInflightRef = useRef("");
   const enrichmentInflightRef = useRef("");
-  const runtimeConfigRef = useRef(response.config?.loadedAt || "");
+  const runtimeConfigRef = useRef(configKey(response.config));
+  // Version of the API when it differs from this page's build: a newer
+  // release is deployed, and the next search loads it as a full page.
+  const newerReleaseRef = useRef("");
   const aiArmedRef = useRef(parseBool(options.ai));
   const result = state.response.result;
   const title = result ? `${result.normalizedQuery} | Whoice` : `${state.query || "Lookup"} | Whoice`;
@@ -678,12 +687,16 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
     const checkRuntimeConfig = async () => {
       try {
         const { body } = await getCapabilities();
-        const loadedAt = body.config?.loadedAt || "";
+        // Re-run only when the settings changed (an admin edit), not when the
+        // API merely restarted for a redeploy.
+        const key = configKey(body.config);
         const current = runtimeConfigRef.current;
-        if (loadedAt) {
-          runtimeConfigRef.current = loadedAt;
+        if (key) {
+          runtimeConfigRef.current = key;
         }
-        if (!stopped && loadedAt && current && loadedAt !== current) {
+        const apiVersion = String((body as { version?: unknown }).version || "").replace(/^v/i, "");
+        newerReleaseRef.current = apiVersion && apiVersion !== packageInfo.version ? apiVersion : "";
+        if (!stopped && key && current && key !== current) {
           await runLookup(state.query, state.sourceMode, state.options, false, false);
         }
       } catch {
@@ -740,6 +753,23 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
     };
     const serializableOptions = cleanOptions(requestOptions);
     const nextURL = lookupUrl(trimmed, nextSourceMode, serializableOptions);
+    // A search after a new release was deployed loads the page afresh, so the
+    // new interface arrives with the next result instead of interrupting the
+    // current one. Once per release, in case the web build lags behind the API.
+    if (updateURL && newerReleaseRef.current && typeof window !== "undefined") {
+      const marker = "whoice.loadedRelease";
+      let reload = false;
+      try {
+        reload = window.sessionStorage.getItem(marker) !== newerReleaseRef.current;
+        if (reload) window.sessionStorage.setItem(marker, newerReleaseRef.current);
+      } catch {
+        // Without storage there is no once-per-release guard; keep searching in place.
+      }
+      if (reload) {
+        window.location.assign(nextURL);
+        return;
+      }
+    }
     // Automatic triggers skip a duplicate of the lookup in flight; an explicit
     // submit always restarts it. Either way a new lookup replaces the old one.
     if (!force && inflightURLRef.current === nextURL) return;

@@ -422,6 +422,7 @@ export interface ConfigStatus {
   status: string;
   path?: string;
   loadedAt?: string;
+  fingerprint?: string;
   lastCheckedAt?: string;
   lastAttemptAt?: string;
   lastErrorAt?: string;

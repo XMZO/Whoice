@@ -903,3 +903,44 @@ test("a resolver tooltip stays on screen and never widens the DNS card", async (
   );
   expect(overflowing).toBe(0);
 });
+
+test("an API restart does not re-run the open lookup; a settings change does", async ({ page }) => {
+  let config = { status: "ok", fingerprint: "settings-a", loadedAt: "2026-01-01T00:00:00Z" };
+  await page.route("**/api/capabilities", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: true, version: `v${process.env.npm_package_version || ""}`, config }) }),
+  );
+  let lookups = 0;
+  await page.route("**/api/lookup?**", async (route) => {
+    lookups += 1;
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: true, result: lookupFixture("restart.test") }) });
+  });
+  await page.goto("/lookup?query=restart.test");
+  await expect(page.locator(".lookup-pending")).toHaveCount(0);
+  await page.waitForTimeout(3000);
+  const afterLoad = lookups;
+
+  // Redeploy: new load time, same settings.
+  config = { ...config, loadedAt: "2026-01-02T00:00:00Z" };
+  await page.waitForTimeout(3500);
+  expect(lookups).toBe(afterLoad);
+
+  // Admin edit: the settings fingerprint changes.
+  config = { ...config, fingerprint: "settings-b", loadedAt: "2026-01-02T00:05:00Z" };
+  await expect.poll(() => lookups, { timeout: 10_000 }).toBeGreaterThan(afterLoad);
+});
+
+test("after a newer release is deployed, the next search loads the page afresh", async ({ page }) => {
+  await page.route("**/api/capabilities", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: true, version: "v99.0.0", config: { status: "ok", fingerprint: "same" } }) }),
+  );
+  await routeLookupFixtures(page, { "first.test": lookupFixture("first.test"), "second.test": lookupFixture("second.test") });
+  await page.goto("/lookup?query=first.test");
+  await expect(page.locator(".lookup-pending")).toHaveCount(0);
+  await page.waitForTimeout(3000);
+
+  const documentLoad = page.waitForRequest((request) => request.resourceType() === "document" && request.url().includes("query=second.test"));
+  await page.getByLabel("Search query").fill("second.test");
+  await page.getByLabel("Search query").press("Enter");
+  await documentLoad;
+  await expect(page.getByRole("heading", { name: "second.test" })).toBeVisible();
+});

@@ -200,6 +200,8 @@ export type ConfigStatus = {
   status: "ok" | "error" | string;
   path?: string;
   loadedAt?: string;
+  /** Changes only when the settings change, not on a restart. */
+  fingerprint?: string;
   lastCheckedAt?: string;
   lastAttemptAt?: string;
   lastErrorAt?: string;

@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -249,9 +250,20 @@ func okConfigStatus(cfg config.Config, loadedAt time.Time) model.ConfigStatus {
 		Status:        "ok",
 		Path:          cfg.ConfigPath,
 		LoadedAt:      text,
+		Fingerprint:   configFingerprint(cfg),
 		LastCheckedAt: text,
 		LastAttemptAt: text,
 	}
+}
+
+// configFingerprint hashes the effective settings without secrets.
+func configFingerprint(cfg config.Config) string {
+	body, err := json.Marshal(config.SettingsView(cfg))
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(body)
+	return hex.EncodeToString(sum[:8])
 }
 
 func configStatusPtr(status model.ConfigStatus) *model.ConfigStatus {

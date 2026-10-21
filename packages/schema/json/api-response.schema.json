@@ -46,6 +46,7 @@
         "status": { "type": "string" },
         "path": { "type": "string" },
         "loadedAt": { "type": "string" },
+        "fingerprint": { "type": "string" },
         "lastCheckedAt": { "type": "string" },
         "lastAttemptAt": { "type": "string" },
         "lastErrorAt": { "type": "string" },

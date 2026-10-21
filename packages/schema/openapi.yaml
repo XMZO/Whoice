@@ -395,6 +395,9 @@ components:
           type: string
         loadedAt:
           type: string
+        fingerprint:
+          type: string
+          description: Changes only when the settings change, not on a restart.
         lastCheckedAt:
           type: string
         lastAttemptAt:

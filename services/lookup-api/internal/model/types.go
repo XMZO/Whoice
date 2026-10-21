@@ -423,6 +423,9 @@ type ConfigStatus struct {
 	LastError     string `json:"lastError,omitempty"`
 	RolledBack    bool   `json:"rolledBack,omitempty"`
 	UsingLoadedAt string `json:"usingLoadedAt,omitempty"`
+	// Fingerprint changes only when the settings do (not on a restart), so
+	// open pages can tell a settings change from a redeploy.
+	Fingerprint string `json:"fingerprint,omitempty"`
 }
 
 type ConfigEditorStatus struct {
