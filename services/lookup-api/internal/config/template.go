@@ -275,6 +275,9 @@ page_size = ` + tomlInt(cfg.ICPPageSize) + `
 ` + icpSignLine(cfg) + `# Hidden ICP blocklist. Exact domains and "*.example.com" patterns return the same empty-looking result as a normal miss.
 # 隐蔽备案隐藏名单。支持精确域名和 "*.example.com"，命中时返回看起来像正常未查到的结果。
 blocklist = ` + tomlList(cfg.ICPBlocklist) + `
+# Suffixes to treat as ICP-fileable in addition to the built-in MIIT list (data/icp-suffixes), for newly approved TLDs.
+# 内置工信部可备案后缀名单（data/icp-suffixes）之外，额外视为可备案的后缀，用于新批复的顶级域。
+extra_suffixes = ` + tomlList(cfg.ICPExtraSuffixes) + `
 
 [rate_limit]
 # Fixed-window in-memory rate limit for lookup endpoints. Best for single-node public/self-hosted use.

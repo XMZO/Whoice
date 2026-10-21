@@ -129,6 +129,11 @@ export type LookupResult = {
       source?: string;
       updatedAt?: string;
     };
+    /** Whether the suffix is on MIIT's ICP-fileable list (not a filing lookup). */
+    icpFiling?: {
+      eligible: boolean;
+      suffix: string;
+    };
   };
   raw: {
     whois?: string;

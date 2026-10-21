@@ -73,7 +73,7 @@ docker compose exec lookup-api /app/whoice-api reset-admin-password
 | `[dns]` | 解析器池（IPv4、IPv6、DoH）、fake-IP 过滤、DNSViz 链接 |
 | `[enrichment]` | EPP、注册商、服务商识别、价格（按后缀缓存，默认 7 天；按每日公开汇率换算人民币/美元，汇率缓存 1 天）、Moz |
 | `[ai]` | OpenAI 兼容接口或 Ollama 地址、模型、提示词、缓存 |
-| `[icp]` | ICP 备案查询、缓存、验证码处理、上游服务 |
+| `[icp]` | ICP 备案查询、缓存、验证码处理、上游服务、额外的可备案后缀 |
 | `[rate_limit]` | 匿名访问的固定窗口限流，如 `60/min` |
 | `[metrics]`、`[observability]` | `/api/metrics` 与查询事件上报（日志或 webhook） |
 | `[public_suffix]` | 启动时可选下载 Public Suffix List |

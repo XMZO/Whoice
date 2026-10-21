@@ -28,7 +28,12 @@
       "suffix": "vn",
       "unicodeName": "example.vn"
     },
-    "enrichment": {},
+    "enrichment": {
+      "icpFiling": {
+        "eligible": false,
+        "suffix": "vn"
+      }
+    },
     "meta": {
       "elapsedMs": 0,
       "providers": [

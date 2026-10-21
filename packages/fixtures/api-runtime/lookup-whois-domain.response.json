@@ -30,7 +30,12 @@
       "suffix": "net",
       "unicodeName": "example.net"
     },
-    "enrichment": {},
+    "enrichment": {
+      "icpFiling": {
+        "eligible": true,
+        "suffix": "net"
+      }
+    },
     "meta": {
       "elapsedMs": 0,
       "providers": [

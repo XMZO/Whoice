@@ -90,6 +90,7 @@ type Config struct {
 	ICPSign                string
 	ICPPageSize            int
 	ICPBlocklist           []string
+	ICPExtraSuffixes       []string
 	RateLimitEnabled       bool
 	RateLimitAnon          string
 	TrustProxy             bool
@@ -591,6 +592,7 @@ type ICPConfig struct {
 	Sign             *string  `toml:"sign" json:"sign,omitempty"`
 	PageSize         *int     `toml:"page_size" json:"page_size,omitempty"`
 	Blocklist        []string `toml:"blocklist" json:"blocklist,omitempty"`
+	ExtraSuffixes    []string `toml:"extra_suffixes" json:"extra_suffixes,omitempty"`
 }
 
 type RateLimitConfig struct {
@@ -814,6 +816,7 @@ func (f FileConfig) Apply(cfg *Config) error {
 		setString(&cfg.ICPSign, f.ICP.Sign)
 		setInt(&cfg.ICPPageSize, f.ICP.PageSize)
 		setList(&cfg.ICPBlocklist, f.ICP.Blocklist)
+		setList(&cfg.ICPExtraSuffixes, f.ICP.ExtraSuffixes)
 	}
 	if f.RateLimit != nil {
 		setBool(&cfg.RateLimitEnabled, f.RateLimit.Enabled)
@@ -910,6 +913,7 @@ func applyEnv(cfg *Config) {
 	envStringInto(&cfg.ICPSign, "WHOICE_ICP_SIGN")
 	envIntInto(&cfg.ICPPageSize, "WHOICE_ICP_PAGE_SIZE")
 	envListInto(&cfg.ICPBlocklist, "WHOICE_ICP_BLOCKLIST")
+	envListInto(&cfg.ICPExtraSuffixes, "WHOICE_ICP_EXTRA_SUFFIXES")
 	envBoolInto(&cfg.RateLimitEnabled, "WHOICE_RATE_LIMIT_ENABLED")
 	envStringInto(&cfg.RateLimitAnon, "WHOICE_RATE_LIMIT_ANON")
 	envBoolInto(&cfg.TrustProxy, "WHOICE_TRUST_PROXY")

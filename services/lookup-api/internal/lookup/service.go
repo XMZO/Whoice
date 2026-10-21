@@ -12,6 +12,7 @@ import (
 	"github.com/xmzo/whoice/services/lookup-api/internal/config"
 	"github.com/xmzo/whoice/services/lookup-api/internal/data/brandmap"
 	enrichmentdata "github.com/xmzo/whoice/services/lookup-api/internal/data/enrichment"
+	"github.com/xmzo/whoice/services/lookup-api/internal/data/icpsuffixes"
 	"github.com/xmzo/whoice/services/lookup-api/internal/data/registrars"
 	aienrich "github.com/xmzo/whoice/services/lookup-api/internal/enrich/ai"
 	"github.com/xmzo/whoice/services/lookup-api/internal/enrich/brand"
@@ -29,6 +30,7 @@ import (
 	"github.com/xmzo/whoice/services/lookup-api/internal/parsers"
 	"github.com/xmzo/whoice/services/lookup-api/internal/providers"
 	"github.com/xmzo/whoice/services/lookup-api/internal/providers/delegation"
+	"golang.org/x/net/idna"
 )
 
 type Service struct {
@@ -39,6 +41,7 @@ type Service struct {
 	merger           merger.Merger
 	registrars       *registrars.Registry
 	brands           *brandmap.Registry
+	icpSuffixes      *icpsuffixes.List
 	enrichment       *enrichmentdata.Registry
 	pricing          *pricing.Resolver
 	fx               *fx.Service
@@ -58,19 +61,20 @@ func NewService(cfg config.Config, providerList []providers.Provider, parserRegi
 	brandRegistry, _ := brandmap.NewDefaultRegistry(cfg.DataDir)
 	enrichmentRegistry := enrichmentdata.NewDefaultRegistry(cfg.DataDir)
 	service := &Service{
-		cfg:        cfg,
-		normalizer: normalize.New(cfg.DataDir),
-		providers:  providerList,
-		parsers:    parserRegistry,
-		merger:     merger.New(),
-		registrars: registrarRegistry,
-		brands:     brandRegistry,
-		enrichment: enrichmentRegistry,
-		pricing:    buildPricingResolver(cfg),
-		fx:         fx.New(cfg.DataDir, cfg.FXCacheTTL),
-		ai:         aienrich.New(cfg),
-		inflight:   newSingleflight(),
-		delegation: delegation.New(),
+		cfg:         cfg,
+		normalizer:  normalize.New(cfg.DataDir),
+		providers:   providerList,
+		parsers:     parserRegistry,
+		merger:      merger.New(),
+		registrars:  registrarRegistry,
+		brands:      brandRegistry,
+		icpSuffixes: icpsuffixes.NewDefault(cfg.DataDir).WithExtra(cfg.ICPExtraSuffixes),
+		enrichment:  enrichmentRegistry,
+		pricing:     buildPricingResolver(cfg),
+		fx:          fx.New(cfg.DataDir, cfg.FXCacheTTL),
+		ai:          aienrich.New(cfg),
+		inflight:    newSingleflight(),
+		delegation:  delegation.New(),
 	}
 	service.enrichers = service.buildPipeline()
 	service.static = service.buildStaticPipeline()
@@ -428,6 +432,7 @@ func (s *Service) buildFastPipeline() pipeline.Pipeline {
 				return nil
 			},
 		},
+		s.icpFilingStep(),
 	}, s.brandEnrichers()...)...)
 }
 
@@ -504,6 +509,7 @@ func (s *Service) staticEnrichers() []pipeline.Enricher {
 	}
 	enrichers = append(enrichers, s.brandEnrichers()...)
 	enrichers = append(enrichers,
+		s.icpFilingStep(),
 		pricing.NewEnricher(s.cfg.EnrichPricing, s.pricing),
 		pipeline.Step{
 			NameValue:    "moz",
@@ -518,6 +524,41 @@ func (s *Service) staticEnrichers() []pipeline.Enricher {
 		},
 	)
 	return enrichers
+}
+
+// icpFilingStep marks whether the domain's suffix is on MIIT's list of
+// ICP-fileable suffixes. Names under a private suffix (us.kg, github.io) are
+// never fileable on their own.
+func (s *Service) icpFilingStep() pipeline.Enricher {
+	return pipeline.Step{
+		NameValue:    "icp_filing",
+		EnabledValue: true,
+		SupportsFunc: func(result *model.LookupResult) bool {
+			return result != nil && result.Type == model.QueryDomain && result.Enrichment.ICPFiling == nil
+		},
+		EnrichFunc: func(_ context.Context, result *model.LookupResult) error {
+			name := result.Domain.RegisteredDomain
+			if name == "" {
+				name = result.NormalizedQuery
+			}
+			q, err := s.normalizer.Normalize(name)
+			if err != nil || q.Type != model.QueryDomain || q.Suffix == "" {
+				return nil
+			}
+			if !q.PrivateSuffix {
+				if matched, ok := s.icpSuffixes.Match(q.Suffix); ok {
+					result.Enrichment.ICPFiling = &model.ICPFilingInfo{Eligible: true, Suffix: matched}
+					return nil
+				}
+			}
+			suffix, err := idna.Lookup.ToUnicode(q.Suffix)
+			if err != nil || suffix == "" {
+				suffix = q.Suffix
+			}
+			result.Enrichment.ICPFiling = &model.ICPFilingInfo{Suffix: suffix}
+			return nil
+		},
+	}
 }
 
 func (s *Service) brandEnrichers() []pipeline.Enricher {

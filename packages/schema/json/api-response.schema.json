@@ -159,7 +159,8 @@
             "dns": { "$ref": "#/$defs/DNSInfo" },
             "dnsviz": { "$ref": "#/$defs/DNSVizInfo" },
             "pricing": { "$ref": "#/$defs/PricingInfo" },
-            "moz": { "$ref": "#/$defs/MozInfo" }
+            "moz": { "$ref": "#/$defs/MozInfo" },
+            "icpFiling": { "$ref": "#/$defs/ICPFilingInfo" }
           },
           "additionalProperties": true
         },
@@ -463,6 +464,16 @@
           "items": { "$ref": "#/$defs/DNSResolverInfo" }
         },
         "elapsedMs": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+    "ICPFilingInfo": {
+      "type": "object",
+      "description": "Whether the domain's suffix is on MIIT's list of ICP-fileable suffixes; a suffix check, not a filing lookup.",
+      "required": ["eligible", "suffix"],
+      "properties": {
+        "eligible": { "type": "boolean" },
+        "suffix": { "type": "string", "description": "The listed entry that matched, or the domain's own suffix when none did." }
       },
       "additionalProperties": false
     },

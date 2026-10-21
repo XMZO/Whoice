@@ -3,6 +3,7 @@ import { readPath } from "@/lib/admin/api";
 import type { Field, Section } from "@/lib/admin/schema";
 import { useAdminText } from "@/lib/admin/text";
 import { FieldRow } from "./Fields";
+import { ICPSuffixView } from "./ICPSuffixView";
 
 export type Draft = Record<string, unknown>;
 
@@ -44,6 +45,7 @@ export function SettingsSection({
             {group.title && <h3 className="adm-group-title">{pick(group.title)}</h3>}
             {toggles.length > 0 && <div className="adm-toggles">{toggles.map(row)}</div>}
             {inputs.length > 0 && <div className="adm-fields">{inputs.map(row)}</div>}
+            {group.view === "icp-suffixes" && config.icpSuffixes && <ICPSuffixView list={config.icpSuffixes} />}
           </section>
         );
       })}

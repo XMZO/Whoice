@@ -37,6 +37,7 @@ export interface LookupResult {
     dnsviz?: DNSVizInfo;
     pricing?: PricingInfo;
     moz?: MozInfo;
+    icpFiling?: ICPFilingInfo;
     [k: string]: unknown;
   };
   raw: RawData;
@@ -306,6 +307,19 @@ export interface MozInfo {
   spamScore?: number;
   source?: string;
   updatedAt?: string;
+}
+/**
+ * Whether the domain's suffix is on MIIT's list of ICP-fileable suffixes; a suffix check, not a filing lookup.
+ *
+ * This interface was referenced by `WhoiceAPIResponse`'s JSON-Schema
+ * via the `definition` "ICPFilingInfo".
+ */
+export interface ICPFilingInfo {
+  eligible: boolean;
+  /**
+   * The listed entry that matched, or the domain's own suffix when none did.
+   */
+  suffix: string;
 }
 /**
  * This interface was referenced by `WhoiceAPIResponse`'s JSON-Schema

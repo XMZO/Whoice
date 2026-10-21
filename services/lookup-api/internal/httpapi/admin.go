@@ -15,6 +15,7 @@ import (
 
 	"github.com/xmzo/whoice/services/lookup-api/internal/admin"
 	"github.com/xmzo/whoice/services/lookup-api/internal/config"
+	"github.com/xmzo/whoice/services/lookup-api/internal/data/icpsuffixes"
 	"github.com/xmzo/whoice/services/lookup-api/internal/model"
 )
 
@@ -325,6 +326,9 @@ func adminSettingsPayload(snap serverSnapshot) (map[string]any, error) {
 		"settings":  config.SettingsView(fileCfg),
 		"secrets":   config.SecretsOf(fileCfg),
 		"envLocked": locked,
+		// The built-in ICP-fileable suffix list, shown read-only beside the
+		// icp.extra_suffixes setting.
+		"icpSuffixes": icpsuffixes.NewDefault(snap.cfg.DataDir).Info(),
 	}, nil
 }
 

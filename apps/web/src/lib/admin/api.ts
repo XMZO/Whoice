@@ -26,12 +26,20 @@ export type EditorStatus = {
   reason?: string;
 };
 
+/** The built-in list of ICP-fileable suffixes, shown read-only. */
+export type ICPSuffixList = {
+  updatedAt: string;
+  sources: { name: string; url: string }[];
+  suffixes: string[];
+};
+
 export type AdminConfig = {
   settings: Settings;
   secrets: SecretState;
   envLocked: Record<string, string>;
   editor: EditorStatus;
   config: ConfigStatus;
+  icpSuffixes?: ICPSuffixList;
   saved?: string[];
 };
 

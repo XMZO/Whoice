@@ -73,7 +73,7 @@ Settings can be changed in the admin panel or directly in `data/whoice.toml`. Th
 | `[dns]` | Resolver pools (IPv4, IPv6, DoH), fake-IP filtering, DNSViz links |
 | `[enrichment]` | EPP, registrar, brands, pricing (cached per suffix, 7 days by default; CNY/USD conversion with daily public exchange rates, cached 1 day), Moz |
 | `[ai]` | OpenAI-compatible or Ollama endpoint, model, prompt, cache |
-| `[icp]` | ICP filing lookup, caching, captcha handling, upstream service |
+| `[icp]` | ICP filing lookup, caching, captcha handling, upstream service, extra ICP-fileable suffixes |
 | `[rate_limit]` | Fixed-window limit for anonymous clients, e.g. `60/min` |
 | `[metrics]`, `[observability]` | `/api/metrics` and lookup event reporters (log or webhook) |
 | `[public_suffix]` | Optional Public Suffix List download at startup |

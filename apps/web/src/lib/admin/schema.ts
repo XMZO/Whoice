@@ -19,7 +19,8 @@ export type Field =
   | (Base & { type: "tokens" })
   | (Base & { type: "prompt" });
 
-export type Group = { title?: T3; fields: Field[] };
+// view: a read-only block rendered after the group's fields.
+export type Group = { title?: T3; fields: Field[]; view?: "icp-suffixes" };
 
 export type SectionId = "overview" | "lookup" | "dns" | "enrichment" | "ai" | "icp" | "access" | "monitor" | "account";
 
@@ -179,6 +180,19 @@ export const SETTINGS_SECTIONS: Section[] = [
           toggle("icp.captcha_enabled", t3("Solve captchas", "处理验证码", "處理驗證碼")),
           { type: "number", path: "icp.captcha_retries", label: t3("Captcha retries", "验证码重试", "驗證碼重試"), min: 0, max: 10 },
           { type: "text", path: "icp.upstream_url", label: t3("Upstream service", "上游服务", "上游服務"), hint: t3("ICP_Query-compatible; replaces direct MIIT access", "兼容 ICP_Query，替代直连工信部", "相容 ICP_Query，取代直連工信部"), placeholder: "http://127.0.0.1:16181", mono: true, wide: true },
+        ],
+      },
+      {
+        title: t3("Fileable suffixes", "可备案后缀", "可備案後綴"),
+        view: "icp-suffixes",
+        fields: [
+          {
+            type: "list",
+            path: "icp.extra_suffixes",
+            label: t3("Extra fileable suffixes", "额外的可备案后缀", "額外的可備案後綴"),
+            hint: t3("Newly approved TLDs missing from the built-in list", "内置名单里还没有的新批复顶级域", "內建名單裡還沒有的新批覆頂級域"),
+            placeholder: "io",
+          },
         ],
       },
       {

@@ -774,6 +774,18 @@ components:
           $ref: "#/components/schemas/PricingInfo"
         moz:
           $ref: "#/components/schemas/MozInfo"
+        icpFiling:
+          $ref: "#/components/schemas/ICPFilingInfo"
+    ICPFilingInfo:
+      type: object
+      description: Whether the domain's suffix is on MIIT's list of ICP-fileable suffixes; a suffix check, not a filing lookup.
+      required: [eligible, suffix]
+      properties:
+        eligible:
+          type: boolean
+        suffix:
+          type: string
+          description: The listed entry that matched, or the domain's own suffix when none did.
     DNSVizInfo:
       type: object
       required: [url]

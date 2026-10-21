@@ -983,7 +983,7 @@ export function RegistrantSection({
           ))}
         </dl>
       )}
-      {icpDomain && <ICPBlock domain={icpDomain} state={icpState} onLookup={onICPLookup} />}
+      {icpDomain && <ICPBlock domain={icpDomain} state={icpState} filing={result.enrichment?.icpFiling} onLookup={onICPLookup} />}
       {/* The contact block above already names the registrar when no registrant is public. */}
       {!(rows.length === 0 && extras.length === 0 && (result.registrar?.email || result.registrar?.phone || result.registrar?.address)) && <RegistrarDetails result={result} />}
     </section>
@@ -1082,7 +1082,30 @@ function icpErrorMessage(state: ICPState, t: (key: any) => string) {
   return state.error ? `${t("icpUnavailable")}: ${state.error}` : t("icpUnavailable");
 }
 
-function ICPBlock({ domain, state, onLookup }: { domain: string; state: ICPState; onLookup: () => void }) {
+// Whether the suffix is on MIIT's ICP-fileable list. It is a property of the
+// suffix, known without querying the filing system.
+function ICPFilingTag({ filing }: { filing?: LookupResult["enrichment"]["icpFiling"] }) {
+  const pick = useT3();
+  if (!filing) return null;
+  const suffix = `.${filing.suffix}`;
+  return filing.eligible ? (
+    <span
+      className="pill pill-accent"
+      title={pick(t3(`${suffix} is on MIIT's list of ICP-fileable suffixes`, `${suffix} 在工信部可备案后缀名单内`, `${suffix} 在工信部可備案後綴名單內`))}
+    >
+      {pick(t3("Fileable suffix", "后缀可备案", "後綴可備案"))}
+    </span>
+  ) : (
+    <span
+      className="pill pill-dashed"
+      title={pick(t3(`${suffix} is not on MIIT's list of ICP-fileable suffixes`, `${suffix} 不在工信部可备案后缀名单内，无法办理 ICP 备案`, `${suffix} 不在工信部可備案後綴名單內，無法辦理 ICP 備案`))}
+    >
+      {pick(t3("Suffix not fileable", "后缀不可备案", "後綴不可備案"))}
+    </span>
+  );
+}
+
+function ICPBlock({ domain, state, filing, onLookup }: { domain: string; state: ICPState; filing?: LookupResult["enrichment"]["icpFiling"]; onLookup: () => void }) {
   const { t } = useI18n();
   const pick = useT3();
   const records = state.result?.records || [];
@@ -1104,6 +1127,7 @@ function ICPBlock({ domain, state, onLookup }: { domain: string; state: ICPState
         <span className="icp-text">
           <strong>
             {t("icpTitle")}
+            <ICPFilingTag filing={filing} />
             {found && <span className="pill pill-green">{t("icpFound")}</span>}
             {state.result?.cached && <CacheTag cachedAt={state.result.cachedAt} />}
           </strong>

@@ -851,3 +851,15 @@ test("the result layout is in place before the first source answers and does not
   const after = await page.locator(".metric-grid").boundingBox();
   expect(after).toEqual(before);
 });
+
+test("the ICP block says whether the suffix can be filed", async ({ page }) => {
+  for (const [query, eligible, label] of [
+    ["fileable.cn", true, "Fileable suffix"],
+    ["not-fileable.org", false, "Suffix not fileable"],
+  ] as const) {
+    await seedLookup(page, query, lookupFixture(query, { enrichment: { icpFiling: { eligible, suffix: query.split(".").pop() } } }));
+    await showSection(page, /^Registrant/);
+    await expect(page.locator(".icp-block")).toContainText(label);
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+  }
+});

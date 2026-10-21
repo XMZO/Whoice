@@ -196,10 +196,20 @@ type NetworkInfo struct {
 }
 
 type EnrichmentInfo struct {
-	Pricing *PricingInfo `json:"pricing,omitempty"`
-	Moz     *MozInfo     `json:"moz,omitempty"`
-	DNS     *DNSInfo     `json:"dns,omitempty"`
-	DNSViz  *DNSVizInfo  `json:"dnsviz,omitempty"`
+	Pricing   *PricingInfo   `json:"pricing,omitempty"`
+	Moz       *MozInfo       `json:"moz,omitempty"`
+	DNS       *DNSInfo       `json:"dns,omitempty"`
+	DNSViz    *DNSVizInfo    `json:"dnsviz,omitempty"`
+	ICPFiling *ICPFilingInfo `json:"icpFiling,omitempty"`
+}
+
+// ICPFilingInfo says whether the domain's suffix is one MIIT approves for ICP
+// filing in mainland China. It is a suffix check, not a filing lookup.
+type ICPFilingInfo struct {
+	Eligible bool `json:"eligible"`
+	// Suffix is the listed entry that matched ("cn" for com.cn), or the
+	// domain's own suffix when none did.
+	Suffix string `json:"suffix"`
 }
 
 type PricingInfo struct {

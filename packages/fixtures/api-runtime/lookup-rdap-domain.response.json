@@ -31,7 +31,12 @@
       "suffix": "com",
       "unicodeName": "example.com"
     },
-    "enrichment": {},
+    "enrichment": {
+      "icpFiling": {
+        "eligible": true,
+        "suffix": "com"
+      }
+    },
     "meta": {
       "elapsedMs": 0,
       "providers": [

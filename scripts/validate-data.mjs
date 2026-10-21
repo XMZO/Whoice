@@ -76,6 +76,7 @@ async function validatePublicSuffix() {
 
 async function validateJSONData() {
   await validateBrandMap();
+  await validateICPSuffixes();
   await readJSON('packages/data/pricing/pricing.json');
   await readJSON('packages/data/enrichment/moz.json');
   const whoisIANA = await readJSON('packages/data/whois-servers/iana.json');
@@ -85,6 +86,23 @@ async function validateJSONData() {
   }
   for (const suffix of ['com', 'net', 'org', 'uk']) {
     assert(Object.hasOwn(whoisIANA, suffix), `WHOIS IANA server map must include ${suffix}`);
+  }
+}
+
+async function validateICPSuffixes() {
+  const file = 'packages/data/icp-suffixes/icp-suffixes.json';
+  const data = await readJSON(file);
+  assert(nonEmptyString(data?.updatedAt), `${file} must set updatedAt`);
+  assert(Array.isArray(data.sources) && data.sources.length > 0 && data.sources.every((source) => nonEmptyString(source.name) && isHTTPURL(source.url)), `${file} must list sources with a name and an http(s) url`);
+  assert(Array.isArray(data.suffixes) && data.suffixes.length > 0, `${file} must contain suffixes[]`);
+  const seen = new Set();
+  for (const suffix of data.suffixes) {
+    assert(nonEmptyString(suffix) && suffix === suffix.toLowerCase() && !suffix.startsWith('.'), `${file} suffix ${JSON.stringify(suffix)} must be lowercase without a leading dot`);
+    assert(!seen.has(suffix), `${file} lists ${suffix} twice`);
+    seen.add(suffix);
+  }
+  for (const suffix of ['cn', '中国', 'com', 'net']) {
+    assert(seen.has(suffix), `${file} must include ${suffix}`);
   }
 }
 
@@ -132,6 +150,7 @@ async function validateSnapshotSync() {
     ['packages/data/rdap-bootstrap/extra.json', 'services/lookup-api/internal/data/rdapbootstrap/snapshots/extra.json'],
     ['packages/data/registrars/icann-accredited-registrars.csv', 'services/lookup-api/internal/data/registrars/snapshots/icann-accredited-registrars.csv'],
     ['packages/data/brands/brand-map.json', 'services/lookup-api/internal/data/brandmap/snapshots/brand-map.json'],
+    ['packages/data/icp-suffixes/icp-suffixes.json', 'services/lookup-api/internal/data/icpsuffixes/snapshots/icp-suffixes.json'],
     ['packages/data/pricing/pricing.json', 'services/lookup-api/internal/enrich/pricing/snapshots/pricing.json'],
     ['packages/data/enrichment/moz.json', 'services/lookup-api/internal/data/enrichment/snapshots/moz.json'],
     ['packages/data/whois-servers/iana.json', 'services/lookup-api/internal/data/whoisservers/snapshots/iana.json'],
