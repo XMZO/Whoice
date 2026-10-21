@@ -346,3 +346,11 @@ func TestDNSHEModuleConvertsJSON(t *testing.T) {
 		t.Fatalf("unregistered body %q err %v", raw.Body, err)
 	}
 }
+
+func TestWHOISWebSkipsBareSuffix(t *testing.T) {
+	provider := NewWithClient(http.DefaultClient, DNSHEModule{BaseURL: "http://127.0.0.1:1"})
+	q := model.NormalizedQuery{Type: model.QueryDomain, Query: "cc.cd", Suffix: "cc.cd"}
+	if provider.Supports(q) || provider.Required(q) {
+		t.Fatal("the suffix itself must not be looked up through a WHOIS Web module")
+	}
+}

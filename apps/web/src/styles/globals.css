@@ -1710,9 +1710,12 @@ button.src-tag {
 
 /* Sources */
 
+/* Rows share one set of columns (subgrid), so the name column grows to
+   fit the widest entry ("WHOIS Web" + "Primary") and all rows stay aligned. */
 .trace-list {
-  display: flex;
-  flex-direction: column;
+  column-gap: 10px;
+  display: grid;
+  grid-template-columns: minmax(116px, max-content) minmax(0, 1fr) auto;
 }
 
 .trace-row {
@@ -1720,7 +1723,8 @@ button.src-tag {
   border-top: 1px solid var(--hair);
   display: grid;
   gap: 10px;
-  grid-template-columns: 116px minmax(0, 1fr) auto;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
   padding: 6px 0;
 }
 
@@ -1730,7 +1734,6 @@ button.src-tag {
 
 .trace-unused {
   color: var(--muted);
-  grid-template-columns: 116px minmax(0, 1fr);
 }
 
 .trace-name {
@@ -3883,6 +3886,11 @@ button.src-tag {
 
   .btn-outline-accent {
     height: 34px;
+  }
+
+  .trace-list {
+    display: flex;
+    flex-direction: column;
   }
 
   .trace-row {

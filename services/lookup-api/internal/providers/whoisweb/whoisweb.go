@@ -89,10 +89,16 @@ func (p *Provider) Name() model.SourceName {
 }
 
 func (p *Provider) Supports(q model.NormalizedQuery) bool {
-	if q.Type != model.QueryDomain {
+	if q.Type != model.QueryDomain || isBareSuffix(q) {
 		return false
 	}
 	return p.findModule(q.Suffix) != nil
+}
+
+// isBareSuffix reports a query for the suffix itself (for example "cc.cd"):
+// WHOIS Web modules look up names below a suffix, not the suffix.
+func isBareSuffix(q model.NormalizedQuery) bool {
+	return strings.EqualFold(strings.Trim(q.Query, "."), strings.Trim(q.Suffix, "."))
 }
 
 func (p *Provider) Lookup(ctx context.Context, q model.NormalizedQuery, _ model.LookupOptions) (*model.RawResponse, error) {
@@ -122,7 +128,7 @@ func (p *Provider) Lookup(ctx context.Context, q model.NormalizedQuery, _ model.
 // Required reports whether the query is served by a registry module and so
 // must run regardless of the WHOIS Web switch.
 func (p *Provider) Required(q model.NormalizedQuery) bool {
-	if q.Type != model.QueryDomain {
+	if q.Type != model.QueryDomain || isBareSuffix(q) {
 		return false
 	}
 	module, ok := p.findModule(q.Suffix).(RegistryModule)
