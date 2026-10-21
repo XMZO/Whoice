@@ -565,9 +565,11 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
   const failedProviders = new Set(providers.filter((provider) => provider.status === "error").map((provider) => provider.source));
   const loudMetaWarnings = metaWarnings.filter((warning) => !(quietProviders && isProviderWarning(warning)));
   const loudSourceErrors = sourceErrors.filter((error) => !(quietProviders && failedProviders.has(error.source)));
+  // DNS notes stay in the DNS card (with each resolver's status); like a
+  // failed registry source, they do not raise the header warning.
   const warnings = [
     ...(enrichmentError ? [`enrichment: ${enrichmentError}`] : []),
-    ...loudMetaWarnings,
+    ...loudMetaWarnings.filter((warning) => !isDNSWarning(warning)),
     ...loudSourceErrors.map((error) => `${error.source}: ${error.error}`),
   ];
   const sourceWarnings = [

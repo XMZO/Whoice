@@ -127,8 +127,9 @@ func ApplyWithResolverOptions(ctx context.Context, result *model.LookupResult, o
 		heldFakeAddrs.merge(appendIPAddrs(info, dohResult.AAAA, opts.FilterFakeIP))
 		recorder.recordResolvers(dohResult.Resolvers)
 	} else if len(opts.DoHServers) > 0 {
+		// Each failed resolver is listed with its error; a warning on top
+		// would only repeat it.
 		recorder.recordResolvers(dohResult.Resolvers)
-		result.Meta.Warnings = append(result.Meta.Warnings, "DNS DoH fallback failed: "+dohResult.Err.Error())
 	}
 	reconcileHeldFakeIPAddrs(result, info, heldFakeAddrs)
 	sortAddresses(info.A)
@@ -139,14 +140,9 @@ func ApplyWithResolverOptions(ctx context.Context, result *model.LookupResult, o
 
 	info.Resolvers = recorder.list()
 	info.ElapsedMs = time.Since(start).Milliseconds()
-	if len(info.A) == 0 && len(info.AAAA) == 0 && info.CNAME == "" && len(info.MX) == 0 && len(info.NS) == 0 {
-		// No records is expected for names that are not registered (or are
-		// reserved); only a registered domain without DNS is worth a warning.
-		if result.Status != model.StatusUnregistered && result.Status != model.StatusReserved {
-			result.Meta.Warnings = append(result.Meta.Warnings, "DNS enrichment returned no records")
-		}
-		return
-	}
+	// An empty answer is kept, not warned about: a name without records (not
+	// registered, or just registered and not configured yet) is a fact the
+	// DNS card shows, together with how each resolver answered.
 	result.Enrichment.DNS = info
 }
 
@@ -784,8 +780,13 @@ func lookupDoHIP(ctx context.Context, host string, resolvers []string, timeout t
 	if len(outA) > 0 || len(outAAAA) > 0 {
 		return dohLookupResult{A: outA, AAAA: outAAAA, Resolvers: infos}
 	}
-	if len(failedResolvers) > 0 {
+	// Some resolvers answering "no records" is an answer: the failed ones
+	// show in the resolver list, and the lookup itself did not fail.
+	if len(failedResolvers) == len(resolvers) {
 		return dohLookupResult{Resolvers: infos, Err: summarizeDoHErrors(len(resolvers), failedResolvers)}
+	}
+	if len(failedResolvers) > 0 {
+		return dohLookupResult{Resolvers: infos}
 	}
 	return dohLookupResult{Resolvers: infos, Err: lastErr}
 }

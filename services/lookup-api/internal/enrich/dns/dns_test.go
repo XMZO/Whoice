@@ -823,22 +823,47 @@ func TestDoHNXDOMAINIsAnEmptyAnswer(t *testing.T) {
 	}
 }
 
-func TestNoRecordsWarningOnlyForRegisteredDomains(t *testing.T) {
-	for status, wantWarning := range map[model.ResultStatus]bool{
-		model.StatusRegistered:   true,
-		model.StatusUnknown:      true,
-		model.StatusUnregistered: false,
-		model.StatusReserved:     false,
-	} {
+// A name without records (not registered, or just registered and not set up
+// yet) is shown, not warned about; the DNS info still carries the resolvers.
+func TestNoRecordsIsKeptWithoutWarning(t *testing.T) {
+	for _, status := range []model.ResultStatus{model.StatusRegistered, model.StatusUnknown, model.StatusUnregistered, model.StatusReserved} {
 		result := &model.LookupResult{NormalizedQuery: "awd.ec", Type: model.QueryDomain, Status: status}
 		ApplyWithResolver(context.Background(), result, 0, emptyResolver{})
-		warned := false
-		for _, warning := range result.Meta.Warnings {
-			warned = warned || warning == "DNS enrichment returned no records"
+		if len(result.Meta.Warnings) != 0 {
+			t.Fatalf("status %q: unexpected warnings %v", status, result.Meta.Warnings)
 		}
-		if warned != wantWarning {
-			t.Fatalf("status %q: warned=%v, want %v (%v)", status, warned, wantWarning, result.Meta.Warnings)
+		if result.Enrichment.DNS == nil || len(result.Enrichment.DNS.A) != 0 {
+			t.Fatalf("status %q: expected empty DNS info, got %+v", status, result.Enrichment.DNS)
 		}
+	}
+}
+
+// One DoH resolver failing while the others answer "no records" (use.ci just
+// after registration: AliDNS HTTP 400, the rest empty) is not a DoH failure.
+func TestLookupDoHIPEmptyAnswersWithOneFailureIsNotAnError(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "broken") {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/dns-json")
+		_, _ = w.Write([]byte(`{"Status":0}`))
+	}))
+	t.Cleanup(server.Close)
+	oldClient := http.DefaultClient
+	http.DefaultClient = server.Client()
+	t.Cleanup(func() { http.DefaultClient = oldClient })
+
+	result := lookupDoHIP(context.Background(), "use.ci", []string{server.URL + "/resolve", server.URL + "/broken/resolve"}, 2*time.Second)
+	if result.Err != nil {
+		t.Fatalf("expected no error, got %v", result.Err)
+	}
+	if len(result.Resolvers) != 2 || result.Resolvers[1].Status != "error" {
+		t.Fatalf("expected the broken resolver to be recorded as failed: %+v", result.Resolvers)
+	}
+	all := lookupDoHIP(context.Background(), "use.ci", []string{server.URL + "/broken/resolve"}, 2*time.Second)
+	if all.Err == nil {
+		t.Fatal("expected an error when every DoH resolver fails")
 	}
 }
 
