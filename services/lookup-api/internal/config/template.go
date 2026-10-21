@@ -117,8 +117,8 @@ provider_timeout = ` + tomlDuration(cfg.ProviderTimeout) + `
 # RDAP/WHOIS 默认都开；前端/API 仍可按单次请求选择来源。
 rdap_enabled = ` + tomlBool(cfg.RDAPEnabled) + `
 whois_enabled = ` + tomlBool(cfg.WHOISEnabled) + `
-# WHOIS Web fallback is useful for some TLDs but depends on external web/API shapes, so it is off by default.
-# WHOIS Web fallback 对部分后缀有用，但依赖外部网页/API 结构，默认关闭。
+# Registry web lookups (.dz .lk .ni .pa and DNSHE zones) always run; this switch only adds lookup-page links for TLDs without a public lookup (.mt .vn .py ...).
+# 注册局网页查询（.dz .lk .ni .pa 与 DNSHE 的后缀）始终运行；此开关只为没有公开查询的后缀（.mt .vn .py 等）附上官网查询链接。
 whois_web_enabled = ` + tomlBool(cfg.WHOISWebEnabled) + `
 # Number of registrar WHOIS referral hops to follow by default. 0 disables referral follow.
 # 默认跟随 registrar WHOIS referral 的次数；0 表示不跟随。

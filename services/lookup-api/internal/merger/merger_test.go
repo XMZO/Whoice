@@ -168,3 +168,11 @@ func TestMergeRegisteredOutweighsNotFoundInAnyOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestNormalizeDatesReadsMonthNamesAndDropsPlaceholders(t *testing.T) {
+	dates := model.DateInfo{CreatedAt: "16 July 1999", UpdatedAt: "25 Jun 2026", ExpiresAt: "N/A"}
+	normalizeDates(&dates)
+	if dates.CreatedAt != "1999-07-16" || dates.UpdatedAt != "2026-06-25" || dates.ExpiresAt != "" {
+		t.Fatalf("unexpected dates: %+v", dates)
+	}
+}

@@ -425,13 +425,21 @@ func parseZonedTime(value string) (time.Time, bool) {
 	return time.Time{}, false
 }
 
+// dayMonthNameLayouts are date-only forms with a month name, such as
+// "09-Apr-2026" or "16 July 1999" (nic.pa); they are rewritten as 2006-01-02.
+var dayMonthNameLayouts = []string{"02-Jan-2006", "2 January 2006", "2 Jan 2006"}
+
 // normalizeDates rewrites registry date formats such as
 // "09-Apr-2026 06:18:01 UTC" as RFC 3339. Values without a time zone are
-// left as they are.
+// left as they are; placeholders such as "N/A" are dropped.
 func normalizeDates(dates *model.DateInfo) {
 	for _, value := range []*string{&dates.CreatedAt, &dates.UpdatedAt, &dates.ExpiresAt} {
 		trimmed := strings.TrimSpace(*value)
 		if trimmed == "" {
+			continue
+		}
+		if isDatePlaceholder(trimmed) {
+			*value = ""
 			continue
 		}
 		if parsed, ok := parseZonedTime(trimmed); ok {
@@ -440,8 +448,19 @@ func normalizeDates(dates *model.DateInfo) {
 			}
 			continue
 		}
-		if parsed, err := time.Parse("02-Jan-2006", trimmed); err == nil {
-			*value = parsed.Format("2006-01-02")
+		for _, layout := range dayMonthNameLayouts {
+			if parsed, err := time.Parse(layout, trimmed); err == nil {
+				*value = parsed.Format("2006-01-02")
+				break
+			}
 		}
 	}
+}
+
+func isDatePlaceholder(value string) bool {
+	switch strings.ToLower(strings.Trim(value, " .")) {
+	case "n/a", "na", "-", "--", "none", "null", "unknown", "not available", "not defined":
+		return true
+	}
+	return false
 }

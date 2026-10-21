@@ -1,16 +1,15 @@
 package whoisweb
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html"
 	"io"
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -20,10 +19,8 @@ import (
 const (
 	defaultDZBaseURL = "https://api.nic.dz/v1"
 	defaultLKBaseURL = "https://register.domains.lk"
-	defaultMTBaseURL = "https://www.nic.org.mt"
 	defaultNIBaseURL = "https://apiecommercenic.uni.edu.ni/api/v1"
 	defaultPABaseURL = "https://nic.pa:8080"
-	defaultVNBaseURL = "https://whois.inet.vn"
 )
 
 type Module interface {
@@ -33,9 +30,9 @@ type Module interface {
 }
 
 // RegistryModule marks a module that queries the registry's own lookup
-// service rather than scraping a third-party page. Such modules run even when
-// the WHOIS Web fallback is switched off, because they are the only WHOIS
-// source for their suffixes.
+// service. Such modules run even when the WHOIS Web fallback is switched off,
+// because they are the only WHOIS source for their suffixes; the switch only
+// governs the notice-only suffixes.
 type RegistryModule interface {
 	Registry() bool
 }
@@ -53,7 +50,7 @@ type Provider struct {
 }
 
 func New() *Provider {
-	return NewWithClient(http.DefaultClient, DefaultModules()...)
+	return NewWithClient(newAIAClient(), DefaultModules()...)
 }
 
 func NewWithClient(client *http.Client, modules ...Module) *Provider {
@@ -72,14 +69,16 @@ func DefaultModules() []Module {
 			"cy": "https://registry.nic.cy/cy-ui/home",
 			"dj": "https://dot.dj",
 			"gq": "http://www.dominio.gq/en/whois.html",
+			// NIC Malta and VNNIC gate their lookups behind a CAPTCHA, and
+			// iNET's .vn API rejects scripts, so these only point to the page.
+			"mt": "https://www.nic.org.mt/dotmt/whois/",
 			"py": "https://www.nic.py/consultdompy.php",
+			"vn": "https://vnnic.vn/whois-information?lang=en",
 		}),
 		DZModule{BaseURL: defaultDZBaseURL},
 		LKModule{BaseURL: defaultLKBaseURL},
-		MTModule{BaseURL: defaultMTBaseURL},
 		NIModule{BaseURL: defaultNIBaseURL},
 		PAModule{BaseURL: defaultPABaseURL},
-		VNModule{BaseURL: defaultVNBaseURL},
 		DNSHEModule{BaseURL: defaultDNSHEBaseURL},
 	}
 }
@@ -160,12 +159,20 @@ func NewNoticeModule(targets map[string]string) NoticeModule {
 func (m NoticeModule) Name() string { return "notice" }
 
 func (m NoticeModule) Supports(suffix string) bool {
-	_, ok := m.targets[strings.ToLower(strings.TrimPrefix(suffix, "."))]
-	return ok
+	return m.target(suffix) != ""
+}
+
+func (m NoticeModule) target(suffix string) string {
+	for tld, target := range m.targets {
+		if underTLD(suffix, tld) {
+			return target
+		}
+	}
+	return ""
 }
 
 func (m NoticeModule) Lookup(_ context.Context, _ *http.Client, q model.NormalizedQuery) (*ModuleResult, error) {
-	target := m.targets[strings.ToLower(q.Suffix)]
+	target := m.target(q.Suffix)
 	if target == "" {
 		return nil, fmt.Errorf("notice target missing for .%s", q.Suffix)
 	}
@@ -182,9 +189,10 @@ type DZModule struct {
 
 func (m DZModule) Name() string { return "dz" }
 
+func (m DZModule) Registry() bool { return true }
+
 func (m DZModule) Supports(suffix string) bool {
-	suffix = strings.ToLower(strings.TrimPrefix(suffix, "."))
-	return suffix == "dz" || suffix == "xn--lgbbat1ad8j"
+	return underTLD(suffix, "dz") || underTLD(suffix, "xn--lgbbat1ad8j")
 }
 
 func (m DZModule) Lookup(ctx context.Context, client *http.Client, q model.NormalizedQuery) (*ModuleResult, error) {
@@ -193,12 +201,14 @@ func (m DZModule) Lookup(ctx context.Context, client *http.Client, q model.Norma
 		baseURL = defaultDZBaseURL
 	}
 	segment := "/"
-	if strings.EqualFold(q.Suffix, "xn--lgbbat1ad8j") {
+	if underTLD(q.Suffix, "xn--lgbbat1ad8j") {
 		segment = "/arabic/"
 	}
 	endpoint := baseURL + segment + "domains/" + url.PathEscape(q.Query)
 	var payload dzResponse
-	statusCode, contentType, err := getJSON(ctx, client, endpoint, &payload)
+	// The API answers a found domain with 302 (no Location) and a missing one
+	// with 404, both carrying the JSON body.
+	statusCode, contentType, err := getJSONStatus(ctx, client, endpoint, &payload, http.StatusFound, http.StatusNotFound)
 	if err != nil {
 		return nil, err
 	}
@@ -263,8 +273,10 @@ type LKModule struct {
 
 func (m LKModule) Name() string { return "lk" }
 
+func (m LKModule) Registry() bool { return true }
+
 func (m LKModule) Supports(suffix string) bool {
-	return strings.EqualFold(strings.TrimPrefix(suffix, "."), "lk")
+	return underTLD(suffix, "lk")
 }
 
 func (m LKModule) Lookup(ctx context.Context, client *http.Client, q model.NormalizedQuery) (*ModuleResult, error) {
@@ -335,68 +347,16 @@ func normalizeLKDate(value string) string {
 	return value
 }
 
-type MTModule struct {
-	BaseURL string
-}
-
-func (m MTModule) Name() string { return "mt" }
-
-func (m MTModule) Supports(suffix string) bool {
-	return strings.EqualFold(strings.TrimPrefix(suffix, "."), "mt")
-}
-
-func (m MTModule) Lookup(ctx context.Context, client *http.Client, q model.NormalizedQuery) (*ModuleResult, error) {
-	baseURL := strings.TrimRight(m.BaseURL, "/")
-	if baseURL == "" {
-		baseURL = defaultMTBaseURL
-	}
-	endpoint := baseURL + "/dotmt/whois/?" + url.QueryEscape(q.Query)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("User-Agent", "Whoice/0.1 (+https://github.com/xmzo/whoice)")
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024))
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("WHOIS Web HTTP %d", resp.StatusCode)
-	}
-	whois := extractPreText(string(body))
-	return &ModuleResult{
-		Body:        whois,
-		Endpoint:    endpoint,
-		ContentType: resp.Header.Get("Content-Type"),
-		StatusCode:  resp.StatusCode,
-	}, nil
-}
-
-var preBlockPattern = regexp.MustCompile(`(?is)<pre\b[^>]*>(.*?)</pre>`)
-var htmlTagPattern = regexp.MustCompile(`(?is)<[^>]+>`)
-
-func extractPreText(body string) string {
-	matches := preBlockPattern.FindStringSubmatch(body)
-	if len(matches) < 2 {
-		return ""
-	}
-	text := htmlTagPattern.ReplaceAllString(matches[1], "")
-	return strings.TrimSpace(html.UnescapeString(text))
-}
-
 type NIModule struct {
 	BaseURL string
 }
 
 func (m NIModule) Name() string { return "ni" }
 
+func (m NIModule) Registry() bool { return true }
+
 func (m NIModule) Supports(suffix string) bool {
-	return strings.EqualFold(strings.TrimPrefix(suffix, "."), "ni")
+	return underTLD(suffix, "ni")
 }
 
 func (m NIModule) Lookup(ctx context.Context, client *http.Client, q model.NormalizedQuery) (*ModuleResult, error) {
@@ -449,14 +409,37 @@ type niResponse struct {
 		Address        string `json:"direccion"`
 	} `json:"datos"`
 	Contacts *struct {
-		Type  string `json:"tipoContacto"`
-		Name  string `json:"nombre"`
-		Email []struct {
-			Value string `json:"value"`
-		} `json:"correoElectronico"`
-		Phone    string `json:"telefono"`
-		Cellular string `json:"celular"`
+		Type     string   `json:"tipoContacto"`
+		Name     string   `json:"nombre"`
+		Email    niEmails `json:"correoElectronico"`
+		Phone    string   `json:"telefono"`
+		Cellular string   `json:"celular"`
 	} `json:"contactos"`
+}
+
+// niEmails reads correoElectronico, which the API sends either as one
+// {"value": ...} object or as a list of them.
+type niEmails []string
+
+func (e *niEmails) UnmarshalJSON(data []byte) error {
+	type item struct {
+		Value string `json:"value"`
+	}
+	var items []item
+	if err := json.Unmarshal(data, &items); err != nil {
+		var single item
+		if err := json.Unmarshal(data, &single); err != nil {
+			return err
+		}
+		items = []item{single}
+	}
+	*e = nil
+	for _, value := range items {
+		if strings.TrimSpace(value.Value) != "" {
+			*e = append(*e, strings.TrimSpace(value.Value))
+		}
+	}
+	return nil
 }
 
 func (r niResponse) toWHOIS(domain string) string {
@@ -468,15 +451,9 @@ func (r niResponse) toWHOIS(domain string) string {
 		writeLine(&builder, "Registrant Address", r.Data.Address)
 	}
 	if r.Contacts != nil {
-		var emails []string
-		for _, email := range r.Contacts.Email {
-			if strings.TrimSpace(email.Value) != "" {
-				emails = append(emails, strings.TrimSpace(email.Value))
-			}
-		}
 		writeLine(&builder, "Contact Type", r.Contacts.Type)
 		writeLine(&builder, "Contact Name", r.Contacts.Name)
-		writeLine(&builder, "Contact Email", strings.Join(emails, ","))
+		writeLine(&builder, "Contact Email", strings.Join(r.Contacts.Email, ","))
 		writeLine(&builder, "Contact Phone", r.Contacts.Phone)
 		writeLine(&builder, "Contact Cellphone", r.Contacts.Cellular)
 	}
@@ -489,8 +466,10 @@ type PAModule struct {
 
 func (m PAModule) Name() string { return "pa" }
 
+func (m PAModule) Registry() bool { return true }
+
 func (m PAModule) Supports(suffix string) bool {
-	return strings.EqualFold(strings.TrimPrefix(suffix, "."), "pa")
+	return underTLD(suffix, "pa")
 }
 
 func (m PAModule) Lookup(ctx context.Context, client *http.Client, q model.NormalizedQuery) (*ModuleResult, error) {
@@ -575,122 +554,6 @@ func (r paResponse) toWHOIS(domain string) string {
 	return strings.TrimSpace(builder.String())
 }
 
-type VNModule struct {
-	BaseURL string
-}
-
-func (m VNModule) Name() string { return "vn" }
-
-func (m VNModule) Supports(suffix string) bool {
-	return strings.EqualFold(strings.TrimPrefix(suffix, "."), "vn")
-}
-
-func (m VNModule) Lookup(ctx context.Context, client *http.Client, q model.NormalizedQuery) (*ModuleResult, error) {
-	baseURL := strings.TrimRight(m.BaseURL, "/")
-	if baseURL == "" {
-		baseURL = defaultVNBaseURL
-	}
-	endpoint := baseURL + "/api/whois/domainspecify/" + url.PathEscape(q.Query)
-	var payload vnResponse
-	statusCode, contentType, err := getJSON(ctx, client, endpoint, &payload)
-	if err != nil {
-		return nil, err
-	}
-
-	if payload.Code == "1" {
-		availabilityEndpoint := baseURL + "/api/domain/checkavailable"
-		_, _, _ = postJSON(ctx, client, availabilityEndpoint, map[string]string{"name": q.Query}, &payload)
-	}
-
-	body := payload.toWHOIS(q.Query)
-	return &ModuleResult{
-		Body:        body,
-		Endpoint:    endpoint,
-		ContentType: contentType,
-		StatusCode:  statusCode,
-	}, nil
-}
-
-type vnResponse struct {
-	Code           string   `json:"code"`
-	DomainName     string   `json:"domainName"`
-	Registrar      string   `json:"registrar"`
-	CreationDate   string   `json:"creationDate"`
-	ExpirationDate string   `json:"expirationDate"`
-	Status         []string `json:"status"`
-	NameServer     []string `json:"nameServer"`
-	RegistrantName string   `json:"registrantName"`
-	DNSSEC         string   `json:"DNSSEC"`
-	RawText        string   `json:"rawtext"`
-	Availability   string   `json:"availability"`
-	Message        string   `json:"message"`
-}
-
-func (r vnResponse) toWHOIS(domain string) string {
-	var builder strings.Builder
-	switch r.Availability {
-	case "available":
-		builder.WriteString("The domain name has not been registered\n")
-	case "notavailable":
-		builder.WriteString("The domain " + domain + " cannot be registered\n")
-		if r.Message != "" {
-			builder.WriteString(r.Message + "\n")
-		}
-	}
-
-	if r.Code != "0" {
-		return strings.TrimSpace(builder.String())
-	}
-
-	writeLine(&builder, "Domain Name", firstNonEmpty(r.DomainName, domain))
-	writeLine(&builder, "Registrar", r.Registrar)
-	created, expires := r.dates()
-	writeLine(&builder, "Creation Date", firstNonEmpty(created, r.CreationDate))
-	writeLine(&builder, "Registry Expiry Date", firstNonEmpty(expires, r.ExpirationDate))
-	for _, status := range r.Status {
-		writeLine(&builder, "Domain Status", status)
-	}
-	for _, nameServer := range r.NameServer {
-		writeLine(&builder, "Name Server", nameServer)
-	}
-	writeLine(&builder, "Registrant Name", r.RegistrantName)
-	writeLine(&builder, "DNSSEC", r.DNSSEC)
-	return strings.TrimSpace(builder.String())
-}
-
-func (r vnResponse) dates() (string, string) {
-	if r.RawText == "" {
-		return "", ""
-	}
-	var raw struct {
-		IssuedDate  *vnDate `json:"issuedDate"`
-		ExpiredDate *vnDate `json:"expiredDate"`
-	}
-	if err := json.Unmarshal([]byte(r.RawText), &raw); err != nil {
-		return "", ""
-	}
-	return formatVNDate(raw.IssuedDate), formatVNDate(raw.ExpiredDate)
-}
-
-type vnDate struct {
-	Year     int `json:"year"`
-	Month    int `json:"month"`
-	Day      int `json:"day"`
-	Hour     int `json:"hour"`
-	Minute   int `json:"minute"`
-	Second   int `json:"second"`
-	Timezone int `json:"timezone"`
-}
-
-func formatVNDate(value *vnDate) string {
-	if value == nil || value.Year == 0 || value.Month == 0 || value.Day == 0 {
-		return ""
-	}
-	location := time.FixedZone("vn-whois", value.Timezone*60)
-	parsed := time.Date(value.Year, time.Month(value.Month), value.Day, value.Hour, value.Minute, value.Second, 0, location)
-	return parsed.UTC().Format(time.RFC3339)
-}
-
 func getJSON(ctx context.Context, client *http.Client, endpoint string, out any) (int, string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -698,6 +561,17 @@ func getJSON(ctx context.Context, client *http.Client, endpoint string, out any)
 	}
 	req.Header.Set("User-Agent", "Whoice/0.1 (+https://github.com/xmzo/whoice)")
 	return doJSON(client, req, out)
+}
+
+// getJSONStatus is getJSON for registries that send their JSON answer under
+// a non-2xx status: the listed statuses are decoded like a 2xx.
+func getJSONStatus(ctx context.Context, client *http.Client, endpoint string, out any, statuses ...int) (int, string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return 0, "", err
+	}
+	req.Header.Set("User-Agent", "Whoice/0.1 (+https://github.com/xmzo/whoice)")
+	return doJSONWithOptions(client, req, out, false, statuses...)
 }
 
 func getJSONAllow404(ctx context.Context, client *http.Client, endpoint string, out any) (int, string, error) {
@@ -709,26 +583,11 @@ func getJSONAllow404(ctx context.Context, client *http.Client, endpoint string, 
 	return doJSONWithOptions(client, req, out, true)
 }
 
-func postJSON(ctx context.Context, client *http.Client, endpoint string, payload any, out any) (int, string, error) {
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return 0, "", err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
-	if err != nil {
-		return 0, "", err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Cookie", "iclid=233")
-	req.Header.Set("User-Agent", "Whoice/0.1 (+https://github.com/xmzo/whoice)")
-	return doJSON(client, req, out)
-}
-
 func doJSON(client *http.Client, req *http.Request, out any) (int, string, error) {
 	return doJSONWithOptions(client, req, out, false)
 }
 
-func doJSONWithOptions(client *http.Client, req *http.Request, out any, allow404 bool) (int, string, error) {
+func doJSONWithOptions(client *http.Client, req *http.Request, out any, allow404 bool, statuses ...int) (int, string, error) {
 	resp, err := client.Do(req)
 	if err != nil {
 		return 0, "", err
@@ -741,13 +600,20 @@ func doJSONWithOptions(client *http.Client, req *http.Request, out any, allow404
 	if allow404 && resp.StatusCode == http.StatusNotFound {
 		return resp.StatusCode, resp.Header.Get("Content-Type"), nil
 	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+	if (resp.StatusCode < 200 || resp.StatusCode >= 300) && !slices.Contains(statuses, resp.StatusCode) {
 		return resp.StatusCode, resp.Header.Get("Content-Type"), fmt.Errorf("WHOIS Web HTTP %d", resp.StatusCode)
 	}
 	if err := json.Unmarshal(body, out); err != nil {
 		return resp.StatusCode, resp.Header.Get("Content-Type"), err
 	}
 	return resp.StatusCode, resp.Header.Get("Content-Type"), nil
+}
+
+// underTLD reports whether suffix is tld or a registry suffix below it
+// (com.pa under pa).
+func underTLD(suffix, tld string) bool {
+	suffix = strings.ToLower(strings.Trim(strings.TrimSpace(suffix), "."))
+	return suffix == tld || strings.HasSuffix(suffix, "."+tld)
 }
 
 func writeLine(builder *strings.Builder, key, value string) {

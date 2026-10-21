@@ -29,52 +29,19 @@ func TestNoticeModule(t *testing.T) {
 	}
 }
 
-func TestVNModuleBuildsWHOISBody(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/whois/domainspecify/example.vn" {
-			t.Fatalf("unexpected path %s", r.URL.Path)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"code":       "0",
-			"domainName": "example.vn",
-			"registrar":  "Example Registrar",
-			"rawtext": `{
-				"issuedDate": {"year": 2001, "month": 3, "day": 26, "hour": 0, "minute": 0, "second": 0, "timezone": 0},
-				"expiredDate": {"year": 2027, "month": 3, "day": 31, "hour": 0, "minute": 0, "second": 0, "timezone": 0}
-			}`,
-			"status":     []string{"clientTransferProhibited"},
-			"nameServer": []string{"ns1.example.vn", "ns2.example.vn"},
-			"DNSSEC":     "unsigned",
-		})
-	}))
-	defer server.Close()
-
-	provider := NewWithClient(server.Client(), VNModule{BaseURL: server.URL})
-	raw, err := provider.Lookup(context.Background(), domainQuery("example.vn", "vn"), model.LookupOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for _, want := range []string{
-		"Domain Name: example.vn",
-		"Registrar: Example Registrar",
-		"Creation Date: 2001-03-26T00:00:00Z",
-		"Registry Expiry Date: 2027-03-31T00:00:00Z",
-		"Name Server: ns1.example.vn",
-	} {
-		if !strings.Contains(raw.Body, want) {
-			t.Fatalf("body missing %q:\n%s", want, raw.Body)
-		}
-	}
-}
-
 func TestDZModuleBuildsWHOISBody(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/hal+json")
+		if r.URL.Path == "/domains/missing.com.dz" {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"title":"Domain Not Found","status":404}`))
+			return
+		}
 		if r.URL.Path != "/domains/example.dz" {
 			t.Fatalf("unexpected path %s", r.URL.Path)
 		}
-		w.Header().Set("Content-Type", "application/json")
+		// The live API answers a found domain with 302 and no Location.
+		w.WriteHeader(http.StatusFound)
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"domainName":   "example.dz",
 			"registrar":    "Example Registrar DZ",
@@ -103,6 +70,14 @@ func TestDZModuleBuildsWHOISBody(t *testing.T) {
 			t.Fatalf("body missing %q:\n%s", want, raw.Body)
 		}
 	}
+
+	missing, err := provider.Lookup(context.Background(), domainQuery("missing.com.dz", "com.dz"), model.LookupOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if missing.Body != "Domain Not Found" {
+		t.Fatalf("expected not found body, got %q", missing.Body)
+	}
 }
 
 func TestNIModuleBuildsWHOISBodyAnd404(t *testing.T) {
@@ -124,10 +99,9 @@ func TestNIModuleBuildsWHOISBodyAnd404(t *testing.T) {
 			"contactos": map[string]any{
 				"tipoContacto": "admin",
 				"nombre":       "Example Contact",
-				"correoElectronico": []map[string]string{
-					{"value": "admin@example.ni"},
-				},
-				"telefono": "50500000000",
+				// The API now sends one object; older answers used a list.
+				"correoElectronico": map[string]string{"value": "admin@example.ni"},
+				"telefono":          "50500000000",
 			},
 		})
 	}))
@@ -189,35 +163,6 @@ func TestLKModuleBuildsWHOISBody(t *testing.T) {
 		"Domain Name: example.lk",
 		"Registry Expiry Date: 2027-03-31",
 		"Registrant Name: Example Registrant",
-	} {
-		if !strings.Contains(raw.Body, want) {
-			t.Fatalf("body missing %q:\n%s", want, raw.Body)
-		}
-	}
-}
-
-func TestMTModuleExtractsPreWHOIS(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/dotmt/whois/" || r.URL.RawQuery != "example.mt" {
-			t.Fatalf("unexpected request %s", r.URL.String())
-		}
-		w.Header().Set("Content-Type", "text/html")
-		_, _ = w.Write([]byte(`<html><body><pre>Domain Name: example.mt
-Registrar: Example MT
-Name Server: ns1.example.mt
-</pre></body></html>`))
-	}))
-	defer server.Close()
-
-	provider := NewWithClient(server.Client(), MTModule{BaseURL: server.URL})
-	raw, err := provider.Lookup(context.Background(), domainQuery("example.mt", "mt"), model.LookupOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{
-		"Domain Name: example.mt",
-		"Registrar: Example MT",
-		"Name Server: ns1.example.mt",
 	} {
 		if !strings.Contains(raw.Body, want) {
 			t.Fatalf("body missing %q:\n%s", want, raw.Body)
@@ -292,10 +237,30 @@ func TestPAModuleBuildsWHOISBodyAnd404(t *testing.T) {
 
 func TestDefaultModulesCoverPhase3WebFallbacks(t *testing.T) {
 	provider := NewWithClient(nil, DefaultModules()...)
-	for _, suffix := range []string{"ao", "az", "ba", "cy", "dj", "dz", "gq", "lk", "mt", "ni", "pa", "py", "vn"} {
+	for _, suffix := range []string{"ao", "az", "ba", "cy", "dj", "dz", "gq", "lk", "mt", "ni", "pa", "py", "vn", "com.pa", "com.ni", "com.dz", "com.lk", "com.mt"} {
 		if !provider.Supports(domainQuery("example."+suffix, suffix)) {
 			t.Fatalf("expected WHOIS Web module for .%s", suffix)
 		}
+	}
+}
+
+// Registry lookups run even with the WHOIS Web switch off; notice-only
+// suffixes (including .mt and .vn, whose lookups need a CAPTCHA) do not.
+func TestRegistryModulesAreRequired(t *testing.T) {
+	provider := NewWithClient(nil, DefaultModules()...)
+	for _, suffix := range []string{"dz", "lk", "ni", "pa", "com.pa", "com.ni", "us.ci"} {
+		if !provider.Required(domainQuery("example."+suffix, suffix)) {
+			t.Fatalf("expected .%s to be a required registry lookup", suffix)
+		}
+	}
+	for _, suffix := range []string{"mt", "vn", "ao", "py"} {
+		if provider.Required(domainQuery("example."+suffix, suffix)) {
+			t.Fatalf("expected .%s to be notice-only", suffix)
+		}
+	}
+	raw, err := provider.Lookup(context.Background(), domainQuery("example.vn", "vn"), model.LookupOptions{})
+	if err != nil || !strings.Contains(raw.Body, "vnnic.vn") {
+		t.Fatalf("expected a VNNIC notice, got %v %v", raw, err)
 	}
 }
 

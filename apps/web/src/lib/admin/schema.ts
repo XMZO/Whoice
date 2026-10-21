@@ -41,7 +41,7 @@ export const SETTINGS_SECTIONS: Section[] = [
         fields: [
           toggle("lookup.rdap_enabled", t3("RDAP", "RDAP", "RDAP")),
           toggle("lookup.whois_enabled", t3("WHOIS", "WHOIS", "WHOIS")),
-          toggle("lookup.whois_web_enabled", t3("WHOIS Web fallback", "WHOIS Web 备用", "WHOIS Web 備用"), t3("Scrapes registry websites for selected TLDs", "部分后缀从注册局网页获取", "部分後綴從註冊局網頁取得")),
+          toggle("lookup.whois_web_enabled", t3("WHOIS Web fallback", "WHOIS Web 备用", "WHOIS Web 備用"), t3("Registry lookups (.dz .lk .ni .pa, DNSHE) always run; this only adds lookup-page links for TLDs without one", "注册局查询（.dz .lk .ni .pa、DNSHE）始终运行；此项只为没有公开查询的后缀附上官网查询链接", "註冊局查詢（.dz .lk .ni .pa、DNSHE）始終執行；此項只為沒有公開查詢的後綴附上官網查詢連結")),
           toggle("lookup.fast_response", t3("Fast first response", "先返回主结果", "先回傳主結果"), t3("DNS and pricing load afterwards", "DNS 与价格随后补充", "DNS 與價格隨後補充")),
         ],
       },
