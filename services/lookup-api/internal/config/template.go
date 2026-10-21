@@ -275,8 +275,13 @@ page_size = ` + tomlInt(cfg.ICPPageSize) + `
 ` + icpSignLine(cfg) + `# Hidden ICP blocklist. Exact domains and "*.example.com" patterns return the same empty-looking result as a normal miss.
 # 隐蔽备案隐藏名单。支持精确域名和 "*.example.com"，命中时返回看起来像正常未查到的结果。
 blocklist = ` + tomlList(cfg.ICPBlocklist) + `
-# Suffixes to treat as ICP-fileable in addition to the built-in MIIT list (data/icp-suffixes), for newly approved TLDs.
-# 内置工信部可备案后缀名单（data/icp-suffixes）之外，额外视为可备案的后缀，用于新批复的顶级域。
+# The ICP-fileable suffix list is fetched from MIIT's 中国互联网域名体系 page and cached in data/cache/icp-suffixes.json;
+# refetched when older than this. "0" keeps the list built into this release, "forever" fetches once.
+# 可备案后缀名单从工信部《中国互联网域名体系》自动获取，缓存在 data/cache/icp-suffixes.json，超过此时间重新获取。
+# "0" 只用本版本内置的名单，"forever" 只获取一次。
+suffix_cache_ttl = ` + tomlCacheDuration(cfg.ICPSuffixCacheTTL) + `
+# Suffixes to treat as ICP-fileable in addition to MIIT's list, for TLDs approved before MIIT lists them.
+# 工信部名单之外，额外视为可备案的后缀。
 extra_suffixes = ` + tomlList(cfg.ICPExtraSuffixes) + `
 
 [rate_limit]

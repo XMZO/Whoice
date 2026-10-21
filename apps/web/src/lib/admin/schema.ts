@@ -19,7 +19,7 @@ export type Field =
   | (Base & { type: "tokens" })
   | (Base & { type: "prompt" });
 
-// view: a read-only block rendered after the group's fields.
+// view: a read-only summary shown at the right of the group's title.
 export type Group = { title?: T3; fields: Field[]; view?: "icp-suffixes" };
 
 export type SectionId = "overview" | "lookup" | "dns" | "enrichment" | "ai" | "icp" | "access" | "monitor" | "account";
@@ -179,7 +179,7 @@ export const SETTINGS_SECTIONS: Section[] = [
           toggle("icp.auto_query", t3("Query automatically", "自动查询", "自動查詢"), t3("Otherwise users click to query", "否则由用户手动查询", "否則由使用者手動查詢")),
           toggle("icp.captcha_enabled", t3("Solve captchas", "处理验证码", "處理驗證碼")),
           { type: "number", path: "icp.captcha_retries", label: t3("Captcha retries", "验证码重试", "驗證碼重試"), min: 0, max: 10 },
-          { type: "text", path: "icp.upstream_url", label: t3("Upstream service", "上游服务", "上游服務"), hint: t3("ICP_Query-compatible; replaces direct MIIT access", "兼容 ICP_Query，替代直连工信部", "相容 ICP_Query，取代直連工信部"), placeholder: "http://127.0.0.1:16181", mono: true, wide: true },
+          { type: "text", path: "icp.upstream_url", label: t3("Upstream service", "上游服务", "上游服務"), hint: t3("ICP_Query-compatible; replaces direct MIIT access", "兼容 ICP_Query，替代直连工信部", "相容 ICP_Query，取代直連工信部"), placeholder: "http://127.0.0.1:16181", mono: true },
         ],
       },
       {
@@ -189,6 +189,7 @@ export const SETTINGS_SECTIONS: Section[] = [
           duration("icp.cache_ttl", t3("Found results", "有备案结果", "有備案結果"), undefined, true),
           duration("icp.negative_cache_ttl", t3("Empty results", "无备案结果", "無備案結果"), undefined, true),
           duration("icp.error_cache_ttl", t3("Errors", "查询出错", "查詢出錯"), undefined, true),
+          duration("icp.suffix_cache_ttl", t3("Fileable-suffix list", "可备案后缀名单", "可備案後綴名單"), t3("Fetched from MIIT · 0 uses the built-in list", "从工信部自动获取 · 0 只用内置名单", "從工信部自動取得 · 0 只用內建名單"), true),
         ],
       },
       {
@@ -200,7 +201,7 @@ export const SETTINGS_SECTIONS: Section[] = [
             type: "list",
             path: "icp.extra_suffixes",
             label: t3("Extra fileable suffixes", "额外的可备案后缀", "額外的可備案後綴"),
-            hint: t3("Newly approved TLDs missing from the built-in list", "内置名单里还没有的新批复顶级域", "內建名單裡還沒有的新批覆頂級域"),
+            hint: t3("TLDs approved before MIIT lists them", "工信部名单还没列出的新批复顶级域", "工信部名單還沒列出的新批覆頂級域"),
             placeholder: "io",
           },
           { type: "text", path: "icp.base_url", label: t3("MIIT API URL", "工信部接口地址", "工信部介面位址"), mono: true },

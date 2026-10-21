@@ -41,7 +41,7 @@ type Service struct {
 	merger           merger.Merger
 	registrars       *registrars.Registry
 	brands           *brandmap.Registry
-	icpSuffixes      *icpsuffixes.List
+	icpSuffixes      *icpsuffixes.Store
 	enrichment       *enrichmentdata.Registry
 	pricing          *pricing.Resolver
 	fx               *fx.Service
@@ -68,7 +68,7 @@ func NewService(cfg config.Config, providerList []providers.Provider, parserRegi
 		merger:      merger.New(),
 		registrars:  registrarRegistry,
 		brands:      brandRegistry,
-		icpSuffixes: icpsuffixes.NewDefault(cfg.DataDir).WithExtra(cfg.ICPExtraSuffixes),
+		icpSuffixes: icpsuffixes.NewStore(cfg.DataDir, cfg.ICPSuffixCacheTTL, cfg.ICPExtraSuffixes),
 		enrichment:  enrichmentRegistry,
 		pricing:     buildPricingResolver(cfg),
 		fx:          fx.New(cfg.DataDir, cfg.FXCacheTTL),
@@ -106,6 +106,15 @@ func (s *Service) StartBackground(ctx context.Context) {
 	runCtx, cancel := context.WithCancel(ctx)
 	s.backgroundCancel = cancel
 	s.pricing.Start(runCtx)
+	s.icpSuffixes.Start(runCtx)
+}
+
+// ICPSuffixInfo describes the ICP-fileable suffix list in use.
+func (s *Service) ICPSuffixInfo() icpsuffixes.Info {
+	if s == nil {
+		return (*icpsuffixes.Store)(nil).Info()
+	}
+	return s.icpSuffixes.Info()
 }
 
 func (s *Service) StopBackground() {
@@ -546,7 +555,7 @@ func (s *Service) icpFilingStep() pipeline.Enricher {
 				return nil
 			}
 			if !q.PrivateSuffix {
-				if matched, ok := s.icpSuffixes.Match(q.Suffix); ok {
+				if matched, ok := s.icpSuffixes.List().Match(q.Suffix); ok {
 					result.Enrichment.ICPFiling = &model.ICPFilingInfo{Eligible: true, Suffix: matched}
 					return nil
 				}

@@ -42,10 +42,14 @@ export function SettingsSection({
         );
         return (
           <section className="adm-group" key={group.title ? group.title[0] : index}>
-            {group.title && <h3 className="adm-group-title">{pick(group.title)}</h3>}
+            {group.title && (
+              <div className="adm-group-head">
+                <h3 className="adm-group-title">{pick(group.title)}</h3>
+                {group.view === "icp-suffixes" && config.icpSuffixes && <ICPSuffixView list={config.icpSuffixes} />}
+              </div>
+            )}
             {toggles.length > 0 && <div className="adm-toggles">{toggles.map(row)}</div>}
             {inputs.length > 0 && <div className="adm-fields">{inputs.map(row)}</div>}
-            {group.view === "icp-suffixes" && config.icpSuffixes && <ICPSuffixView list={config.icpSuffixes} />}
           </section>
         );
       })}

@@ -83,6 +83,7 @@ type Config struct {
 	ICPCacheTTL            time.Duration
 	ICPNegativeCacheTTL    time.Duration
 	ICPErrorCacheTTL       time.Duration
+	ICPSuffixCacheTTL      time.Duration
 	ICPBaseURL             string
 	ICPUpstreamURL         string
 	ICPCaptchaEnabled      bool
@@ -231,6 +232,7 @@ func Default() Config {
 		ICPCacheTTL:         72 * time.Hour,
 		ICPNegativeCacheTTL: 12 * time.Hour,
 		ICPErrorCacheTTL:    10 * time.Minute,
+		ICPSuffixCacheTTL:   168 * time.Hour,
 		ICPBaseURL:          "https://hlwicpfwc.miit.gov.cn/icpproject_query/api",
 		ICPCaptchaEnabled:   true,
 		ICPCaptchaRetries:   3,
@@ -593,6 +595,7 @@ type ICPConfig struct {
 	PageSize         *int     `toml:"page_size" json:"page_size,omitempty"`
 	Blocklist        []string `toml:"blocklist" json:"blocklist,omitempty"`
 	ExtraSuffixes    []string `toml:"extra_suffixes" json:"extra_suffixes,omitempty"`
+	SuffixCacheTTL   *string  `toml:"suffix_cache_ttl" json:"suffix_cache_ttl,omitempty"`
 }
 
 type RateLimitConfig struct {
@@ -809,6 +812,9 @@ func (f FileConfig) Apply(cfg *Config) error {
 		if err := setCacheDuration(&cfg.ICPErrorCacheTTL, f.ICP.ErrorCacheTTL, "icp.error_cache_ttl"); err != nil {
 			return err
 		}
+		if err := setCacheDuration(&cfg.ICPSuffixCacheTTL, f.ICP.SuffixCacheTTL, "icp.suffix_cache_ttl"); err != nil {
+			return err
+		}
 		setString(&cfg.ICPBaseURL, f.ICP.BaseURL)
 		setString(&cfg.ICPUpstreamURL, f.ICP.UpstreamURL)
 		setBool(&cfg.ICPCaptchaEnabled, f.ICP.CaptchaEnabled)
@@ -906,6 +912,7 @@ func applyEnv(cfg *Config) {
 	envCacheDurationInto(&cfg.ICPCacheTTL, "WHOICE_ICP_CACHE_TTL")
 	envCacheDurationInto(&cfg.ICPNegativeCacheTTL, "WHOICE_ICP_NEGATIVE_CACHE_TTL")
 	envCacheDurationInto(&cfg.ICPErrorCacheTTL, "WHOICE_ICP_ERROR_CACHE_TTL")
+	envCacheDurationInto(&cfg.ICPSuffixCacheTTL, "WHOICE_ICP_SUFFIX_CACHE_TTL")
 	envStringInto(&cfg.ICPBaseURL, "WHOICE_ICP_BASE_URL")
 	envStringInto(&cfg.ICPUpstreamURL, "WHOICE_ICP_UPSTREAM_URL")
 	envBoolInto(&cfg.ICPCaptchaEnabled, "WHOICE_ICP_CAPTCHA_ENABLED")

@@ -5,7 +5,7 @@ package icpsuffixes
 import (
 	"embed"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -28,6 +28,8 @@ type File struct {
 	UpdatedAt   string   `json:"updatedAt"`
 	Sources     []Source `json:"sources"`
 	Suffixes    []string `json:"suffixes"`
+	// FetchedAt is set on lists fetched from MIIT at runtime.
+	FetchedAt string `json:"fetchedAt,omitempty"`
 }
 
 // List matches a domain suffix against the approved TLDs. Entries are keyed
@@ -44,8 +46,12 @@ func Parse(reader io.Reader) (*List, error) {
 	if err := decoder.Decode(&file); err != nil {
 		return nil, err
 	}
+	return parseFile(file)
+}
+
+func parseFile(file File) (*List, error) {
 	if len(file.Suffixes) == 0 {
-		return nil, fmt.Errorf("ICP suffix list is empty")
+		return nil, errors.New("ICP suffix list is empty")
 	}
 	list := &List{file: file, keys: map[string]string{}}
 	for _, suffix := range file.Suffixes {
@@ -130,9 +136,12 @@ func (l *List) Match(suffix string) (string, bool) {
 	return "", false
 }
 
-// Info describes the built-in list for the admin panel; configured extras
-// are a setting of their own.
+// Info describes the list in use for the admin panel; configured extras are
+// a setting of their own. Origin is "miit" for a list fetched at runtime
+// (FetchedAt says when) and "builtin" for the snapshot shipped in the build.
 type Info struct {
+	Origin    string   `json:"origin,omitempty"`
+	FetchedAt string   `json:"fetchedAt,omitempty"`
 	UpdatedAt string   `json:"updatedAt"`
 	Sources   []Source `json:"sources"`
 	Suffixes  []string `json:"suffixes"`

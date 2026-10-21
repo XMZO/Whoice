@@ -1,7 +1,9 @@
-// Refreshes packages/data/icp-suffixes/icp-suffixes.json from MIIT's
-// 中国互联网域名体系 page (https://domain.miit.gov.cn/chinayu.jsp), which loads
-// the approved TLDs from /yuming/getYMList, then copies it into the API's
-// embedded snapshot. A failed or implausible fetch keeps the current list.
+// Refreshes the built-in ICP suffix snapshot (packages/data/icp-suffixes and
+// the API's embedded copy) from MIIT's 中国互联网域名体系 page
+// (https://domain.miit.gov.cn/chinayu.jsp), which loads the approved TLDs from
+// /yuming/getYMList. Running instances fetch the same list themselves; this
+// only keeps the fallback shipped in a release current. A failed or
+// implausible fetch keeps the current list.
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 

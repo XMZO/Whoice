@@ -3,8 +3,16 @@ import type { ICPSuffixList } from "@/lib/admin/api";
 import { useAdminText } from "@/lib/admin/text";
 import { t3 } from "@/lib/t3";
 
-// The built-in ICP-fileable suffix list: one summary line in the section, the
-// full list in a dialog, so the section stays short.
+// The ICP-fileable suffix list in use (fetched from MIIT, or the one built into
+// this release): one summary line in the section, the full list in a dialog,
+// so the section stays short.
+function formatTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 export function ICPSuffixView({ list }: { list: ICPSuffixList }) {
   const { pick } = useAdminText();
   const dialog = useRef<HTMLDialogElement>(null);
@@ -13,11 +21,15 @@ export function ICPSuffixView({ list }: { list: ICPSuffixList }) {
     const needle = filter.trim().toLowerCase().replace(/^\./, "");
     return needle ? list.suffixes.filter((suffix) => suffix.includes(needle)) : list.suffixes;
   }, [filter, list.suffixes]);
-  const summary = pick(t3(`${list.suffixes.length} suffixes · updated ${list.updatedAt}`, `${list.suffixes.length} 个后缀 · 更新于 ${list.updatedAt}`, `${list.suffixes.length} 個後綴 · 更新於 ${list.updatedAt}`));
-  const title = pick(t3("Built-in fileable suffixes", "内置可备案后缀", "內建可備案後綴"));
+  const count = list.suffixes.length;
+  const fetched = list.origin === "miit" && list.fetchedAt ? formatTime(list.fetchedAt) : "";
+  const summary = fetched
+    ? pick(t3(`${count} suffixes · fetched from MIIT ${fetched}`, `${count} 个后缀 · 工信部 · 获取于 ${fetched}`, `${count} 個後綴 · 工信部 · 取得於 ${fetched}`))
+    : pick(t3(`${count} suffixes · built into this release (${list.updatedAt})`, `${count} 个后缀 · 本版本内置（${list.updatedAt}）`, `${count} 個後綴 · 本版本內建（${list.updatedAt}）`));
+  const title = pick(t3("ICP-fileable suffixes", "可备案后缀名单", "可備案後綴名單"));
   return (
     <div className="adm-suffix-line">
-      <span className="adm-label">{pick(t3("Built-in list", "内置名单", "內建名單"))}</span>
+      <span className="adm-label">{pick(t3("Fileable suffixes", "可备案后缀", "可備案後綴"))}</span>
       <span className="adm-hint">{summary}</span>
       <button type="button" className="adm-link-button" onClick={() => dialog.current?.showModal()}>
         {pick(t3("View all", "查看全部", "查看全部"))}

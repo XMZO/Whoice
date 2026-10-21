@@ -26,8 +26,10 @@ export type EditorStatus = {
   reason?: string;
 };
 
-/** The built-in list of ICP-fileable suffixes, shown read-only. */
+/** The ICP-fileable suffix list in use, shown read-only: fetched from MIIT ("miit") or built in. */
 export type ICPSuffixList = {
+  origin?: "miit" | "builtin";
+  fetchedAt?: string;
   updatedAt: string;
   sources: { name: string; url: string }[];
   suffixes: string[];
