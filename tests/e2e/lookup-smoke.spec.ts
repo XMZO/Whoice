@@ -1020,3 +1020,13 @@ test("a search typed while the page is still loading is not lost", async ({ page
   await page.getByLabel("Search query").press("Enter");
   await expect(page.getByRole("heading", { name: "early.test" })).toBeVisible();
 });
+
+test("a domain paid years ahead is badged with the year it runs to", async ({ page }) => {
+  const badges = page.locator(".hero-badges");
+  await seedLookup(page, "decade.test", lookupFixture("decade.test", { dates: { expiresAt: "2035-12-12T23:59:59Z", remainingDays: 3338 } }));
+  await expect(badges).toContainText("Paid through 2035");
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+
+  await seedLookup(page, "short.test", lookupFixture("short.test", { dates: { expiresAt: "2029-12-12T23:59:59Z", remainingDays: 1100 } }));
+  await expect(badges).not.toContainText("Paid through");
+});

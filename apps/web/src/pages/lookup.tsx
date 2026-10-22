@@ -468,6 +468,11 @@ function expiryCalendar(uid: string, expires: Date, summary: string, description
   return lines.map(icsFold).join("\r\n") + "\r\n";
 }
 
+// Renewals usually run a year or two; five years or more ahead is a long
+// prepayment, and nine is near the 10-year maximum a gTLD allows.
+const LONG_PREPAID_DAYS = 5 * 365;
+const NEAR_MAX_PREPAID_DAYS = 9 * 365;
+
 // ICANN locks a domain against another registrar transfer for 60 days after
 // one, so that is how long a transfer counts as recent.
 const RECENT_TRANSFER_DAYS = 60;
@@ -585,6 +590,26 @@ function MarketTags({ result }: { result: LookupResult }) {
           title={pick(t3(`Expires on ${expiresOn}, in ${remaining} days`, `${expiresOn} 到期，还剩 ${remaining} 天`, `${expiresOn} 到期，還剩 ${remaining} 天`))}
         >
           {pick(t3("Expiring soon", "即将过期", "即將過期"))}
+        </span>
+      )}
+      {remaining !== undefined && remaining !== null && remaining >= LONG_PREPAID_DAYS && expiresOn && (
+        <span
+          className="pill pill-green"
+          title={pick(
+            remaining >= NEAR_MAX_PREPAID_DAYS
+              ? t3(
+                  `Paid through ${expiresOn}, about ${Math.floor(remaining / 365.25)} years ahead: close to the 10-year maximum a gTLD can be renewed in advance.`,
+                  `已续至 ${expiresOn}，剩余约 ${Math.floor(remaining / 365.25)} 年，已接近 gTLD 最多可提前续费的 10 年上限`,
+                  `已續至 ${expiresOn}，剩餘約 ${Math.floor(remaining / 365.25)} 年，已接近 gTLD 最多可提前續費的 10 年上限`,
+                )
+              : t3(
+                  `Paid through ${expiresOn}, about ${Math.floor(remaining / 365.25)} years ahead (a gTLD can be renewed up to 10 years in advance).`,
+                  `已续至 ${expiresOn}，剩余约 ${Math.floor(remaining / 365.25)} 年（gTLD 最多可提前续费到 10 年后）`,
+                  `已續至 ${expiresOn}，剩餘約 ${Math.floor(remaining / 365.25)} 年（gTLD 最多可提前續費到 10 年後）`,
+                ),
+          )}
+        >
+          {pick(t3(`Paid through ${expiresOn.slice(0, 4)}`, `续至 ${expiresOn.slice(0, 4)} 年`, `續至 ${expiresOn.slice(0, 4)} 年`))}
         </span>
       )}
       {sale && (
