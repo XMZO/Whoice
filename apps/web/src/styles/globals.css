@@ -1108,6 +1108,16 @@ button.src-tag {
   font-size: clamp(11px, calc(100cqi / (var(--chars) * 0.62)), 16px);
 }
 
+/* A very long name takes two lines, sized so all of it fits. */
+.metric-value.fit[data-long] {
+  -webkit-box-orient: vertical;
+  display: -webkit-box;
+  font-size: clamp(11px, calc(200cqi / (var(--chars) * 0.62)), 16px);
+  -webkit-line-clamp: 2;
+  line-height: 1.25;
+  white-space: normal;
+}
+
 .metric-ok .metric-value {
   color: var(--green);
 }
@@ -3595,18 +3605,30 @@ button.src-tag {
     padding: 0;
   }
 
+  /* The icon moves to the corner beside the label, so the value and the
+     full timestamp get the card's whole width. */
   .metric {
-    gap: 8px;
     padding: 9px;
+    position: relative;
   }
 
   .metric-icon {
-    height: 28px;
-    width: 28px;
+    border-radius: 6px;
+    height: 22px;
+    position: absolute;
+    right: 8px;
+    top: 8px;
+    width: 22px;
+  }
+
+  .metric-icon svg {
+    height: 13px;
+    width: 13px;
   }
 
   .metric-label {
     font-size: 11.5px;
+    padding-right: 26px;
   }
 
   .metric-value {
@@ -3615,6 +3637,10 @@ button.src-tag {
 
   .metric-value.fit {
     font-size: clamp(10px, calc(100cqi / (var(--chars) * 0.62)), 14px);
+  }
+
+  .metric-value.fit[data-long] {
+    font-size: clamp(10px, calc(200cqi / (var(--chars) * 0.62)), 14px);
   }
 
   .metric-sub,

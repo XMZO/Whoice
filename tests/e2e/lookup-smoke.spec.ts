@@ -1030,3 +1030,21 @@ test("a domain paid years ahead is badged with the year it runs to", async ({ pa
   await seedLookup(page, "short.test", lookupFixture("short.test", { dates: { expiresAt: "2029-12-12T23:59:59Z", remainingDays: 1100 } }));
   await expect(badges).not.toContainText("Paid through");
 });
+
+test("overview cards show full timestamps and long registrar names", async ({ page }) => {
+  await seedLookup(
+    page,
+    "longname.test",
+    lookupFixture("longname.test", {
+      registrar: { name: "Alibaba Cloud Computing (Beijing) Co., Ltd.", ianaId: "420", country: "CN" },
+      dates: { createdAt: "2007-09-28T11:09:56Z", expiresAt: "2029-09-28T11:09:56Z", updatedAt: "2026-08-19T15:35:44Z", ageDays: 6965, remainingDays: 1072 },
+    }),
+  );
+  await expect(page.locator(".metric-grid")).toContainText("2007-09-28 11:09:56Z");
+  const clipped = await page.evaluate(() =>
+    [...document.querySelectorAll(".metric-value, .metric-sub")]
+      .filter((el) => el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 2)
+      .map((el) => el.textContent?.trim()),
+  );
+  expect(clipped).toEqual([]);
+});

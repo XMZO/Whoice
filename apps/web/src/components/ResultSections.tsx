@@ -104,17 +104,26 @@ export function Skel({ width = "6em" }: { width?: string }) {
 
 /* ---------- Hero metrics and locks ---------- */
 
+// Names longer than this take two lines.
+const LONG_NAME_CHARS = 24;
+
 // Every metric keeps the same three lines (label, value, sub) whether or not
 // the value has arrived, so streamed fields fill in without resizing cards.
 // A name value (registrar, network) passes `fit` so a long one shrinks to fit
-// its card instead of being cut off.
+// its card instead of being cut off; a very long one ("Alibaba Cloud Computing
+// (Beijing) Co., Ltd.") takes two lines instead.
 function Metric({ icon, label, value, sub, tone, badge, title, fit }: { icon: ReactNode; label: string; value: ReactNode; sub?: ReactNode; tone?: "ok" | "warn" | "danger"; badge?: string; title?: string; fit?: string }) {
   return (
     <div className={`metric${tone ? ` metric-${tone}` : ""}`}>
       <span className="metric-icon" aria-hidden="true">{icon}</span>
       <span className="metric-body">
         <span className="metric-label">{label}</span>
-        <strong className={fit ? "metric-value fit" : "metric-value"} title={title} style={fit ? ({ "--chars": fit.length + 2 } as CSSProperties) : undefined}>
+        <strong
+          className={fit ? "metric-value fit" : "metric-value"}
+          title={title}
+          data-long={fit && fit.length > LONG_NAME_CHARS ? "" : undefined}
+          style={fit ? ({ "--chars": fit.length + 2 } as CSSProperties) : undefined}
+        >
           {value}
           {badge && <span className="metric-badge">{badge}</span>}
         </strong>
