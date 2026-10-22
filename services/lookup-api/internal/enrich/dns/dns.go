@@ -151,9 +151,12 @@ func applyNSComparison(result *model.LookupResult, info *model.DNSInfo) {
 	if len(info.RegistryNS) == 0 || len(info.NS) == 0 {
 		return
 	}
-	if !sameStringSet(info.RegistryNS, info.NS) {
+	// Only a delegated nameserver the zone does not list is a mismatch (a
+	// recent change, or a broken setup). Extra NS records in the zone are
+	// harmless: moe.com lists ns3.hover.com beside the delegated ns1/ns2.
+	if missing := missingFrom(info.NS, info.RegistryNS); len(missing) > 0 {
 		info.NSMismatch = true
-		result.Meta.Warnings = append(result.Meta.Warnings, "Registry/WHOIS nameservers differ from live DNS NS records; this can happen after recent NS changes or resolver cache lag")
+		result.Meta.Warnings = append(result.Meta.Warnings, "Registry/WHOIS nameservers differ from live DNS NS records: "+strings.Join(missing, ", ")+" not listed in the zone; this can happen after recent NS changes or resolver cache lag")
 	}
 }
 
@@ -175,16 +178,19 @@ func normalizeNSHost(value string) string {
 	return strings.ToLower(strings.TrimSuffix(strings.TrimSpace(value), "."))
 }
 
-func sameStringSet(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
+// missingFrom returns the values not present in set.
+func missingFrom(set, values []string) []string {
+	have := make(map[string]bool, len(set))
+	for _, value := range set {
+		have[value] = true
 	}
-	for index := range a {
-		if a[index] != b[index] {
-			return false
+	var missing []string
+	for _, value := range values {
+		if !have[value] {
+			missing = append(missing, value)
 		}
 	}
-	return true
+	return missing
 }
 
 func sortAddresses(values []model.DNSAddress) {

@@ -347,7 +347,18 @@ export function DNSSection({
   const resolvers = Array.isArray(dns?.resolvers) ? dns.resolvers : [];
   const answered = resolvers.filter((resolver) => (resolver.status || "ok") === "ok").length;
   const dnsvizURL = result.enrichment?.dnsviz?.url;
-  const nsConsistency = registryNs.length && liveNs.length ? (dns?.nsMismatch ? t("nsDiffer") : t("nsConsistent")) : "";
+  // Extra NS records in the zone beyond the registry delegation are harmless
+  // (moe.com lists ns3.hover.com beside the delegated ns1/ns2); they are noted,
+  // not reported as a mismatch.
+  const delegated = new Set(registryNs.map(normalizeHost));
+  const extraNs = liveNs.map(normalizeHost).filter((host) => host && !delegated.has(host));
+  const nsConsistency = registryNs.length && liveNs.length
+    ? dns?.nsMismatch
+      ? t("nsDiffer")
+      : extraNs.length
+        ? `${t("nsConsistent")}${pick(t3(` (the zone lists ${extraNs.length} more)`, `（区域另声明 ${extraNs.length} 台）`, `（區域另宣告 ${extraNs.length} 台）`))}`
+        : t("nsConsistent")
+    : "";
 
   const addressLine = (records: typeof a, emptyText: string) => {
     if (!records.length) return <span className="muted">{emptyText}</span>;

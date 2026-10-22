@@ -873,3 +873,31 @@ func (emptyResolver) LookupIPAddr(context.Context, string) ([]net.IPAddr, error)
 func (emptyResolver) LookupCNAME(context.Context, string) (string, error)        { return "", nil }
 func (emptyResolver) LookupMX(context.Context, string) ([]*net.MX, error)        { return nil, nil }
 func (emptyResolver) LookupNS(context.Context, string) ([]*net.NS, error)        { return nil, nil }
+
+type extraNSResolver struct{ fakeResolver }
+
+func (extraNSResolver) LookupNS(context.Context, string) ([]*net.NS, error) {
+	return []*net.NS{{Host: "ns1.example.com."}, {Host: "ns2.example.com."}, {Host: "ns3.example.com."}}, nil
+}
+
+// moe.com: the registry delegates to ns1/ns2.hover.com and the zone also lists
+// ns3. Extra NS records in the zone are harmless; only a delegated server the
+// zone does not list is a mismatch.
+func TestExtraZoneNameserversAreNotAMismatch(t *testing.T) {
+	result := &model.LookupResult{
+		NormalizedQuery: "example.com",
+		Type:            model.QueryDomain,
+		Nameservers:     []model.Nameserver{{Host: "ns1.example.com"}, {Host: "NS2.example.com."}},
+	}
+	ApplyWithResolver(context.Background(), result, 0, extraNSResolver{})
+	if result.Enrichment.DNS == nil || result.Enrichment.DNS.NSMismatch || len(result.Meta.Warnings) != 0 {
+		t.Fatalf("expected no mismatch, got %+v, warnings %v", result.Enrichment.DNS, result.Meta.Warnings)
+	}
+
+	result.Nameservers = append(result.Nameservers, model.Nameserver{Host: "ns9.example.com"})
+	result.Enrichment.DNS = nil
+	ApplyWithResolver(context.Background(), result, 0, extraNSResolver{})
+	if result.Enrichment.DNS == nil || !result.Enrichment.DNS.NSMismatch || len(result.Meta.Warnings) != 1 || !strings.Contains(result.Meta.Warnings[0], "ns9.example.com not listed") {
+		t.Fatalf("expected a mismatch naming ns9, got %+v, warnings %v", result.Enrichment.DNS, result.Meta.Warnings)
+	}
+}
