@@ -142,6 +142,7 @@ func mergeDates(result *model.LookupResult, part *model.PartialResult) {
 	result.Dates.UpdatedAt = pick(result.Dates.UpdatedAt, part.Dates.UpdatedAt)
 	result.Dates.ExpiresAt = pick(result.Dates.ExpiresAt, part.Dates.ExpiresAt)
 	result.Dates.AvailableAt = pick(result.Dates.AvailableAt, part.Dates.AvailableAt)
+	result.Dates.TransferredAt = pick(result.Dates.TransferredAt, part.Dates.TransferredAt)
 }
 
 func mergeStatuses(result *model.LookupResult, part *model.PartialResult) {
@@ -435,7 +436,7 @@ var dayMonthNameLayouts = []string{"02-Jan-2006", "2 January 2006", "2 Jan 2006"
 // "09-Apr-2026 06:18:01 UTC" as RFC 3339. Values without a time zone are
 // left as they are; placeholders such as "N/A" are dropped.
 func normalizeDates(dates *model.DateInfo) {
-	for _, value := range []*string{&dates.CreatedAt, &dates.UpdatedAt, &dates.ExpiresAt} {
+	for _, value := range []*string{&dates.CreatedAt, &dates.UpdatedAt, &dates.ExpiresAt, &dates.TransferredAt} {
 		trimmed := strings.TrimSpace(*value)
 		if trimmed == "" {
 			continue

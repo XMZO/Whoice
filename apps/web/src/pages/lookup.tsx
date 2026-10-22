@@ -399,8 +399,12 @@ function StatusBadge({ status }: { status: string }) {
 // Registry lifecycle stage worth a badge. Per RFC 3915 a domain in redemption
 // carries redemptionPeriod (with pendingDelete); pendingDelete alone means the
 // redemption window is over and the registry is about to release the name.
+function statusCodes(statuses: LookupResult["statuses"] | undefined) {
+  return new Set((Array.isArray(statuses) ? statuses : []).map((status) => (status.label || status.code || "").toLowerCase().replace(/^.*#/, "").replace(/[\s_-]/g, "")));
+}
+
 function lifecycleStage(statuses: LookupResult["statuses"] | undefined): "redemption" | "pendingDelete" | null {
-  const codes = new Set((Array.isArray(statuses) ? statuses : []).map((status) => (status.label || status.code || "").toLowerCase().replace(/^.*#/, "").replace(/[\s_-]/g, "")));
+  const codes = statusCodes(statuses);
   if (codes.has("redemptionperiod")) return "redemption";
   if (codes.has("pendingdelete")) return "pendingDelete";
   return null;
@@ -462,6 +466,93 @@ function expiryCalendar(uid: string, expires: Date, summary: string, description
     "END:VCALENDAR",
   ];
   return lines.map(icsFold).join("\r\n") + "\r\n";
+}
+
+// ICANN locks a domain against another registrar transfer for 60 days after
+// one, so that is how long a transfer counts as recent.
+const RECENT_TRANSFER_DAYS = 60;
+
+function daysSince(value?: string) {
+  const time = value ? Date.parse(value) : Number.NaN;
+  if (Number.isNaN(time)) return undefined;
+  const days = Math.floor((Date.now() - time) / 86_400_000);
+  return days >= 0 ? days : undefined;
+}
+
+// Transfer and renewal badges, from the registry's own statuses (EPP grace
+// periods) and its published transfer date only.
+function ActivityTags({ result }: { result: LookupResult }) {
+  const pick = useT3();
+  if (result.status !== "registered") return null;
+  const codes = statusCodes(result.statuses);
+  const transferredOn = (result.dates?.transferredAt || "").slice(0, 10);
+  const sinceTransfer = daysSince(result.dates?.transferredAt);
+  const pendingTransfer = codes.has("pendingtransfer");
+  const recentTransfer = !pendingTransfer && (codes.has("transferperiod") || (sinceTransfer !== undefined && sinceTransfer <= RECENT_TRANSFER_DAYS));
+  return (
+    <>
+      {pendingTransfer && (
+        <span
+          className="pill"
+          title={pick(
+            t3(
+              "A transfer to another registrar is in progress (registry status pendingTransfer); it completes or is rejected within about 5 days.",
+              "正在转移到其他注册商（注册局状态 pendingTransfer），通常约 5 天内完成或被拒绝",
+              "正在轉移到其他註冊商（註冊局狀態 pendingTransfer），通常約 5 天內完成或被拒絕",
+            ),
+          )}
+        >
+          {pick(t3("Transfer pending", "转移中", "轉移中"))}
+        </span>
+      )}
+      {recentTransfer && (
+        <span
+          className="pill"
+          title={
+            sinceTransfer !== undefined && sinceTransfer <= RECENT_TRANSFER_DAYS
+              ? pick(
+                  t3(
+                    `Moved to its current registrar on ${transferredOn} (${sinceTransfer} days ago); another transfer is locked for 60 days after one.`,
+                    `${transferredOn} 转入当前注册商（${sinceTransfer} 天前）；转移后 60 天内不能再次转移`,
+                    `${transferredOn} 轉入目前註冊商（${sinceTransfer} 天前）；轉移後 60 天內不能再次轉移`,
+                  ),
+                )
+              : pick(
+                  t3(
+                    "Just moved to its current registrar (registry status transferPeriod, the 5-day grace period after a transfer).",
+                    "刚转入当前注册商（注册局状态 transferPeriod，转移后 5 天宽限期内）",
+                    "剛轉入目前註冊商（註冊局狀態 transferPeriod，轉移後 5 天寬限期內）",
+                  ),
+                )
+          }
+        >
+          {pick(t3("Recently transferred", "近期转移", "近期轉移"))}
+        </span>
+      )}
+      {codes.has("renewperiod") && (
+        <span
+          className="pill"
+          title={pick(t3("Renewed within the last 5 days (registry status renewPeriod).", "5 天内刚续费过（注册局状态 renewPeriod）", "5 天內剛續費過（註冊局狀態 renewPeriod）"))}
+        >
+          {pick(t3("Recently renewed", "近期续费", "近期續費"))}
+        </span>
+      )}
+      {codes.has("autorenewperiod") && (
+        <span
+          className="pill"
+          title={pick(
+            t3(
+              "Reached its expiry date and the registry renewed it automatically (autoRenewPeriod); for 45 days the registrar may still delete it, common when the owner did not renew.",
+              "已到期，注册局自动续了一年（状态 autoRenewPeriod）；45 天内注册商仍可能删除它，持有人没有续费时很常见",
+              "已到期，註冊局自動續了一年（狀態 autoRenewPeriod）；45 天內註冊商仍可能刪除它，持有人沒有續費時很常見",
+            ),
+          )}
+        >
+          {pick(t3("Auto-renew grace", "自动续期宽限期", "自動續期寬限期"))}
+        </span>
+      )}
+    </>
+  );
 }
 
 function MarketTags({ result }: { result: LookupResult }) {
@@ -718,12 +809,20 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
       options,
       nonce: lookupUrl(query, sourceMode, options) === handledURLRef.current ? current.nonce : current.nonce + 1,
     }));
-    setSearchValue(query);
+    // A URL without a query leaves whatever is being typed in the box.
+    setSearchValue((current) => query || current);
     handledURLRef.current = propsURL;
     if (response.ok && query) {
       writeHistory(normalizeLookupInput(query));
     }
   }, [httpStatus, options, pending, query, response, router.asPath, router.isReady, sourceMode]);
+
+  // Text typed before the page hydrated is in the input but not in state;
+  // adopt it so a quick search is not sent empty.
+  useEffect(() => {
+    const typed = (document.getElementById("lookup-mini-search") as HTMLInputElement | null)?.value || "";
+    if (typed) setSearchValue(typed);
+  }, []);
 
   useEffect(() => {
     setICPState({ domain: icpDomain, loading: false, requested: false });
@@ -1322,6 +1421,7 @@ export default function LookupPage({ query, pending, response, httpStatus, sourc
                       </span>
                     )}
                     <MarketTags result={view} />
+                    <ActivityTags result={view} />
                     {state.pending && (
                       <span className="pill pill-amber pulse" role="status" title={pendingSources.map(sourceName).join(" · ")}>
                         {skeleton ? "" : `${pick(t3("Updating", "正在补全", "正在補全"))} · `}

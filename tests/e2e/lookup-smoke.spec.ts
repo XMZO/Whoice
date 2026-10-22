@@ -993,3 +993,30 @@ test("expiry badges and the calendar reminder", async ({ page }, testInfo) => {
   await seedLookup(page, "free.test", lookupFixture("free.test", { status: "unregistered" }));
   await expect(page.getByRole("button", { name: "Expiry reminder" })).toBeDisabled();
 });
+
+test("transfer and renewal badges come from registry dates and grace-period statuses", async ({ page }) => {
+  const badges = page.locator(".hero-badges");
+  const daysAgo = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
+  const cases: { name: string; overrides: Record<string, any>; has: string[]; not: string[] }[] = [
+    { name: "moved.test", overrides: { dates: { transferredAt: daysAgo(10) } }, has: ["Recently transferred"], not: ["Transfer pending"] },
+    { name: "settled.test", overrides: { dates: { transferredAt: daysAgo(100) } }, has: [], not: ["Recently transferred"] },
+    { name: "moving.test", overrides: { statuses: [{ code: "pendingTransfer" }, { code: "transferPeriod" }] }, has: ["Transfer pending"], not: ["Recently transferred"] },
+    { name: "renewed.test", overrides: { statuses: [{ code: "renewPeriod" }] }, has: ["Recently renewed"], not: [] },
+    { name: "lapsing.test", overrides: { statuses: [{ code: "autoRenewPeriod" }] }, has: ["Auto-renew grace"], not: ["Recently renewed"] },
+    { name: "free2.test", overrides: { status: "unregistered", statuses: [{ code: "renewPeriod" }], dates: { transferredAt: daysAgo(3) } }, has: [], not: ["Recently renewed", "Recently transferred"] },
+  ];
+  for (const item of cases) {
+    await seedLookup(page, item.name, lookupFixture(item.name, item.overrides));
+    for (const text of item.has) await expect(badges).toContainText(text);
+    for (const text of item.not) await expect(badges).not.toContainText(text);
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+  }
+});
+
+test("a search typed while the page is still loading is not lost", async ({ page }) => {
+  await routeLookupFixtures(page, { "early.test": lookupFixture("early.test") });
+  await page.goto("/lookup", { waitUntil: "commit" });
+  await page.getByLabel("Search query").fill("early.test");
+  await page.getByLabel("Search query").press("Enter");
+  await expect(page.getByRole("heading", { name: "early.test" })).toBeVisible();
+});

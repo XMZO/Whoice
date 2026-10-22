@@ -153,6 +153,7 @@ func (SEWHOISParser) Parse(ctx context.Context, raw model.RawResponse, q model.N
 	partial.Dates.CreatedAt = pickString(partial.Dates.CreatedAt, firstValue(fields, "created"))
 	partial.Dates.UpdatedAt = pickString(partial.Dates.UpdatedAt, firstValue(fields, "modified"))
 	partial.Dates.ExpiresAt = pickString(partial.Dates.ExpiresAt, firstValue(fields, "expires"))
+	partial.Dates.TransferredAt = pickString(partial.Dates.TransferredAt, firstValue(fields, "transferred"))
 	if statuses := statusesFromValues(valuesFor(fields, "status"), raw.Source); len(statuses) > 0 {
 		partial.Statuses = statuses
 	}

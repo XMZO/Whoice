@@ -139,6 +139,9 @@ type DateInfo struct {
 	AvailableAt   string `json:"availableAt,omitempty"`
 	AgeDays       *int   `json:"ageDays,omitempty"`
 	RemainingDays *int   `json:"remainingDays,omitempty"`
+	// TransferredAt is the last registrar transfer, where the registry
+	// publishes it (RDAP "transfer" event, .se/.nu "transferred").
+	TransferredAt string `json:"transferredAt,omitempty"`
 }
 
 type DomainStatus struct {

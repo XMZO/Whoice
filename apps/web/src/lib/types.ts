@@ -63,6 +63,8 @@ export type LookupResult = {
     updatedAt?: string;
     expiresAt?: string;
     availableAt?: string;
+    /** Last registrar transfer, where the registry publishes it. */
+    transferredAt?: string;
     ageDays?: number;
     remainingDays?: number;
   };

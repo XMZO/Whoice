@@ -1003,3 +1003,23 @@ func TestWHOISParserReservedWinsAndRejectionsAreErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestTransferDatesFromRDAPAndSEWHOIS(t *testing.T) {
+	q := domainQueryFor("example.cz", "cz")
+	part, err := RDAPParser{}.Parse(context.Background(), model.RawResponse{
+		Source:     model.SourceRDAP,
+		Query:      q.Query,
+		StatusCode: 200,
+		Body:       `{"objectClassName":"domain","ldhName":"example.cz","events":[{"eventAction":"registration","eventDate":"2001-01-01T00:00:00Z"},{"eventAction":"transfer","eventDate":"2011-02-07T17:40:53+00:00"}]}`,
+	}, q)
+	if err != nil || part.Dates.TransferredAt != "2011-02-07T17:40:53+00:00" {
+		t.Fatalf("RDAP transfer event: got %+v, %v", part, err)
+	}
+
+	se := domainQueryFor("example.se", "se")
+	raw := model.RawResponse{Source: model.SourceWHOIS, Query: se.Query, Server: "whois.iis.se", Body: readString(t, fixturePath("whois", "se", "registered.raw"))}
+	seg, err := (SEWHOISParser{}).Parse(context.Background(), raw, se)
+	if err != nil || seg.Dates.TransferredAt != "2024-01-01" {
+		t.Fatalf(".se transferred: got %q, %v", seg.Dates.TransferredAt, err)
+	}
+}

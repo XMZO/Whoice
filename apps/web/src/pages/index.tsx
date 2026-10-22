@@ -186,6 +186,12 @@ export default function HomePage() {
     };
   }, [router.events, run]);
 
+  // Text typed before the page hydrated is in the input but not in state.
+  useEffect(() => {
+    const typed = inputRef.current?.value || "";
+    if (typed) setQuery(typed);
+  }, []);
+
   function updateQuery(value: string) {
     setQuery(value);
     if (run !== "running") {

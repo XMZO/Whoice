@@ -228,6 +228,7 @@
         "updatedAt": { "type": "string" },
         "expiresAt": { "type": "string" },
         "availableAt": { "type": "string" },
+        "transferredAt": { "type": "string", "description": "Last registrar transfer, where the registry publishes it." },
         "ageDays": { "type": "integer" },
         "remainingDays": { "type": "integer" }
       },

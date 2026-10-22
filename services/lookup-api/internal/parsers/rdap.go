@@ -193,6 +193,8 @@ func parseEvents(doc map[string]any) model.DateInfo {
 			dates.ExpiresAt = firstNonEmpty(dates.ExpiresAt, date)
 		case "last changed", "last update of rdap database", "last update", "last updated", "last modified":
 			dates.UpdatedAt = firstNonEmpty(dates.UpdatedAt, date)
+		case "transfer":
+			dates.TransferredAt = firstNonEmpty(dates.TransferredAt, date)
 		}
 	}
 	return dates
