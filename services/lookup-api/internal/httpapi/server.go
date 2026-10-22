@@ -28,7 +28,7 @@ import (
 	"github.com/xmzo/whoice/services/lookup-api/internal/security"
 )
 
-const Version = "v0.1.7"
+const Version = "v0.1.8"
 const maxAIRequestBytes = 8 << 20
 
 type apiEndpoint string
