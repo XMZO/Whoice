@@ -1075,6 +1075,8 @@ test("a tapped button does not stay highlighted on touch screens", async ({ page
   const touch = await page.evaluate(() => matchMedia("(hover: none)").matches);
   if (testInfo.project.name === "mobile-chrome") {
     expect(touch).toBe(true);
+    // The browser's tap highlight is a square that ignores the rounded corners.
+    expect(await button.evaluate((el) => getComputedStyle(el).webkitTapHighlightColor)).toBe("rgba(0, 0, 0, 0)");
     await button.tap();
     await page.waitForTimeout(300);
     // After the tap the button looks as it did before; hover never sticks.
