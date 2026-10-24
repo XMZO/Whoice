@@ -1821,18 +1821,42 @@ button.src-tag {
   white-space: nowrap;
 }
 
+/* Always one line, whatever the state says, so the block keeps its height
+   between "not queried", a result and an error; the full text is the title. */
 .icp-summary {
+  align-items: center;
   color: var(--muted);
+  display: flex;
   font-size: 12px;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.icp-summary-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .icp-summary .pill {
-  margin-left: 6px;
-  vertical-align: 1px;
+  flex: 0 0 auto;
 }
 
 .icp-records {
   margin-top: 6px;
+}
+
+/* Labels such as "Entity licence" are wider than the usual label column; the
+   rows of a record share one column as wide as its longest label. */
+.icp-record {
+  display: grid;
+  grid-template-columns: minmax(76px, max-content) minmax(0, 1fr);
+}
+
+.icp-record .kv-row {
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
 }
 
 .icp-record + .icp-record {
@@ -3740,7 +3764,7 @@ button.src-tag {
     border-top: 0;
     display: grid;
     gap: 6px 8px;
-    grid-template-columns: 62px minmax(0, 1fr);
+    grid-template-columns: max-content minmax(0, 1fr);
     padding: 10px;
   }
 
@@ -3858,6 +3882,17 @@ button.src-tag {
     justify-content: space-between;
   }
 
+  /* The tab already says "Price"; its room goes to the cache and rate ages
+     and the currency switch, which wrap rather than overflow. */
+  .price-head-narrow {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  .price-head-narrow strong {
+    display: none;
+  }
+
   .price-head-narrow .section-meta,
   .sources-head-narrow .section-meta {
     font-size: 11.5px;
@@ -3957,10 +3992,11 @@ button.src-tag {
     display: none;
   }
 
+  /* Two columns where a full IPv6 resolver label fits twice, else one. */
   .resolver-items-detailed {
     display: grid;
     gap: 3px 8px;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 14em), 1fr));
   }
 
   .resolver-dot {
@@ -4046,6 +4082,10 @@ button.src-tag {
     gap: 8px;
     grid-template-columns: 64px minmax(0, 1fr);
     padding: 5px 0;
+  }
+
+  .icp-record {
+    grid-template-columns: minmax(64px, max-content) minmax(0, 1fr);
   }
 
   .kv-row dt {
@@ -4373,6 +4413,20 @@ button.src-tag {
 
   .plugin-item.compact {
     grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
+
+/* On phones the ICP button keeps only its icon (the label is its title), so
+   the title and its tags fit on one line in every language. */
+@media (max-width: 480px) {
+  .icp-block .btn-outline-accent {
+    justify-content: center;
+    padding: 0;
+    width: 34px;
+  }
+
+  .icp-btn-label {
+    display: none;
   }
 }
 

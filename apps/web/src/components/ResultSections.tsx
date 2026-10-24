@@ -1198,6 +1198,7 @@ function ICPBlock({ domain, state, filing, onLookup }: { domain: string; state: 
         : found
           ? records[0].serviceLicence || records[0].mainLicence || domain
           : t("icpNone");
+  const buttonLabel = state.loading ? t("icpQuerying") : checked ? t("icpRefresh") : t("icpQuery");
   return (
     <div className={`icp-block icp-panel ${state.error ? "is-error" : ""}`}>
       <div className="icp-row">
@@ -1211,13 +1212,13 @@ function ICPBlock({ domain, state, filing, onLookup }: { domain: string; state: 
             {found && <span className="pill pill-green">{t("icpFound")}</span>}
           </strong>
           <span className="icp-summary">
-            {summary}
+            <span className="icp-summary-text" title={summary}>{summary}</span>
             {state.result?.cached && <CacheTag cachedAt={state.result.cachedAt} />}
           </span>
         </span>
-        <button type="button" className="btn btn-outline-accent" onClick={onLookup} disabled={state.loading}>
+        <button type="button" className="btn btn-outline-accent" onClick={onLookup} disabled={state.loading} title={buttonLabel} aria-label={buttonLabel}>
           <SearchIcon size={13} />
-          {state.loading ? t("icpQuerying") : checked ? t("icpRefresh") : t("icpQuery")}
+          <span className="icp-btn-label">{buttonLabel}</span>
         </button>
       </div>
       {found && (

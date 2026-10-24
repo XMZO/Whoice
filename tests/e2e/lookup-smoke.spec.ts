@@ -1084,3 +1084,25 @@ test("a tapped button does not stay highlighted on touch screens", async ({ page
     await expect.poll(() => button.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe(resting);
   }
 });
+
+test("the ICP block keeps its height through every lookup state", async ({ page }) => {
+  let reply: { status: number; body: unknown } = { status: 200, body: {} };
+  await page.route("**/api/icp**", (route) => route.fulfill({ status: reply.status, contentType: "application/json", body: JSON.stringify(reply.body) }));
+  await seedLookup(page, "filing.test", lookupFixture("filing.test", { enrichment: { icpFiling: { eligible: true, suffix: "test" } } }));
+  await showSection(page, /^Registrant/);
+  const row = page.locator(".icp-block .icp-row");
+  const button = page.locator(".icp-block .btn-outline-accent");
+  const resting = (await row.boundingBox())!.height;
+  const cachedAt = new Date(Date.now() - 3 * 86400000).toISOString();
+  const states = [
+    { status: 200, body: { ok: true, result: { status: "found", cached: true, cachedAt, records: [{ mainLicence: "粤B2-20090059", serviceLicence: "粤B2-20090059-5", unitName: "Example Holdings" }] } } },
+    { status: 200, body: { ok: true, result: { status: "not_found", cached: true, cachedAt, records: [] } } },
+    { status: 502, body: { ok: false, error: { code: "icp_upstream_error", message: "MIIT query failed after 3 captcha attempts: upstream returned HTTP 403 Forbidden" } } },
+  ];
+  for (const state of states) {
+    reply = state;
+    await button.click();
+    await expect(button).toBeEnabled();
+    expect((await row.boundingBox())!.height).toBe(resting);
+  }
+});
