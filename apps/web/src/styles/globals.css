@@ -3460,10 +3460,13 @@ button.src-tag {
     overflow: auto;
   }
 
+  /* Outside the overview the hero is just the title and the tabs; it keeps
+     its full height, or a long section (DNS) squeezes it and clips the
+     tab bar's underline. */
   .result-hero {
     border: 0;
     border-radius: 0;
-    flex: 0 1 auto;
+    flex: 0 0 auto;
     grid-template-areas:
       "head"
       "tabs"

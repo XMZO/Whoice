@@ -1048,3 +1048,20 @@ test("overview cards show full timestamps and long registrar names", async ({ pa
   );
   expect(clipped).toEqual([]);
 });
+
+test("a long section does not clip the mobile tab bar", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile-chrome", "the tab bar is the mobile layout");
+  const resolvers = Array.from({ length: 12 }, (_, index) => ({ source: "udp", resolver: `2001:4860:4860::88${index}`, status: "ok" }));
+  const a = Array.from({ length: 24 }, (_, index) => ({ ip: `203.0.113.${index + 1}`, version: "ipv4", source: "udp", resolver: "8.8.8.8" }));
+  const aaaa = Array.from({ length: 8 }, (_, index) => ({ ip: `2001:db8::${index + 1}`, version: "ipv6", source: "udp", resolver: "8.8.8.8" }));
+  const mx = Array.from({ length: 8 }, (_, index) => ({ host: `mx${index}.mail-provider-${index}.example`, pref: index * 10 }));
+  const ns = Array.from({ length: 8 }, (_, index) => `ns${index}.dns-host-${index}.example`);
+  await seedLookup(page, "longdns.test", lookupFixture("longdns.test", { enrichment: { dns: { a, aaaa, mx, ns, resolvers, elapsedMs: 9 } } }));
+  await showSection(page, /^DNS/);
+  const clipped = await page.evaluate(() => {
+    const tabs = document.querySelector(".mobile-tabs")!.getBoundingClientRect();
+    const hero = document.querySelector(".result-hero")!.getBoundingClientRect();
+    return tabs.bottom - hero.bottom;
+  });
+  expect(clipped).toBeLessThanOrEqual(0);
+});
