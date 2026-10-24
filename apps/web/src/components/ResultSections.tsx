@@ -1203,13 +1203,17 @@ function ICPBlock({ domain, state, filing, onLookup }: { domain: string; state: 
       <div className="icp-row">
         <span className="icp-glyph" aria-hidden="true">{pick(t3("ICP", "备", "備"))}</span>
         <span className="icp-text">
+          {/* The title never wraps; its tags move to the next line instead. The
+              cache age belongs to the result, so it follows the summary. */}
           <strong>
-            {t("icpTitle")}
+            <span className="icp-title">{t("icpTitle")}</span>
             <ICPFilingTag filing={filing} />
             {found && <span className="pill pill-green">{t("icpFound")}</span>}
-            {state.result?.cached && <CacheTag cachedAt={state.result.cachedAt} />}
           </strong>
-          <span className="icp-summary">{summary}</span>
+          <span className="icp-summary">
+            {summary}
+            {state.result?.cached && <CacheTag cachedAt={state.result.cachedAt} />}
+          </span>
         </span>
         <button type="button" className="btn btn-outline-accent" onClick={onLookup} disabled={state.loading}>
           <SearchIcon size={13} />

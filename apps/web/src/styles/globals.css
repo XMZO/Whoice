@@ -1811,14 +1811,24 @@ button.src-tag {
 .icp-text strong {
   align-items: center;
   display: inline-flex;
+  flex-wrap: wrap;
   font-size: 13px;
   font-weight: 600;
-  gap: 6px;
+  gap: 4px 6px;
+}
+
+.icp-title {
+  white-space: nowrap;
 }
 
 .icp-summary {
   color: var(--muted);
   font-size: 12px;
+}
+
+.icp-summary .pill {
+  margin-left: 6px;
+  vertical-align: 1px;
 }
 
 .icp-records {
