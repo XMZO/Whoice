@@ -1065,3 +1065,22 @@ test("a long section does not clip the mobile tab bar", async ({ page }, testInf
   });
   expect(clipped).toBeLessThanOrEqual(0);
 });
+
+test("a tapped button does not stay highlighted on touch screens", async ({ page }, testInfo) => {
+  await page.route("**/api/icp**", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: true, result: { status: "none", records: [] } }) }));
+  await seedLookup(page, "tap.test", lookupFixture("tap.test"));
+  await showSection(page, /^Registrant/);
+  const button = page.locator(".icp-block .btn-outline-accent");
+  const resting = await button.evaluate((el) => getComputedStyle(el).backgroundColor);
+  const touch = await page.evaluate(() => matchMedia("(hover: none)").matches);
+  if (testInfo.project.name === "mobile-chrome") {
+    expect(touch).toBe(true);
+    await button.tap();
+    await page.waitForTimeout(300);
+    // After the tap the button looks as it did before; hover never sticks.
+    expect(await button.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(resting);
+  } else {
+    await button.hover();
+    await expect.poll(() => button.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe(resting);
+  }
+});
